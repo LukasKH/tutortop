@@ -1,0 +1,6 @@
+# Project tools. Run `mise install` once, then `pre-commit install`.
+[tools]
+go = "1.27"
+node = "26"
+golangci-lint = "2.15.0"
+pre-commit = "4.7.0"

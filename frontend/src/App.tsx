@@ -1,0 +1,54 @@
+import { useEffect, useState } from "react";
+import { App, type Settings } from "./api";
+import { Home } from "./Home";
+import { SettingsDialog, coachLabel, loadModels } from "./Settings";
+import { WorkspaceView } from "./WorkspaceView";
+import { useStored } from "./ui";
+
+export function AppRoot() {
+  // Remembered so a reload (or restart) reopens the same workspace.
+  const [workspaceId, setWorkspaceId] = useStored<string | null>("workspace", null);
+  // The last workspace opened stays in focus on Home.
+  const [lastId, setLastId] = useStored<string | null>("last-workspace", null);
+  const open = (id: string) => {
+    setLastId(id);
+    setWorkspaceId(id);
+  };
+  const [settings, setSettings] = useState<Settings | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+
+  useEffect(() => {
+    App.Settings().then((s) => {
+      setSettings(s);
+      // The coach label shows model names, which come with the model list.
+      loadModels(s.agent)
+        .then(() => setSettings((cur) => cur && { ...cur }))
+        .catch(() => {});
+    });
+  }, []);
+
+  async function changeSettings(next: Settings) {
+    const prev = settings;
+    setSettings(next);
+    try {
+      await App.SaveSettings(next);
+    } catch (e) {
+      setSettings(prev);
+      throw e;
+    }
+  }
+
+  const coach = settings ? coachLabel(settings) : "";
+  const openSettings = () => setSettingsOpen(true);
+
+  return (
+    <>
+      {workspaceId ? (
+        <WorkspaceView key={workspaceId} id={workspaceId} coach={coach} onSettings={openSettings} onBack={() => setWorkspaceId(null)} />
+      ) : (
+        <Home coach={coach} lastId={lastId} onSettings={openSettings} onOpen={open} />
+      )}
+      {settingsOpen && settings && <SettingsDialog settings={settings} onChange={changeSettings} onClose={() => setSettingsOpen(false)} />}
+    </>
+  );
+}

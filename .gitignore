@@ -1,0 +1,26 @@
+.task
+bin
+frontend/dist
+frontend/node_modules
+build/linux/appimage/build
+build/windows/nsis/MicrosoftEdgeWebview2Setup.exe
+# Mobile generated (per-machine; overlays hold absolute paths)
+build/ios/xcode/overlay.json
+build/ios/xcode/gen/
+build/android/overlay.json
+build/android/gen/
+# Go
+*.test
+*.out
+go.work
+go.work.sum
+
+# Local env
+.env
+
+# Build output in repo root
+/tutortop
+
+# Local tooling
+.claude/settings.local.json
+.DS_Store

@@ -1,0 +1,40 @@
+default_install_hook_types: [pre-commit, commit-msg]
+
+repos:
+  - repo: local
+    hooks:
+      # go vet's analyzers, Staticcheck and gofmt/goimports, configured in .golangci.yml.
+      - id: golangci-lint
+        name: Go vet and lint
+        entry: golangci-lint run ./internal/...
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-commit]
+
+      # Runner tests use Docker when it's reachable and skip otherwise.
+      # Tests that talk to the real Claude Code and Codex CLIs need -tags live
+      # and run by hand.
+      - id: go-test
+        name: Go tests (race detector)
+        entry: go test -race -short -count=1 ./internal/...
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-commit]
+
+      - id: frontend-typecheck
+        name: Frontend typecheck
+        entry: npm --prefix frontend exec -- tsc --noEmit -p frontend
+        language: system
+        pass_filenames: false
+        files: ^frontend/
+        stages: [pre-commit]
+
+  - repo: https://github.com/alessandrojcm/commitlint-pre-commit-hook
+    rev: v9.27.0
+    hooks:
+      - id: commitlint
+        stages: [commit-msg]
+        language_version: system
+        additional_dependencies: ['@commitlint/config-conventional@21.2.3']
