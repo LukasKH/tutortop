@@ -1,3 +1,5 @@
+//go:build !windows
+
 // Package shellenv gives the app the PATH the user has in a terminal.
 package shellenv
 
@@ -9,6 +11,7 @@ import (
 	"runtime"
 	"slices"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -17,9 +20,6 @@ import (
 // a desktop launcher gets a minimal PATH, without the folders where docker,
 // podman, claude and codex live, so it wouldn't find them.
 func LoadPath() {
-	if runtime.GOOS == "windows" {
-		return // Windows apps get the user's full PATH
-	}
 	home, _ := os.UserHomeDir()
 	dirs := slices.Concat(
 		filepath.SplitList(os.Getenv("PATH")),
@@ -57,6 +57,11 @@ func shellPath(shell string) string {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, shell, "-ilc", `printf '`+mark+`%s`+mark+`' "$PATH"`)
+	// An interactive shell takes over the terminal it was started from. When
+	// the app runs in a terminal's background, as under `wails3 dev`, the
+	// kernel then stops the app and the shell, for good. In a new session the
+	// shell has no terminal to take.
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	cmd.WaitDelay = time.Second // in case the rc files leave something running
 	out, _ := cmd.Output()
 	_, path, _ := strings.Cut(string(out), mark)

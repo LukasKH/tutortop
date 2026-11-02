@@ -1,3 +1,5 @@
+//go:build !windows
+
 package shellenv
 
 import (
@@ -9,9 +11,6 @@ import (
 )
 
 func TestLoadPath(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("Windows apps get the full PATH")
-	}
 	// A login shell whose rc files print noise around the PATH.
 	shell := filepath.Join(t.TempDir(), "shell")
 	script := "#!/bin/sh\necho 'welcome!'\nprintf '__TUTORTOP_PATH__/shell/bin:/usr/bin__TUTORTOP_PATH__'\necho bye\n"
@@ -32,10 +31,29 @@ func TestLoadPath(t *testing.T) {
 	}
 }
 
-func TestLoadPathWithBrokenShell(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("Windows apps get the full PATH")
+// Regression test: under `wails3 dev` the app runs in a terminal's background,
+// and an interactive shell started in the app's session stopped them both.
+func TestShellRunsInItsOwnSession(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("reads /proc")
 	}
+	// Prints /own-session if the shell leads a new session (session ID = PID).
+	shell := filepath.Join(t.TempDir(), "shell")
+	script := `#!/bin/sh
+read -r stat </proc/$$/stat
+set -- $stat
+[ "$6" = "$$" ] && dir=/own-session || dir=/app-session
+printf '__TUTORTOP_PATH__%s__TUTORTOP_PATH__' "$dir"
+`
+	if err := os.WriteFile(shell, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if got := shellPath(shell); got != "/own-session" {
+		t.Errorf("shell ran in %s, want /own-session", got)
+	}
+}
+
+func TestLoadPathWithBrokenShell(t *testing.T) {
 	t.Setenv("SHELL", "/does/not/exist")
 	t.Setenv("PATH", "/usr/bin")
 
