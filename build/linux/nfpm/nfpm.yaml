@@ -24,10 +24,12 @@ contents:
   - src: "./build/linux/desktop.desktop"
     dst: "/usr/share/applications/desktop.desktop"
 
-# Default dependencies for the GTK4 + WebKitGTK 6.0 stack (Ubuntu 24.04+ / Debian 13+)
+# Default dependencies for the GTK4 + WebKitGTK 6.0 stack (Ubuntu 24.04+ / Debian 13+),
+# plus Podman for the sandbox that runs checks
 depends:
   - libgtk-4-1
   - libwebkitgtk-6.0-4
+  - podman
 
 # Distribution-specific overrides for different package formats
 overrides:
@@ -36,12 +38,14 @@ overrides:
     depends:
       - gtk4
       - webkitgtk6.0
+      - podman
 
   # Arch Linux packages
   archlinux:
     depends:
       - gtk4
       - webkitgtk-6.0
+      - podman
 
 # scripts section to ensure desktop database is updated after install
 scripts:

@@ -15,6 +15,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 	"uuid"
 
@@ -77,34 +78,22 @@ var (
 // Runner runs jobs either in containers (default) or directly on the host
 // (TUTORTOP_RUNNER=local, meant for development only).
 type Runner struct {
-	Engine string // "docker", "podman" or "local"
+	Engine string // "podman", "docker" or "local"
 
 	mu       sync.Mutex
 	prepared map[string]bool
+
+	desktopStarted atomic.Int64 // when Check last started Docker Desktop, in Unix nanoseconds
 }
 
+// New uses the engine in TUTORTOP_RUNNER, or else the first of Podman and
+// Docker that works.
 func New() *Runner {
 	engine := os.Getenv("TUTORTOP_RUNNER")
 	if engine == "" {
-		engine = "docker"
+		engine = detectEngine()
 	}
 	return &Runner{Engine: engine, prepared: map[string]bool{}}
-}
-
-// Check reports whether the sandbox is usable, with a fix-it hint if not.
-func (r *Runner) Check(ctx context.Context) error {
-	if r.Engine == "local" {
-		return nil
-	}
-	out, err := exec.CommandContext(ctx, r.Engine, "info", "--format", "{{.ServerVersion}}").CombinedOutput()
-	if err != nil {
-		msg := strings.TrimSpace(string(out))
-		if strings.Contains(msg, "permission denied") {
-			return fmt.Errorf("can't reach Docker (permission denied). Add yourself to the docker group: `sudo usermod -aG docker $USER`, then log out and back in")
-		}
-		return fmt.Errorf("can't reach Docker: %s", msg)
-	}
-	return nil
 }
 
 // Prepare builds the language image. The first call can take a few minutes.
@@ -119,7 +108,7 @@ func (r *Runner) Prepare(ctx context.Context, tc Toolchain) error {
 	}
 	if exec.CommandContext(ctx, r.Engine, "image", "inspect", tc.Image).Run() != nil {
 		cmd := exec.CommandContext(ctx, r.Engine, "build", "-t", tc.Image, "-")
-		cmd.Stdin = strings.NewReader(tc.Dockerfile)
+		cmd.Stdin = strings.NewReader(qualifyImages(tc.Dockerfile))
 		if out, err := cmd.CombinedOutput(); err != nil {
 			return fmt.Errorf("preparing the %s sandbox: %v\n%s", tc.Name, err, text.Tail(string(out), 1500))
 		}

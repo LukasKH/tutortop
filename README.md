@@ -34,7 +34,7 @@ Reference solutions, hidden tests and mutants live outside the workspace (`~/.lo
 ## Requirements
 
 - Go 1.27+, Node 20+, and the Wails v3 CLI (`wails3`), all installed by `mise install`
-- Docker (or Podman with `TUTORTOP_RUNNER=podman`), usable without sudo (on Linux: `sudo usermod -aG docker $USER`, then log out and in). The first check per language builds a sandbox image, which takes a few minutes.
+- A container engine for the sandbox: Podman on Linux, Docker Desktop on macOS and Windows. The app uses whichever works, and starts Docker Desktop if it isn't running. On Linux, Podman works as soon as it's installed; Docker there also needs your user in the docker group (`sudo usermod -aG docker $USER`, then log out and in). The first check per language builds a sandbox image, which takes a few minutes.
 - Claude Code (`claude`) and/or Codex (`codex`), signed in
 
 ## Development
@@ -43,7 +43,7 @@ Reference solutions, hidden tests and mutants live outside the workspace (`~/.lo
 mise install                 # Go, Node, wails3, golangci-lint and pre-commit, pinned in mise.toml
 pre-commit install           # git hooks: lint + tests before commit, Conventional Commits on the message
 wails3 dev                   # run the app with hot reload
-task test                    # Go tests with the race detector (sandbox tests use Docker, skip without it)
+task test                    # Go tests with the race detector (sandbox tests use Podman or Docker, skip without one)
 task lint                    # go vet, Staticcheck and format checks
 task format                  # format Go code and imports
 task test:live               # talks to the real Claude Code and Codex CLIs; uses a little quota

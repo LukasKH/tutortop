@@ -56,6 +56,18 @@ export function Home({ coach, lastId, onSettings, onOpen }: Props) {
       .catch((e) => setError(errorText(e)));
   }, []);
 
+  // Check again while the sandbox isn't ready: Docker Desktop may be starting,
+  // or the learner installing what the hint says.
+  useEffect(() => {
+    if (!env || env.sandboxOk) return;
+    const timer = setTimeout(() => {
+      App.Environment()
+        .then((e) => setEnv((lastEnv = e)))
+        .catch(() => {});
+    }, 5000);
+    return () => clearTimeout(timer);
+  }, [env]);
+
   return (
     <div className="home">
       <header className="home-bar">
@@ -87,7 +99,7 @@ export function Home({ coach, lastId, onSettings, onOpen }: Props) {
 
           {env && !env.sandboxOk && (
             <p className="warning" role="alert">
-              Checks need Docker, and it isn't available. {env.sandboxHint && <code>{env.sandboxHint}</code>}
+              Checks need Podman or Docker, and neither is ready. {env.sandboxHint && <code>{env.sandboxHint}</code>}
             </p>
           )}
           <ErrorText error={error} />

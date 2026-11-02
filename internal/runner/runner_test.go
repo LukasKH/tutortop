@@ -7,7 +7,8 @@ import (
 	"testing"
 )
 
-// Tests run against the engine in TUTORTOP_RUNNER (docker by default).
+// Tests run against the engine in TUTORTOP_RUNNER, or else Podman or Docker,
+// whichever works.
 // Use TUTORTOP_RUNNER=local for a quick run without containers.
 func testRunner(t *testing.T, language string) *Runner {
 	t.Helper()

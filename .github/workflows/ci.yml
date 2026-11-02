@@ -20,9 +20,12 @@ jobs:
           args: ./internal/...
 
   # GitHub's Ubuntu runners have Docker, so the sandbox tests run here too.
+  # They also have Podman, but its memory and CPU limits may not work there.
   # Tests that talk to the real Claude Code and Codex CLIs need -tags live.
   test:
     runs-on: ubuntu-latest
+    env:
+      TUTORTOP_RUNNER: docker
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-go@v6
