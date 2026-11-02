@@ -121,7 +121,7 @@ func textResult(msg string) *mcp.CallToolResult {
 // agent as an error result with its text, so it can fix the call.
 func (h *mcpHost) newServer(w *workspace.Workspace, thread string) *mcp.Server {
 	a := h.app
-	s := mcp.NewServer(&mcp.Implementation{Name: "tutortop", Version: "0.1.0"}, nil)
+	s := mcp.NewServer(&mcp.Implementation{Name: "tutortop", Version: "0.1.1"}, nil)
 
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "get_state",
