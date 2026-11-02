@@ -87,7 +87,7 @@ export function Home({ coach, lastId, onSettings, onOpen }: Props) {
 
           {env && !env.sandboxOk && (
             <p className="warning" role="alert">
-              Checks need Docker, and it isn't available. {env.sandboxHint && <code>{env.sandboxHint}</code>}
+              Checks need Docker or Podman, and neither is available. {env.sandboxHint && <code>{env.sandboxHint}</code>}
             </p>
           )}
           <ErrorText error={error} />
