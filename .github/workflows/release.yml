@@ -27,10 +27,11 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
-      - uses: ./.github/actions/setup-build
+      # Before setup-build: installing the Wails CLI compiles against GTK.
       - run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends build-essential pkg-config libgtk-4-dev libwebkitgtk-6.0-dev nsis file
+      - uses: ./.github/actions/setup-build
 
       - name: Linux packages
         run: |
