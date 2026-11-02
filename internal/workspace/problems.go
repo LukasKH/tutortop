@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-// problems collects every validation problem, so the coach can fix them all
+// problems collects every validation problem, so the tutor can fix them all
 // in one round instead of one per call.
 type problems []string
 

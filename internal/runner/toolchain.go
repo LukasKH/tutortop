@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"path"
-	"regexp"
 	"strings"
 
 	"github.com/LukasKH/tutortop/internal/text"
@@ -31,26 +30,18 @@ type Toolchain struct {
 	// Parse turns the script's output into per-test results.
 	// hiddenNames holds names of tests defined in hidden check files.
 	Parse func(stdout string, hiddenNames map[string]bool) ([]TestResult, bool)
-	// TestNames extracts test names from a test file, so results can be
-	// labelled visible or hidden.
-	TestNames func(filename, src string) []string
 	// LanguageServer is the command that runs a language server over stdio
 	// inside the image, for completions and diagnostics in the editor.
 	// Empty means the editor gets syntax highlighting only.
 	LanguageServer []string
 
-	testFile *regexp.Regexp // matches a test file's base name
-	testFunc *regexp.Regexp // matches one test function in a test file
+	testFiles string // glob matching a test file's base name
 }
 
 // IsTestFile reports whether a file name is one of this language's test files.
 func (tc Toolchain) IsTestFile(name string) bool {
-	return tc.testFile.MatchString(path.Base(name))
-}
-
-// CountTests estimates how many tests a file defines, for display only.
-func (tc Toolchain) CountTests(src string) int {
-	return len(tc.testFunc.FindAllString(src, -1))
+	ok, _ := path.Match(tc.testFiles, path.Base(name))
+	return ok
 }
 
 var builtins = map[string]Toolchain{
@@ -94,16 +85,10 @@ WORKDIR /work
 		}
 		return "CGO_ENABLED=0 GOFLAGS=-mod=mod GOTOOLCHAIN=local go test -json " + flags + " -timeout=20s ./... 2>&1"
 	},
-	Parse: parseGoTestJSON,
-	TestNames: func(_, src string) []string {
-		return matchAll(goTestFunc, src)
-	},
+	Parse:          parseGoTestJSON,
 	LanguageServer: []string{"/home/runner/go/bin/gopls"},
-	testFile:       regexp.MustCompile(`_test\.go$`),
-	testFunc:       goTestFunc,
+	testFiles:      "*_test.go",
 }
-
-var goTestFunc = regexp.MustCompile(`(?m)^func (Test\w*)\(\s*\w+\s+\*testing\.T\s*\)`)
 
 type goTestEvent struct {
 	Action string
@@ -196,21 +181,14 @@ WORKDIR /work
 		}
 		return junitScript("python -m pytest -q -p no:cacheprovider --timeout=20"+count+" --junitxml=/tmp/junit.xml", 1)
 	},
-	Parse: parseJUnitRuns,
-	TestNames: func(filename, src string) []string {
-		// pytest reports classname as "<module>" or "<module>.<Class>", so we
-		// tag hidden tests by module name instead of by function name.
-		return []string{strings.TrimSuffix(path.Base(filename), ".py")}
-	},
+	Parse:          parseJUnitRuns,
 	LanguageServer: []string{"basedpyright-langserver", "--stdio"},
-	testFile:       regexp.MustCompile(`^test_.*\.py$`),
-	testFunc:       regexp.MustCompile(`(?m)^\s*def (test\w*)\(`),
+	testFiles:      "test_*.py",
 }
 
 type junitCase struct {
 	Name      string        `xml:"name,attr"`
 	Classname string        `xml:"classname,attr"`
-	File      string        `xml:"file,attr"`
 	Failure   *junitProblem `xml:"failure"`
 	Error     *junitProblem `xml:"error"`
 	Skipped   *junitProblem `xml:"skipped"`
@@ -221,14 +199,6 @@ type junitProblem struct {
 }
 
 // ---- helpers ----
-
-func matchAll(re *regexp.Regexp, src string) []string {
-	var names []string
-	for _, m := range re.FindAllStringSubmatch(src, -1) {
-		names = append(names, m[1])
-	}
-	return names
-}
 
 func trimMessage(s string) string {
 	return text.Truncate(strings.TrimSpace(s), 2000)

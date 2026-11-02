@@ -37,6 +37,8 @@ type GateStep struct {
 type GateReport struct {
 	Passed bool       `json:"passed"`
 	Steps  []GateStep `json:"steps"`
+	// Names are the tests the reference runs reported, saved with the task.
+	Names TestNames `json:"-"`
 }
 
 // String is the report the authoring agent reads when fixing a task.
@@ -64,7 +66,8 @@ func (g GateReport) String() string {
 const minMutants = 2
 
 // Gate checks, in order:
-//  1. the reference solution passes every check three times, shuffled;
+//  1. the reference solution passes every check three times, shuffled, and
+//     the visible tests alone, which tells visible and hidden tests apart;
 //  2. the starter compiles and fails at least one check;
 //  3. every mutant compiles and fails at least one check.
 func (r *Runner) Gate(ctx context.Context, in GateInput) (GateReport, error) {
@@ -89,20 +92,41 @@ func (r *Runner) Gate(ctx context.Context, in GateInput) (GateReport, error) {
 	}
 
 	// 1. The reference passes every test three times, in shuffled order where
-	// the language allows, so flaky or order-dependent tests are caught.
-	res, err := run(ctx, in.Reference, 3)
-	if err != nil {
+	// the language allows, so flaky or order-dependent tests are caught. It
+	// also passes the visible tests alone, as the learner's Run uses them.
+	// Tests are named by single runs: repeating can rename them (pytest-repeat).
+	var repeated, once, visible Result
+	g, gctx := errgroup.WithContext(ctx)
+	g.Go(func() (err error) { repeated, err = run(gctx, in.Reference, 3); return err })
+	g.Go(func() (err error) { once, err = run(gctx, in.Reference, 1); return err })
+	g.Go(func() (err error) {
+		visible, err = r.Run(gctx, Job{Toolchain: in.Toolchain, Solution: in.Reference, Tests: in.Tests})
+		return err
+	})
+	if err := g.Wait(); err != nil {
 		return rep, err
 	}
-	if res.Status != StatusPassed {
+	if repeated.Status != StatusPassed {
 		add("reference solution passes all tests (3 shuffled repetitions)", false,
-			describe(res)+"If the reference passes on its own, the tests are flaky or depend on order: remove randomness, wall-clock time, map ordering and shared state between tests.")
+			describe(repeated)+"If the reference passes on its own, the tests are flaky or depend on order: remove randomness, wall-clock time, map ordering and shared state between tests.")
 		return rep, nil
 	}
 	add("reference solution passes all tests (3 shuffled repetitions)", true, "")
+	if visible.Status != StatusPassed {
+		add("reference solution passes the visible tests on their own", false,
+			describe(visible)+"The learner's Run uses only the visible tests, so they must work without the hidden files.")
+		return rep, nil
+	}
+	names, problem := splitNames(once.Tests, visible.Tests)
+	if problem != "" {
+		add("visible and hidden tests have their own names", false, problem)
+		return rep, nil
+	}
+	rep.Names = names
+	add(fmt.Sprintf("visible tests pass on their own (%d visible, %d hidden)", len(names.Visible), len(names.Hidden)), true, "")
 
 	// 2. The starter compiles and fails.
-	res, err = run(ctx, in.Starter, 1)
+	res, err := run(ctx, in.Starter, 1)
 	if err != nil {
 		return rep, err
 	}
@@ -118,7 +142,7 @@ func (r *Runner) Gate(ctx context.Context, in GateInput) (GateReport, error) {
 
 	// 3. Every mutant compiles and is caught.
 	steps := make([]GateStep, len(in.Mutants))
-	g, gctx := errgroup.WithContext(ctx)
+	g, gctx = errgroup.WithContext(ctx)
 	g.SetLimit(4)
 	for i, m := range in.Mutants {
 		g.Go(func() error {
@@ -150,6 +174,32 @@ func (r *Runner) Gate(ctx context.Context, in GateInput) (GateReport, error) {
 		rep.Passed = rep.Passed && s.OK
 	}
 	return rep, nil
+}
+
+// splitNames names the tests of a full run, hidden being those the
+// visible-only run didn't report.
+func splitNames(all, visible []TestResult) (TestNames, string) {
+	isVisible := map[string]bool{}
+	for _, t := range visible {
+		isVisible[t.Name] = true
+	}
+	var names TestNames
+	seen := map[string]bool{}
+	for _, t := range all {
+		if seen[t.Name] {
+			return names, fmt.Sprintf("Two tests are called %q. Give every test, visible or hidden, its own name.", t.Name)
+		}
+		seen[t.Name] = true
+		if isVisible[t.Name] {
+			names.Visible = append(names.Visible, t.Name)
+		} else {
+			names.Hidden = append(names.Hidden, t.Name)
+		}
+	}
+	if len(names.Hidden) == 0 {
+		return names, "None of the hidden tests ran. Name the hidden test files so the test framework finds them."
+	}
+	return names, ""
 }
 
 func describe(res Result) string {

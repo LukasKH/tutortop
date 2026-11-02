@@ -39,9 +39,9 @@ function currentModel(models: AgentModel[] | null, id: string): AgentModel | nul
   return models.find((m) => m.id === id) ?? (id === "" ? (models[0] ?? null) : null);
 }
 
-/** "Claude Code · Opus · High": the coach as configured. */
-export function coachLabel(s: Settings): string {
-  const choice = s.coach?.[s.agent] ?? { model: "", effort: "" };
+/** "Claude Code · Opus · High": the tutor as configured. */
+export function tutorLabel(s: Settings): string {
+  const choice = s.tutor?.[s.agent] ?? { model: "", effort: "" };
   const model = currentModel(modelCache.get(s.agent) ?? null, choice.model);
   const parts = [providerName(s.agent)];
   if (model?.id || choice.model) parts.push(model?.name ?? choice.model);
@@ -50,12 +50,12 @@ export function coachLabel(s: Settings): string {
   return parts.join(" · ");
 }
 
-/** The configured coach with a way to change it. */
-export function CoachLine({ coach, action = "Change", onSettings }: { coach: string; action?: string; onSettings: () => void }) {
+/** The configured tutor with a way to change it. */
+export function TutorLine({ tutor, action = "Change", onSettings }: { tutor: string; action?: string; onSettings: () => void }) {
   return (
-    <div className="coach-line">
-      <span className="truncate" title={coach}>
-        {coach || "…"}
+    <div className="tutor-line">
+      <span className="truncate" title={tutor}>
+        {tutor || "…"}
       </span>
       <button type="button" className="btn text" onClick={onSettings}>
         {action}
@@ -70,7 +70,7 @@ type Props = {
   onClose: () => void;
 };
 
-/** App settings in a modal: which agent coaches, with which model and reasoning effort. */
+/** App settings in a modal: which agent tutors, with which model and reasoning effort. */
 export function SettingsDialog({ settings, onChange, onClose }: Props) {
   const ref = useRef<HTMLDialogElement>(null);
   const [env, setEnv] = useState<Environment | null>(null);
@@ -79,7 +79,7 @@ export function SettingsDialog({ settings, onChange, onClose }: Props) {
   const [error, setError] = useState("");
 
   const agent = settings.agent;
-  const choice = settings.coach?.[agent] ?? { model: "", effort: "" };
+  const choice = settings.tutor?.[agent] ?? { model: "", effort: "" };
 
   useEffect(() => {
     ref.current?.showModal();
@@ -106,7 +106,7 @@ export function SettingsDialog({ settings, onChange, onClose }: Props) {
   }
 
   function choose(model: string, effort: string) {
-    save({ ...settings, coach: { ...settings.coach, [agent]: { model, effort } } });
+    save({ ...settings, tutor: { ...settings.tutor, [agent]: { model, effort } } });
   }
 
   const selected = currentModel(models, choice.model);

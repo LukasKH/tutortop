@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { App, type Settings } from "./api";
 import { Home } from "./Home";
-import { SettingsDialog, coachLabel, loadModels } from "./Settings";
+import { SettingsDialog, tutorLabel, loadModels } from "./Settings";
 import { WorkspaceView } from "./WorkspaceView";
 import { useStored } from "./ui";
 
@@ -20,7 +20,7 @@ export function AppRoot() {
   useEffect(() => {
     App.Settings().then((s) => {
       setSettings(s);
-      // The coach label shows model names, which come with the model list.
+      // The tutor label shows model names, which come with the model list.
       loadModels(s.agent)
         .then(() => setSettings((cur) => cur && { ...cur }))
         .catch(() => {});
@@ -38,15 +38,15 @@ export function AppRoot() {
     }
   }
 
-  const coach = settings ? coachLabel(settings) : "";
+  const tutor = settings ? tutorLabel(settings) : "";
   const openSettings = () => setSettingsOpen(true);
 
   return (
     <>
       {workspaceId ? (
-        <WorkspaceView key={workspaceId} id={workspaceId} coach={coach} onSettings={openSettings} onBack={() => setWorkspaceId(null)} />
+        <WorkspaceView key={workspaceId} id={workspaceId} tutor={tutor} onSettings={openSettings} onBack={() => setWorkspaceId(null)} />
       ) : (
-        <Home coach={coach} lastId={lastId} onSettings={openSettings} onOpen={open} />
+        <Home tutor={tutor} lastId={lastId} onSettings={openSettings} onOpen={open} />
       )}
       {settingsOpen && settings && <SettingsDialog settings={settings} onChange={changeSettings} onClose={() => setSettingsOpen(false)} />}
     </>

@@ -10,7 +10,7 @@ import (
 	"github.com/LukasKH/tutortop/internal/runner"
 )
 
-// Languages other than the built-in Go and Python are set up by the coach per
+// Languages other than the built-in Go and Python are set up by the tutor per
 // workspace and kept in .tutortop/toolchains/<language>.yaml.
 
 // Toolchain returns how a language's code is checked in this workspace.
@@ -36,7 +36,7 @@ func (w *Workspace) toolchainSpec(language string) (runner.ToolchainSpec, error)
 	return spec, err
 }
 
-// SaveToolchain stores a language set up by the coach. The spec must already
+// SaveToolchain stores a language set up by the tutor. The spec must already
 // be validated and its image built.
 func (w *Workspace) SaveToolchain(spec runner.ToolchainSpec) error {
 	if _, err := spec.Toolchain(); err != nil {
@@ -55,7 +55,7 @@ func (w *Workspace) SaveToolchain(spec runner.ToolchainSpec) error {
 	return nil
 }
 
-// ToolchainSpecs lists the languages the coach has set up.
+// ToolchainSpecs lists the languages the tutor has set up.
 func (w *Workspace) ToolchainSpecs() []runner.ToolchainSpec {
 	entries, _ := os.ReadDir(w.path(".tutortop", "toolchains"))
 	out := []runner.ToolchainSpec{}

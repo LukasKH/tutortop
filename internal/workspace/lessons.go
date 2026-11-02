@@ -12,7 +12,7 @@ import (
 // A lesson teaches the knowledge for one objective before its task gives the
 // practice, like theory before an exercise at school. It ends in a short quiz
 // the app checks, so the learner gets instant feedback. Quiz results are
-// recorded for the coach but never count as progress; only passed tests do.
+// recorded for the tutor but never count as progress; only passed tests do.
 //
 // Lessons live in lessons/<id>/{lesson.yaml,README.md}. The quiz with its
 // answers is kept privately, so the app does the checking.
@@ -24,7 +24,7 @@ func LessonThread(id string) string { return "lesson-" + id }
 // LessonOfThread returns the lesson a chat thread belongs to, if any.
 func LessonOfThread(thread string) (string, bool) { return strings.CutPrefix(thread, "lesson-") }
 
-// LessonSpec is what the coach submits through the create_lesson tool.
+// LessonSpec is what the tutor submits through the create_lesson tool.
 type LessonSpec struct {
 	ObjectiveID   string         `json:"objectiveId" jsonschema:"id of the curriculum objective this lesson teaches"`
 	Title         string         `json:"title"`

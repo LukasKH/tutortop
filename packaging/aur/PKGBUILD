@@ -4,7 +4,7 @@
 pkgname=tutortop-bin
 pkgver=0.1.0
 pkgrel=1
-pkgdesc="Learn anything you can check with a program, coached by your own AI CLI"
+pkgdesc="Learn anything you can check with a program, tutored by your own AI CLI"
 arch=('x86_64')
 url="https://github.com/LukasKH/tutortop"
 license=('MIT')

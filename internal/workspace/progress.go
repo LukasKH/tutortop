@@ -1,6 +1,7 @@
 package workspace
 
 import (
+	"slices"
 	"time"
 
 	"github.com/LukasKH/tutortop/internal/runner"
@@ -172,4 +173,35 @@ func (w *Workspace) Progress() Progress {
 		}
 	}
 	return p
+}
+
+// NeedsWriting returns the objectives a writer should prepare: of the next
+// ahead unpassed objectives in plan order, the ones missing a lesson or a
+// task the learner hasn't solved yet.
+func (w *Workspace) NeedsWriting(ahead int) []Objective {
+	c, err := w.Curriculum()
+	if err != nil || c == nil {
+		return nil
+	}
+	tasks, _ := w.TaskStatuses()
+	lessons, _ := w.LessonStatuses()
+	progress := w.Progress()
+	var out []Objective
+	for _, m := range c.Modules {
+		for _, o := range m.Objectives {
+			if progress.Objectives[o.ID].Status == ObjectivePassed {
+				continue
+			}
+			if ahead == 0 {
+				return out
+			}
+			ahead--
+			hasLesson := slices.ContainsFunc(lessons, func(l LessonStatus) bool { return l.Objective == o.ID })
+			hasTask := slices.ContainsFunc(tasks, func(t TaskStatus) bool { return t.Objective == o.ID && !t.Passed })
+			if !hasLesson || !hasTask {
+				out = append(out, o)
+			}
+		}
+	}
+	return out
 }

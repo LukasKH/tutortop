@@ -158,7 +158,7 @@ export interface Question {
 }
 
 /**
- * Questions is a form from the coach that waits for the learner's answers.
+ * Questions is a form from the tutor that waits for the learner's answers.
  */
 export interface Questions {
     "thread"?: string;

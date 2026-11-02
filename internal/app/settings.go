@@ -2,12 +2,10 @@ package app
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/LukasKH/tutortop/internal/agent"
@@ -17,34 +15,34 @@ import (
 // Settings are app-wide preferences, kept in settings.yaml in the user's
 // config folder. They apply to every workspace.
 type Settings struct {
-	// Agent is the coding agent that coaches: "claude" or "codex".
+	// Agent is the coding agent that tutors: "claude" or "codex".
 	Agent string `yaml:"agent" json:"agent"`
-	// Coach holds the model and reasoning effort chosen for each agent, so
+	// Tutor holds the model and reasoning effort chosen for each agent, so
 	// switching agents and back keeps both choices.
-	Coach map[string]CoachChoice `yaml:"coach" json:"coach"`
+	Tutor map[string]TutorChoice `yaml:"tutor" json:"tutor"`
 	// WorkspacesFolder holds the workspaces; "" means workspace.DefaultRoot.
 	// The app reads it at startup.
 	WorkspacesFolder string `yaml:"workspaces_folder,omitempty" json:"workspacesFolder,omitempty"`
 }
 
-// CoachChoice is an agent's model and reasoning effort. Empty fields use the
+// TutorChoice is an agent's model and reasoning effort. Empty fields use the
 // agent's own defaults.
-type CoachChoice struct {
+type TutorChoice struct {
 	Model  string `yaml:"model,omitempty" json:"model"`
 	Effort string `yaml:"effort,omitempty" json:"effort"`
 }
 
-// coachConfig is what a coach session is started with. A session started
+// tutorConfig is what a tutor session is started with. A session started
 // with an older config restarts once it's idle.
-type coachConfig struct {
+type tutorConfig struct {
 	Agent  string
 	Model  string
 	Effort string
 }
 
-func (s Settings) coach() coachConfig {
-	c := s.Coach[s.Agent]
-	return coachConfig{Agent: s.Agent, Model: c.Model, Effort: c.Effort}
+func (s Settings) tutor() tutorConfig {
+	c := s.Tutor[s.Agent]
+	return tutorConfig{Agent: s.Agent, Model: c.Model, Effort: c.Effort}
 }
 
 // Settings returns the saved settings. Without a saved agent it picks the
@@ -57,16 +55,11 @@ func (a *App) Settings() Settings {
 
 func (a *App) loadSettings() Settings {
 	var s Settings
-	b, err := os.ReadFile(a.settingsPath)
-	if errors.Is(err, os.ErrNotExist) {
-		// Settings were saved as settings.json before; JSON is also YAML.
-		b, err = os.ReadFile(strings.TrimSuffix(a.settingsPath, ".yaml") + ".json")
-	}
-	if err == nil {
+	if b, err := os.ReadFile(a.settingsPath); err == nil {
 		_ = yaml.Unmarshal(b, &s)
 	}
-	if s.Coach == nil {
-		s.Coach = map[string]CoachChoice{}
+	if s.Tutor == nil {
+		s.Tutor = map[string]TutorChoice{}
 	}
 	if !knownProvider(s.Agent) {
 		s.Agent = "claude"
@@ -80,15 +73,15 @@ func (a *App) loadSettings() Settings {
 	return s
 }
 
-// SaveSettings stores the settings. Coach sessions pick up a new agent,
+// SaveSettings stores the settings. Tutor sessions pick up a new agent,
 // model or effort with the next message once they're idle.
 func (a *App) SaveSettings(s Settings) error {
 	if !knownProvider(s.Agent) {
 		return fmt.Errorf("unknown agent %q", s.Agent)
 	}
-	for id := range s.Coach {
+	for id := range s.Tutor {
 		if !knownProvider(id) {
-			delete(s.Coach, id)
+			delete(s.Tutor, id)
 		}
 	}
 	if s.WorkspacesFolder != "" {

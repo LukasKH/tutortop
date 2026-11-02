@@ -2,7 +2,6 @@ package app
 
 import (
 	"fmt"
-	"slices"
 
 	"github.com/LukasKH/tutortop/internal/workspace"
 )
@@ -21,7 +20,7 @@ const readyAhead = 2
 // work on it. why tells the writer what prompted it.
 func (a *App) writeObjective(w *workspace.Workspace, o workspace.Objective, why string) error {
 	thread := workspace.WriterThread(o.ID)
-	cfg := a.Settings().coach()
+	cfg := a.Settings().tutor()
 	a.mu.Lock()
 	if a.sessions[threadKey{w.ID, thread}] != nil {
 		a.mu.Unlock()
@@ -52,28 +51,7 @@ func (a *App) writerCheck(wsID string, ev GateEvent) {
 // keepReady starts writers for the next unpassed objectives in plan order
 // that are missing a lesson or an unsolved exercise.
 func (a *App) keepReady(w *workspace.Workspace, why string) {
-	c, err := w.Curriculum()
-	if err != nil || c == nil {
-		return
-	}
-	tasks, _ := w.TaskStatuses()
-	lessons, _ := w.LessonStatuses()
-	progress := w.Progress()
-	ahead := 0
-	for _, m := range c.Modules {
-		for _, o := range m.Objectives {
-			if progress.Objectives[o.ID].Status == workspace.ObjectivePassed {
-				continue
-			}
-			if ahead == readyAhead {
-				return
-			}
-			ahead++
-			hasLesson := slices.ContainsFunc(lessons, func(l workspace.LessonStatus) bool { return l.Objective == o.ID })
-			hasTask := slices.ContainsFunc(tasks, func(t workspace.TaskStatus) bool { return t.Objective == o.ID && !t.Passed })
-			if !hasLesson || !hasTask {
-				go a.writeObjective(w, o, why)
-			}
-		}
+	for _, o := range w.NeedsWriting(readyAhead) {
+		go a.writeObjective(w, o, why)
 	}
 }

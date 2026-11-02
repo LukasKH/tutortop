@@ -54,8 +54,8 @@ export function Chat(wsID: string, thread: string): $CancellablePromise<workspac
 }
 
 /**
- * CreateWorkspace starts a workspace coached by the agent in the settings.
- * The icon is "" (the coach picks one during the interview) or one of
+ * CreateWorkspace starts a workspace tutored by the agent in the settings.
+ * The icon is "" (the tutor picks one during the interview) or one of
  * workspace.Icons, as when the topic comes from an idea.
  */
 export function CreateWorkspace(title: string, icon: string): $CancellablePromise<string> {
@@ -63,7 +63,7 @@ export function CreateWorkspace(title: string, icon: string): $CancellablePromis
 }
 
 /**
- * DeleteWorkspace stops the workspace's coaches and language servers, then
+ * DeleteWorkspace stops the workspace's tutors and language servers, then
  * deletes its files for good.
  */
 export function DeleteWorkspace(id: string): $CancellablePromise<void> {
@@ -141,7 +141,7 @@ export function SaveMission(wsID: string, mission: string): $CancellablePromise<
 }
 
 /**
- * SaveSettings stores the settings. Coach sessions pick up a new agent,
+ * SaveSettings stores the settings. Tutor sessions pick up a new agent,
  * model or effort with the next message once they're idle.
  */
 export function SaveSettings(s: $models.Settings): $CancellablePromise<void> {

@@ -50,7 +50,7 @@ type claudeControlResponse struct {
 	Error     string `json:"error"`
 }
 
-// Tools the coach may use without asking. Everything else is denied: the coach
+// Tools the tutor may use without asking. Everything else is denied: the tutor
 // works through the tutortop MCP tools, not the shell.
 var claudeAllowed = map[string]bool{
 	"Read": true, "Write": true, "Edit": true, "MultiEdit": true, "Glob": true, "Grep": true,
@@ -74,8 +74,8 @@ func startClaude(ctx context.Context, opts Options, onEvent func(Event)) (Sessio
 		"--permission-mode", "acceptEdits",
 		"--allowedTools", "mcp__" + opts.MCPName + "__*",
 		// Subagents (Agent, formerly Task) can run in the background and
-		// keep working after the turn ends, while the app shows the coach
-		// as done; the coach does its work in the turn instead.
+		// keep working after the turn ends, while the app shows the tutor
+		// as done; the tutor does its work in the turn instead.
 		"--disallowedTools", "Bash", "BashOutput", "KillShell", "Agent", "Task", "Edit(./tasks/**)",
 		"--permission-prompt-tool", "stdio",
 	}
@@ -320,7 +320,7 @@ func (s *claudeSession) readLoop() {
 	}
 }
 
-// checkMCP warns once if our MCP server didn't connect: without it the coach
+// checkMCP warns once if our MCP server didn't connect: without it the tutor
 // can talk but can't create tasks or show questions.
 func (s *claudeSession) checkMCP(l claudeLine) {
 	if s.checkedMCP.Load() {
@@ -340,7 +340,7 @@ func (s *claudeSession) checkMCP(l claudeLine) {
 	default:
 		s.checkedMCP.Store(true)
 		s.onEvent(Event{Kind: EventWarning, Text: fmt.Sprintf(
-			"The coach couldn't connect to Tutortop's tools (status: %s), so it can't create tasks or ask questions. Restart the app and try again.", status)})
+			"The tutor couldn't connect to Tutortop's tools (status: %s), so it can't create tasks or ask questions. Restart the app and try again.", status)})
 	}
 }
 

@@ -14,7 +14,7 @@ type Props = {
   passed: boolean;
   /** The module the task's objective belongs to, for the task bar. */
   moduleTitle: string;
-  /** The first unsolved task after this one, if the coach has written it yet. */
+  /** The first unsolved task after this one, if the tutor has written it yet. */
   nextTask: TaskInfo | null;
   /** The plan has objectives left, so a next task is coming if there isn't one yet. */
   moreComing: boolean;

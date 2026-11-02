@@ -6,7 +6,7 @@
 //	curriculum.yaml                                                         the approved plan
 //	tasks/0001-slug/{task.yaml,README.md,starter/,tests/,work/}             tasks; work/ is the learner's code
 //	.tutortop/{workspace.json,attempts.jsonl,proposal.yaml,questions.json}  app state
-//	.tutortop/toolchains/<language>.yaml                                    languages the coach set up (beyond Go and Python)
+//	.tutortop/toolchains/<language>.yaml                                    languages the tutor set up (beyond Go and Python)
 //	.tutortop/chat/<thread>.jsonl                                           one chat per thread: "plan" or a task id
 //
 // Private files the learner and tutor shouldn't see (reference solutions,
@@ -233,7 +233,7 @@ func (w *Workspace) updateMeta(change func(m *Meta) bool) error {
 
 // UseProvider switches the workspace to another agent. Sessions belong to one
 // agent, so switching forgets them: threads start fresh conversations, and
-// the coach catches up from the workspace files, as it does for new tasks.
+// the tutor catches up from the workspace files, as it does for new tasks.
 // It returns the session ids to resume from.
 func (w *Workspace) UseProvider(provider string) (map[string]string, error) {
 	var sessions map[string]string
@@ -417,7 +417,7 @@ type Question struct {
 	MultiSelect bool     `json:"multiSelect,omitempty"`
 }
 
-// Questions is a form from the coach that waits for the learner's answers.
+// Questions is a form from the tutor that waits for the learner's answers.
 type Questions struct {
 	Thread    string     `json:"thread,omitempty" jsonschema:"set by the app; leave out"`
 	Intro     string     `json:"intro,omitempty" jsonschema:"one sentence shown above the questions"`
@@ -468,8 +468,8 @@ func (w *Workspace) commit(msg string) {
 // Chat item roles.
 const (
 	RoleUser      = "user"      // the learner's words
-	RoleAssistant = "assistant" // the coach's reply
-	RoleTool      = "tool"      // a coach action worth showing, e.g. "Updated your mission"
+	RoleAssistant = "assistant" // the tutor's reply
+	RoleTool      = "tool"      // a tutor action worth showing, e.g. "Updated your mission"
 	RoleNotice    = "notice"    // an app event, e.g. "Stopped" or "You passed …"
 )
 
@@ -486,7 +486,7 @@ func (w *Workspace) AppendChat(item ChatItem) error {
 	if !validName(item.Thread) {
 		return fmt.Errorf("invalid chat thread %q", item.Thread)
 	}
-	// A coach still winding down after its workspace was deleted mustn't
+	// A tutor still winding down after its workspace was deleted mustn't
 	// bring the folder back.
 	w.mu.Lock()
 	defer w.mu.Unlock()

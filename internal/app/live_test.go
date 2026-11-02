@@ -13,7 +13,7 @@ import (
 )
 
 // TestLiveInterview creates a workspace with the real Claude Code and checks
-// the coach opens with an ask_user form. Uses a little quota.
+// the tutor opens with an ask_user form. Uses a little quota.
 func TestLiveInterview(t *testing.T) {
 	provider := os.Getenv("TUTORTOP_PROVIDER")
 	if provider == "" {
@@ -48,7 +48,7 @@ func TestLiveInterview(t *testing.T) {
 	select {
 	case <-idle:
 	case <-time.After(4 * time.Minute):
-		t.Fatal("coach didn't finish its first turn")
+		t.Fatal("tutor didn't finish its first turn")
 	}
 	chat, _ := a.Chat(id, workspace.PlanThread)
 	for _, c := range chat {
@@ -57,7 +57,7 @@ func TestLiveInterview(t *testing.T) {
 	mu.Lock()
 	defer mu.Unlock()
 	if questions == nil {
-		t.Fatalf("coach didn't call ask_user; events: %v", kinds)
+		t.Fatalf("tutor didn't call ask_user; events: %v", kinds)
 	}
 	t.Logf("questions: %+v", questions)
 }

@@ -21,7 +21,7 @@ type TaskSpec struct {
 	Statement   Statement       `json:"statement" jsonschema:"the problem statement, in parts; the app renders it. It stands on its own: no feedback on earlier tasks or chat remarks."`
 	Starter     runner.Files    `json:"starter" jsonschema:"filename -> content. The files the learner edits. Must compile and fail some tests (e.g. return zero values)."`
 	Reference   runner.Files    `json:"reference" jsonschema:"filename -> content. A correct solution with the same filenames as starter. Never shown to the learner."`
-	Tests       runner.Files    `json:"tests" jsonschema:"filename -> content. Visible test files the learner can read (Go: *_test.go, Python: test_*.py, other languages: the toolchain's test_files pattern)."`
+	Tests       runner.Files    `json:"tests" jsonschema:"filename -> content. Visible test files the learner can read (Go: *_test.go, Python: test_*.py, other languages: the toolchain's test_files glob). Every test, visible or hidden, needs its own name."`
 	HiddenTests runner.Files    `json:"hiddenTests" jsonschema:"filename -> content. Hidden test files with edge cases. Learner sees only names and failure messages."`
 	Mutants     []runner.Mutant `json:"mutants" jsonschema:"at least 2 plausible wrong solutions (same filenames as reference). Each must compile and be caught by the tests."`
 }
@@ -117,8 +117,9 @@ func (w *Workspace) ValidateSpec(spec *TaskSpec) (runner.Toolchain, error) {
 	return tc, nil
 }
 
-// SaveTask writes a task that already passed the quality gate.
-func (w *Workspace) SaveTask(spec TaskSpec, lang string) (TaskInfo, error) {
+// SaveTask writes a task that already passed the quality gate, with the
+// names of its tests as the gate saw them.
+func (w *Workspace) SaveTask(spec TaskSpec, lang string, names runner.TestNames) (TaskInfo, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
@@ -159,6 +160,12 @@ func (w *Workspace) SaveTask(spec TaskSpec, lang string) (TaskInfo, error) {
 		}
 	}
 	if err := writeFileAtomic(filepath.Join(pub, "README.md"), []byte(spec.Statement.Markdown(spec.Title, lang))); err != nil {
+		return TaskInfo{}, err
+	}
+	if err := os.MkdirAll(priv, 0o755); err != nil {
+		return TaskInfo{}, err
+	}
+	if err := writeYAML(filepath.Join(priv, "test_names.yaml"), names); err != nil {
 		return TaskInfo{}, err
 	}
 	if err := writeYAML(filepath.Join(pub, "task.yaml"), info); err != nil {
@@ -204,13 +211,17 @@ func (w *Workspace) Task(id string) (TaskDetail, error) {
 	}
 	d.EditorLanguage = tc.EditorLanguage
 	d.HasLanguageServer = len(tc.LanguageServer) > 0
-	hidden, _ := readFiles(w.private("tasks", id, "hidden"))
-	for _, src := range hidden {
-		d.HiddenCount += tc.CountTests(src)
-	}
+	d.HiddenCount = len(w.testNames(id).Hidden)
 	h := w.history()
 	d.Passed, d.HintLevel = h.passed[id], h.hints[id].Highest
 	return d, nil
+}
+
+// testNames are a task's tests by name, kept private since hidden test names
+// can give away edge cases. A missing file gives none.
+func (w *Workspace) testNames(id string) runner.TestNames {
+	names, _ := readYAML[runner.TestNames](w.private("tasks", id, "test_names.yaml"))
+	return names
 }
 
 // Work returns the learner's current code.
@@ -252,7 +263,7 @@ func (w *Workspace) Job(id string, submit bool) (runner.Job, error) {
 	if err != nil {
 		return runner.Job{}, err
 	}
-	job := runner.Job{}
+	job := runner.Job{Names: w.testNames(id)}
 	if job.Toolchain, err = w.Toolchain(info.Language); err != nil {
 		return job, err
 	}

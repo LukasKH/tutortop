@@ -49,7 +49,7 @@ var (
 // Validate fills defaults and reports every problem at once, so the agent can
 // fix them in one go. language reports whether a language is usable. Plans
 // approved before references existed lack them; they're only checked here,
-// when the coach proposes a plan.
+// when the tutor proposes a plan.
 func (c *Curriculum) Validate(language func(string) error) error {
 	var p problems
 

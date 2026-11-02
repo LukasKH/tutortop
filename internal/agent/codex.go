@@ -54,7 +54,7 @@ func setupCall[T any](ctx context.Context, rpc *rpcConn, method string, params a
 }
 
 func startCodex(ctx context.Context, opts Options, onEvent func(Event)) (Session, error) {
-	// The coach gets the same rights as with Claude: it can write in the
+	// The tutor gets the same rights as with Claude: it can write in the
 	// workspace but not under tasks/ (the app manages those), and only read
 	// elsewhere. A narrower non-write entry carves a read-only hole into a
 	// writable folder; checked with `codex sandbox`.

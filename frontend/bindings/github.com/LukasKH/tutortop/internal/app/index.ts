@@ -7,12 +7,12 @@ export {
 };
 
 export type {
-    CoachChoice,
     Environment,
     Event,
     GateEvent,
     LanguageServerInfo,
     ProviderStatus,
     Settings,
+    TutorChoice,
     WorkspaceState
 } from "./models.js";

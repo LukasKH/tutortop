@@ -2,72 +2,9 @@ package agent
 
 import (
 	"encoding/json"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 )
-
-func TestClaudeSessionExistsMatchesCLIFolderNames(t *testing.T) {
-	config := t.TempDir()
-	t.Setenv("CLAUDE_CONFIG_DIR", config)
-	// Underscores, dots and spaces all become "-", like the CLI does.
-	cwd := filepath.Join(t.TempDir(), "jane_doe", "Tutortop", "go.basics now")
-	if err := os.MkdirAll(cwd, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	real, _ := filepath.EvalSymlinks(cwd)
-	name := claudeProjectName(real)
-	if strings.ContainsAny(name, "_. /") {
-		t.Fatalf("project name %q still has non-alphanumerics", name)
-	}
-	dir := filepath.Join(config, "projects", name)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, "abc.jsonl"), nil, 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if !claudeSessionExists(cwd, "abc") {
-		t.Fatal("existing session not found")
-	}
-	if claudeSessionExists(cwd, "missing") {
-		t.Fatal("missing session reported as existing")
-	}
-}
-
-func TestClaudeSessionExistsLongPathsMatchByPrefix(t *testing.T) {
-	config := t.TempDir()
-	t.Setenv("CLAUDE_CONFIG_DIR", config)
-	cwd := "/" + strings.Repeat("a", 250)
-	dir := filepath.Join(config, "projects", claudeProjectName(cwd)[:claudeMaxNameLen]+"-somehash")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, "abc.jsonl"), nil, 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if !claudeSessionExists(cwd, "abc") {
-		t.Fatal("long-path session not found")
-	}
-}
-
-func TestCheckWrite(t *testing.T) {
-	cwd := "/home/me/Tutortop/go"
-	for path, ok := range map[string]bool{
-		"NOTES.md":                        true,
-		"/home/me/Tutortop/go/MISSION.md": true,
-		"learning-records/0001-x.md":      true,
-		"tasks/0001-x/work/solution.go":   false,
-		"/home/me/Tutortop/go/tasks/a":    false,
-		"../other/x":                      false,
-		"/etc/passwd":                     false,
-	} {
-		if err := checkWrite(cwd, path); (err == nil) != ok {
-			t.Errorf("checkWrite(%q) = %v, want ok=%v", path, err, ok)
-		}
-	}
-}
 
 func TestClaudeCanUseTool(t *testing.T) {
 	s := &claudeSession{cwd: "/ws", mcpPrefix: "mcp__tutortop__"}

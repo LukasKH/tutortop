@@ -202,7 +202,7 @@ export function objectivesOf(c: Curriculum | null) {
   return (c?.modules ?? []).flatMap((m) => m.objectives ?? []);
 }
 
-/** Rough minutes per task size, as the coach is told to aim for. */
+/** Rough minutes per task size, as the tutor is told to aim for. */
 export const TASK_MINUTES: Record<string, number> = {
   small: 10,
   medium: 25,

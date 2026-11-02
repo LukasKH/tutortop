@@ -1,5 +1,5 @@
 // Topic ideas for a new workspace. Picking one only fills in the topic: the
-// coach still interviews the learner and plans the curriculum with them.
+// tutor still interviews the learner and plans the curriculum with them.
 // Every idea must be something tests can check.
 
 export type Idea = {
@@ -7,7 +7,7 @@ export type Idea = {
   blurb: string;
   /** One of workspace.Icons. */
   icon: string;
-  /** The language, or "Any language" when the coach and learner pick one. */
+  /** The language, or "Any language" when the tutor and learner pick one. */
   language: string;
 };
 

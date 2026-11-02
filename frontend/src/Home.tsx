@@ -3,7 +3,7 @@ import { ActivityPanel } from "./ActivityPanel";
 import { App, errorText, type Activity, type Environment, type Summary } from "./api";
 import { IDEAS, type Idea } from "./ideas";
 import { Gear, Logo } from "./icons";
-import { CoachLine } from "./Settings";
+import { TutorLine } from "./Settings";
 import { TopicIcon } from "./topicIcons";
 import { ConfirmDialog, ErrorText, ProgressBar, usePending } from "./ui";
 
@@ -12,8 +12,8 @@ import { ConfirmDialog, ErrorText, ProgressBar, usePending } from "./ui";
 let lastEnv: Environment | null = null;
 
 type Props = {
-  /** The coach as configured in Settings, e.g. "Claude Code · Opus · High". */
-  coach: string;
+  /** The tutor as configured in Settings, e.g. "Claude Code · Opus · High". */
+  tutor: string;
   /** The workspace opened last, shown in focus. */
   lastId: string | null;
   onSettings: () => void;
@@ -23,7 +23,7 @@ type Props = {
 /** The topic in the new-workspace form: typed, or picked from an idea. */
 type Draft = { title: string; icon: string };
 
-export function Home({ coach, lastId, onSettings, onOpen }: Props) {
+export function Home({ tutor, lastId, onSettings, onOpen }: Props) {
   const [env, setEnv] = useState<Environment | null>(lastEnv);
   const [workspaces, setWorkspaces] = useState<Summary[] | null>(null);
   const [creating, setCreating] = useState(false);
@@ -97,7 +97,7 @@ export function Home({ coach, lastId, onSettings, onOpen }: Props) {
               key={draft.title}
               draft={draft}
               env={env}
-              coach={coach}
+              tutor={tutor}
               onSettings={onSettings}
               onCancel={() => setCreating(false)}
               onCreated={onOpen}
@@ -206,14 +206,14 @@ function IdeaCard({ idea, picked, onPick }: { idea: Idea; picked: boolean; onPic
 function NewWorkspace({
   draft,
   env,
-  coach,
+  tutor,
   onSettings,
   onCancel,
   onCreated,
 }: {
   draft: Draft;
   env: Environment | null;
-  coach: string;
+  tutor: string;
   onSettings: () => void;
   onCancel: () => void;
   onCreated: (id: string) => void;
@@ -224,7 +224,7 @@ function NewWorkspace({
 
   function submit(e: FormEvent) {
     e.preventDefault();
-    // An idea's icon stays only while its title does; otherwise the coach picks one.
+    // An idea's icon stays only while its title does; otherwise the tutor picks one.
     const icon = title.trim() === draft.title ? draft.icon : "";
     if (title.trim() && !noAgent) run(async () => onCreated(await App.CreateWorkspace(title.trim(), icon)));
   }
@@ -254,7 +254,7 @@ function NewWorkspace({
 
       <div className="field">
         <span className="field-label">Tutor</span>
-        <CoachLine coach={coach} onSettings={onSettings} />
+        <TutorLine tutor={tutor} onSettings={onSettings} />
         {noAgent && (
           <p className="error-text" role="alert">
             Install Claude Code or Codex, sign in, then restart Tutortop.

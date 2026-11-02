@@ -33,7 +33,7 @@ import { Placeholder, Splitter, clamp, useStored } from "./ui";
 
 export type CenterView = "task" | "plan" | "proposal";
 
-/** Something new the coach wrote while the learner was busy: a task, or a lesson (id is its key). */
+/** Something new the tutor wrote while the learner was busy: a task, or a lesson (id is its key). */
 export type NewItem = { id: string; title: string; kind: "task" | "lesson" };
 
 /**
@@ -56,7 +56,7 @@ function defaultItem(s: WorkspaceState): string | null {
 
 /**
  * Keeps the open item if it still exists. Something that wasn't written yet
- * becomes the real lesson or exercise once the coach has written it, and stays
+ * becomes the real lesson or exercise once the tutor has written it, and stays
  * open while its objective is in the plan.
  */
 function resolveOpen(s: WorkspaceState, cur: string | null): string | null {
@@ -84,13 +84,13 @@ const chatDefault = () => (window.innerWidth >= 1440 ? 380 : 340);
 
 type Props = {
   id: string;
-  /** The coach as configured in Settings, e.g. "Claude Code · Opus · High". */
-  coach: string;
+  /** The tutor as configured in Settings, e.g. "Claude Code · Opus · High". */
+  tutor: string;
   onSettings: () => void;
   onBack: () => void;
 };
 
-export function WorkspaceView({ id, coach, onSettings, onBack }: Props) {
+export function WorkspaceView({ id, tutor, onSettings, onBack }: Props) {
   const [ws, setWs] = useState<WorkspaceState | null>(null);
   const [loadError, setLoadError] = useState("");
   // Conversations by thread: "plan", or a task id. Kept in memory so live
@@ -335,7 +335,7 @@ export function WorkspaceView({ id, coach, onSettings, onBack }: Props) {
   const openIndex = tasks.findIndex((t) => t.id === taskId);
   const nextTask = tasks.slice(openIndex + 1).find((t) => !t.passed) ?? tasks.find((t) => !t.passed && t.id !== taskId) ?? null;
 
-  // Before the first task, the coach's questions are the main thing to do, so
+  // Before the first task, the tutor's questions are the main thing to do, so
   // they get the centre pane instead of the narrow chat column. Otherwise they
   // appear in the chat of the thread that asked.
   const questionsThread = questions?.thread || PLAN;
@@ -513,7 +513,7 @@ export function WorkspaceView({ id, coach, onSettings, onBack }: Props) {
           onDraft={setDraft}
           onSend={(text) => App.SendMessage(id, text, thread).catch(fail)}
           onCollapse={() => setChatOpen(false)}
-          coach={coach}
+          tutor={tutor}
           onSettings={onSettings}
         />
       ) : (

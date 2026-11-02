@@ -7,7 +7,7 @@ type Props = {
   ws: WorkspaceState;
   openTaskId: string | null;
   planOpen: boolean;
-  /** The planning coach wants attention: new messages, work, or questions waiting. */
+  /** The planning tutor wants attention: new messages, work, or questions waiting. */
   plan: { attention: boolean; questions: number };
   /** Objectives whose lesson and exercise are being written in the background. */
   writing: Set<string>;
@@ -148,7 +148,7 @@ export function Sidebar(p: Props) {
 /**
  * What clicking an objective opens, following the suggested flow: its lesson
  * until the quiz is done, then its exercise; else whatever exists, else the
- * lesson page that asks the coach to write it.
+ * lesson page that asks the tutor to write it.
  */
 function entry(objective: string, passed: boolean, lesson: LessonStatus | undefined, tasks: TaskInfo[], openKey: string | null): string {
   if (lesson && !passed && !lessonDone(lesson)) return lessonKey(lesson.id);

@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-// The coach may read files inside the learner's workspace and change them,
+// The tutor may read files inside the learner's workspace and change them,
 // except under tasks/, which the app manages. It may not run commands.
 // Claude and Codex enforce this themselves where they can (see claude.go and
 // codex.go); allowTool decides what they still ask us about.
@@ -54,7 +54,7 @@ func workspaceRel(cwd, path string) (string, bool) {
 	return path, path == "." || filepath.IsLocal(path)
 }
 
-// checkWrite explains why the coach may not change path, or returns nil.
+// checkWrite explains why the tutor may not change path, or returns nil.
 func checkWrite(cwd, path string) error {
 	rel, inside := workspaceRel(cwd, path)
 	if !inside {

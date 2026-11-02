@@ -8,7 +8,7 @@ info:
   companyName: "LukasKH" # The name of the company
   productName: "Tutortop" # The name of the application
   productIdentifier: "io.github.lukaskh.tutortop" # The unique product identifier
-  description: "Learn anything you can check with a program, coached by your own AI CLI" # The application description
+  description: "Learn anything you can check with a program, tutored by your own AI CLI" # The application description
   copyright: "(c) 2026 LukasKH" # Copyright text
   comments: "https://github.com/LukasKH/tutortop" # Comments
   version: "0.1.0" # The application version

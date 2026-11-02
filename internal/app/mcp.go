@@ -94,7 +94,7 @@ type (
 	}
 	toolchainExample struct {
 		Solution runner.Files `json:"solution" jsonschema:"filename -> content"`
-		Tests    runner.Files `json:"tests" jsonschema:"filename -> content; at least one file matching test_files, with tests matching test_pattern"`
+		Tests    runner.Files `json:"tests" jsonschema:"filename -> content; at least one file matching test_files"`
 	}
 	createTaskOutput struct {
 		Published bool               `json:"published"`
@@ -174,8 +174,8 @@ func (h *mcpHost) newServer(w *workspace.Workspace, thread string) *mcp.Server {
 		Name:        "propose_curriculum",
 		Description: "Show a curriculum (new or revised) to the learner for approval. Every objective must be verifiable with unit tests. Keep ids of unchanged objectives so progress carries over. End your turn after calling this.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in workspace.Curriculum) (*mcp.CallToolResult, any, error) {
-		if bad := a.linkCheck(ctx, in.URLs()); len(bad) > 0 {
-			return nil, nil, brokenLinksError(bad, "propose_curriculum")
+		if err := a.brokenLinks(ctx, "propose_curriculum", in.URLs()); err != nil {
+			return nil, nil, err
 		}
 		if err := w.Propose(in); err != nil {
 			return nil, nil, fmt.Errorf("%w\nFix these and call propose_curriculum again", err)
@@ -187,8 +187,8 @@ func (h *mcpHost) newServer(w *workspace.Workspace, thread string) *mcp.Server {
 	mcp.AddTool(s, &mcp.Tool{
 		Name: "set_toolchain",
 		Description: "Set up a programming language the app doesn't ship (it ships go and python), or change one you set up before, so the curriculum and tasks can use it. " +
-			"The app builds the sandbox image (this can take several minutes), runs the example's tests, which must all pass, and checks the language server answers. " +
-			"Only then is the language saved. If something fails, fix the toolchain using the report and call set_toolchain again. " +
+			"The app builds the sandbox image (this can take several minutes) and runs the example's tests, which must all pass. Only then is the language saved. " +
+			"If something fails, fix the toolchain using the report and call set_toolchain again. A language server that doesn't answer isn't a failure: the language is saved without it. " +
 			"Changing a language affects its existing tasks, so keep the test command compatible.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in setToolchainInput) (*mcp.CallToolResult, any, error) {
 		tc, err := in.Toolchain.Toolchain()
@@ -197,6 +197,18 @@ func (h *mcpHost) newServer(w *workspace.Workspace, thread string) *mcp.Server {
 		}
 		a.emit(w.ID, "gate", GateEvent{Kind: "toolchain", Title: tc.Name, Running: true})
 		report, err := a.checkToolchain(ctx, tc, in.Example)
+		// The editor's language server is a nice-to-have: without one the
+		// editor still highlights syntax, so it doesn't fail the setup.
+		note := ""
+		if err == nil && report == "" && len(tc.LanguageServer) > 0 {
+			files := maps.Clone(in.Example.Solution)
+			maps.Copy(files, in.Example.Tests)
+			if lspErr := a.probeLanguageServer(ctx, tc, files); lspErr != nil {
+				in.Toolchain.LanguageServer = nil
+				note = " Its language server didn't work, so it's saved without one and the editor only highlights syntax: " + lspErr.Error() +
+					". To add one, fix language_server and call set_toolchain again."
+			}
+		}
 		a.emit(w.ID, "gate", GateEvent{Kind: "toolchain", Title: tc.Name, Passed: err == nil && report == ""})
 		if err != nil {
 			return nil, nil, fmt.Errorf("sandbox problem: %w", err)
@@ -208,7 +220,7 @@ func (h *mcpHost) newServer(w *workspace.Workspace, thread string) *mcp.Server {
 			return nil, nil, err
 		}
 		a.emit(w.ID, "changed", nil)
-		return textResult(fmt.Sprintf("%s is set up. Use language %q in the curriculum.", tc.Name, tc.Language)), nil, nil
+		return textResult(fmt.Sprintf("%s is set up. Use language %q in the curriculum.%s", tc.Name, tc.Language, note)), nil, nil
 	})
 	return s
 }
@@ -251,7 +263,7 @@ func (h *mcpHost) addWriterTools(s *mcp.Server, w *workspace.Workspace, objectiv
 			// An error result that still carries the structured gate report.
 			return &mcp.CallToolResult{IsError: true}, out, nil
 		}
-		info, err := w.SaveTask(spec, tc.Language)
+		info, err := w.SaveTask(spec, tc.Language, rep.Names)
 		if err != nil {
 			return nil, out, err
 		}
@@ -272,8 +284,8 @@ func (h *mcpHost) addWriterTools(s *mcp.Server, w *workspace.Workspace, objectiv
 		if err := w.ValidateLesson(spec); err != nil {
 			return nil, nil, fmt.Errorf("%w\nFix these and call create_lesson again", err)
 		}
-		if bad := a.linkCheck(ctx, append(markdownLinks(spec.Body), spec.PrimarySource.URL)); len(bad) > 0 {
-			return nil, nil, brokenLinksError(bad, "create_lesson")
+		if err := a.brokenLinks(ctx, "create_lesson", append(markdownLinks(spec.Body), spec.PrimarySource.URL)); err != nil {
+			return nil, nil, err
 		}
 		info, err := w.SaveLesson(spec)
 		if err != nil {
@@ -285,18 +297,16 @@ func (h *mcpHost) addWriterTools(s *mcp.Server, w *workspace.Workspace, objectiv
 }
 
 // checkToolchain builds a new language's image and proves it works. It
-// returns a report for the coach when the setup is wrong, or an error when
+// returns a report for the tutor when the setup is wrong, or an error when
 // the sandbox itself is broken.
 func (a *App) checkToolchain(ctx context.Context, tc runner.Toolchain, ex toolchainExample) (string, error) {
 	var problems []string
 	if len(ex.Solution) == 0 || len(ex.Tests) == 0 {
 		problems = append(problems, "the example needs a solution file and a test file")
 	}
-	for name, src := range ex.Tests {
+	for name := range ex.Tests {
 		if !tc.IsTestFile(name) {
 			problems = append(problems, fmt.Sprintf("example test %s doesn't match test_files", name))
-		} else if tc.CountTests(src) == 0 {
-			problems = append(problems, fmt.Sprintf("test_pattern finds no tests in %s", name))
 		}
 	}
 	for name := range ex.Solution {
@@ -308,7 +318,7 @@ func (a *App) checkToolchain(ctx context.Context, tc runner.Toolchain, ex toolch
 		return "Toolchain check FAILED.\n- " + strings.Join(problems, "\n- "), nil
 	}
 	if err := a.runner.Prepare(ctx, tc); err != nil {
-		// Build errors are the coach's to fix, not a broken sandbox.
+		// Build errors are the tutor's to fix, not a broken sandbox.
 		if a.runner.Check(ctx) != nil {
 			return "", err
 		}
@@ -331,13 +341,6 @@ func (a *App) checkToolchain(ctx context.Context, tc runner.Toolchain, ex toolch
 		}
 		fmt.Fprintf(&b, "\nOutput:\n%s", text.Tail(res.Output, 2000))
 		return b.String(), nil
-	}
-	if len(tc.LanguageServer) > 0 {
-		files := maps.Clone(ex.Solution)
-		maps.Copy(files, ex.Tests)
-		if err := a.probeLanguageServer(ctx, tc, files); err != nil {
-			return "Toolchain check FAILED: the tests work, but the language server doesn't: " + err.Error() + "\nFix language_server, or leave it out.", nil
-		}
 	}
 	return "", nil
 }

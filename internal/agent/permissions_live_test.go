@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-// TestLiveClaudePermissions checks the coach's file rules against the real
+// TestLiveClaudePermissions checks the tutor's file rules against the real
 // CLI: edits inside the workspace work, edits under tasks/ and outside the
 // workspace are refused. The MCP URL points nowhere, so the "tools didn't
 // connect" warning must fire too. Uses a little quota.

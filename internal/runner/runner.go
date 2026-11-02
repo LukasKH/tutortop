@@ -66,6 +66,16 @@ type Job struct {
 	// supports it); a test passes only if every repetition passes.
 	Repeat  int
 	Timeout time.Duration
+	// Names are the task's tests as the quality gate saw them run. They label
+	// results hidden, and a test missing from a run shows as not run. Empty
+	// while the gate itself runs.
+	Names TestNames
+}
+
+// TestNames are a task's tests, named as its test framework reports them.
+type TestNames struct {
+	Visible []string `yaml:"visible" json:"visible"`
+	Hidden  []string `yaml:"hidden" json:"hidden"`
 }
 
 const maxOutput = 4 << 20 // bytes of test output kept before the run is stopped
@@ -177,10 +187,8 @@ func (r *Runner) Run(ctx context.Context, job Job) (Result, error) {
 		}
 	}
 	hidden := map[string]bool{}
-	for name, src := range job.HiddenTests {
-		for _, n := range tc.TestNames(name, src) {
-			hidden[n] = true
-		}
+	for _, n := range job.Names.Hidden {
+		hidden[n] = true
 	}
 
 	runCtx, stop := context.WithCancelCause(ctx)
@@ -214,7 +222,7 @@ func (r *Runner) Run(ctx context.Context, job Job) (Result, error) {
 		res.Status = StatusError
 		return res, nil
 	}
-	res.Tests = append(tests, notRun(tc, job, tests)...)
+	res.Tests = append(tests, notRun(job, tests)...)
 	res.Status = StatusPassed
 	for _, t := range res.Tests {
 		if !t.Passed {
@@ -225,30 +233,26 @@ func (r *Runner) Run(ctx context.Context, job Job) (Result, error) {
 	return res, nil
 }
 
-// notRun lists Go tests that never reported a result. A panic stops `go test`
-// at the crashing test, so later tests (often the visible ones) would silently
-// vanish from the results. pytest keeps going after a crash, so it needs none.
-func notRun(tc Toolchain, job Job, got []TestResult) []TestResult {
-	if tc.Language != "go" {
-		return nil
-	}
+// notRun lists the task's tests that never reported a result. A crash can
+// end a run early: a panic stops `go test` at the crashing test, so later
+// tests (often the visible ones) would silently vanish from the results.
+func notRun(job Job, got []TestResult) []TestResult {
 	seen := map[string]bool{}
 	for _, t := range got {
 		seen[t.Name] = true
 	}
 	var missing []TestResult
-	for _, set := range []struct {
-		files  Files
-		hidden bool
-	}{{job.Tests, false}, {job.HiddenTests, true}} {
-		for _, name := range slices.Sorted(maps.Keys(set.files)) {
-			for _, test := range tc.TestNames(name, set.files[name]) {
-				if !seen[test] {
-					seen[test] = true
-					missing = append(missing, TestResult{Name: test, Hidden: set.hidden, NotRun: true, Message: "Didn't run: the tests stopped early, most likely because another test crashed (panic). See the output."})
-				}
+	add := func(names []string, hidden bool) {
+		for _, name := range names {
+			if !seen[name] {
+				seen[name] = true
+				missing = append(missing, TestResult{Name: name, Hidden: hidden, NotRun: true, Message: "Didn't run: the tests stopped early, most likely because another test crashed. See the output."})
 			}
 		}
+	}
+	add(job.Names.Visible, false)
+	if len(job.HiddenTests) > 0 {
+		add(job.Names.Hidden, true)
 	}
 	return missing
 }

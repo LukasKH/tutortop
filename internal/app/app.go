@@ -22,10 +22,10 @@ import (
 	"github.com/adrg/xdg"
 )
 
-// The coach's instructions: shared rules plus one role per kind of thread.
+// The tutor's instructions: shared rules plus one role per kind of thread.
 var (
-	//go:embed prompts/coach.md
-	coachPrompt string
+	//go:embed prompts/tutor.md
+	tutorPrompt string
 	//go:embed prompts/plan.md
 	planRole string
 	//go:embed prompts/task.md
@@ -51,7 +51,7 @@ type App struct {
 	linkCheck func(ctx context.Context, urls []string) []string
 
 	mu          sync.Mutex
-	sessions    map[threadKey]*agentSession // live coach per chat thread
+	sessions    map[threadKey]*agentSession // live tutor per chat thread
 	lastResults map[threadKey]runner.Result // latest check per task, for tutor context
 	checks      map[threadKey]GateEvent     // a writer's latest sandbox check, by objective, while it works
 	servers     map[string]*languageServer  // running language servers by id
@@ -170,8 +170,8 @@ func (a *App) Activity() (workspace.Activity, error) {
 	return workspace.Summarize(all, time.Now()), nil
 }
 
-// CreateWorkspace starts a workspace coached by the agent in the settings.
-// The icon is "" (the coach picks one during the interview) or one of
+// CreateWorkspace starts a workspace tutored by the agent in the settings.
+// The icon is "" (the tutor picks one during the interview) or one of
 // workspace.Icons, as when the topic comes from an idea.
 func (a *App) CreateWorkspace(title, icon string) (string, error) {
 	provider := a.Settings().Agent
@@ -195,7 +195,7 @@ func (a *App) CreateWorkspace(title, icon string) (string, error) {
 	if err := w.SetIcon(icon); err != nil {
 		return "", err
 	}
-	// The coach starts the interview right away.
+	// The tutor starts the interview right away.
 	go a.send(w, workspace.PlanThread, message{
 		Role:  workspace.RoleNotice,
 		Shown: "Workspace created. Your tutor is getting started.",
@@ -226,7 +226,7 @@ func (a *App) PrepareObjective(wsID, objectiveID string) error {
 	return a.writeObjective(w, o, "The learner opened it and is waiting for it, so be quick. Write the lesson first, as they read it first.")
 }
 
-// DeleteWorkspace stops the workspace's coaches and language servers, then
+// DeleteWorkspace stops the workspace's tutors and language servers, then
 // deletes its files for good.
 func (a *App) DeleteWorkspace(id string) error {
 	a.mu.Lock()
@@ -269,7 +269,7 @@ type WorkspaceState struct {
 	Tasks      []workspace.TaskStatus   `json:"tasks"`
 	Lessons    []workspace.LessonStatus `json:"lessons"`
 	Questions  *workspace.Questions     `json:"questions"`
-	Busy       map[string]bool          `json:"busy"` // thread -> its coach or writer is working
+	Busy       map[string]bool          `json:"busy"` // thread -> its tutor or writer is working
 	// Checks are writers' latest sandbox checks of new tasks, by objective.
 	Checks map[string]GateEvent `json:"checks"`
 }
@@ -460,7 +460,7 @@ func (a *App) RunChecks(wsID, taskID string, files runner.Files, submit bool) (r
 }
 
 // hintSummary states exactly how many hints the learner used on a task, so
-// the coach doesn't have to guess from the chat.
+// the tutor doesn't have to guess from the chat.
 func hintSummary(w *workspace.Workspace, taskID string) string {
 	h := w.Hints(taskID)
 	if h.Count == 0 {

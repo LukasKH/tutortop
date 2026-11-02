@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"maps"
 	"strings"
 	"testing"
 
@@ -11,7 +12,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// TestSetToolchainEnablesALanguage sets up JavaScript the way the coach would,
+// TestSetToolchainEnablesALanguage sets up JavaScript the way the tutor would,
 // then plans and publishes a task in it through the quality gate.
 func TestSetToolchainEnablesALanguage(t *testing.T) {
 	a := sandboxApp(t)
@@ -60,8 +61,7 @@ func TestSetToolchainEnablesALanguage(t *testing.T) {
 		"language": "javascript", "name": "JavaScript", "editorLanguage": "javascript",
 		"dockerfile":  "FROM node:24-alpine",
 		"testCommand": "node --test --test-reporter=junit --test-reporter-destination=/tmp/junit.xml",
-		"testFiles":   `\.test\.mjs$`,
-		"testPattern": `test\(["']([^"']+)["']`,
+		"testFiles":   "*.test.mjs",
 	}
 	reference := map[string]string{"add.mjs": "export function add(a, b) { return a + b; }\n"}
 
@@ -77,6 +77,20 @@ func TestSetToolchainEnablesALanguage(t *testing.T) {
 		"solution": reference, "tests": test("add.test.mjs", "adds", "add(1, 2)", "3"),
 	}}); isErr {
 		t.Fatalf("set_toolchain: %s", out)
+	}
+
+	// A language server that doesn't answer doesn't fail the setup; the
+	// language is saved without one.
+	broken := maps.Clone(toolchain)
+	broken["languageServer"] = []string{"false"}
+	out, isErr = call("set_toolchain", map[string]any{"toolchain": broken, "example": map[string]any{
+		"solution": reference, "tests": test("add.test.mjs", "adds", "add(1, 2)", "3"),
+	}})
+	if isErr || !strings.Contains(out, "saved without one") {
+		t.Fatalf("want a warning, got %s", out)
+	}
+	if specs := w.ToolchainSpecs(); len(specs) != 1 || specs[0].LanguageServer != nil {
+		t.Fatalf("saved = %+v", specs)
 	}
 
 	if out, isErr := call("propose_curriculum", plan); isErr {
@@ -115,7 +129,7 @@ func TestSetToolchainEnablesALanguage(t *testing.T) {
 		t.Fatalf("task detail = %+v, %v", d, err)
 	}
 	res, err := a.RunChecks(w.ID, created.TaskID, runner.Files{"add.mjs": reference["add.mjs"]}, true)
-	if err != nil || res.Status != runner.StatusPassed || len(res.Tests) != 2 {
+	if err != nil || res.Status != runner.StatusPassed || len(res.Tests) != 2 || !res.Tests[0].Hidden && !res.Tests[1].Hidden {
 		t.Fatalf("submit = %v %+v", err, res)
 	}
 }

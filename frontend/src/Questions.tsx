@@ -10,7 +10,7 @@ type Props = {
   onDismiss: () => void;
 };
 
-/** The coach's ask_user form: suggested options plus a free answer for every question. */
+/** The tutor's ask_user form: suggested options plus a free answer for every question. */
 export function QuestionsForm({ form, layout, onAnswer, onDismiss }: Props) {
   const formId = useId();
   const questions = form.questions ?? [];

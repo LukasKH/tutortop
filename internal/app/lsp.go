@@ -181,7 +181,7 @@ func writeMessage(w io.Writer, body []byte) error {
 }
 
 // probeLanguageServer checks that a server answers the LSP initialize request,
-// so a broken language_server command is caught when the coach sets it up.
+// so a broken language_server command is caught when the tutor sets it up.
 func (a *App) probeLanguageServer(ctx context.Context, tc runner.Toolchain, files runner.Files) error {
 	srv, err := a.runner.StartLanguageServer(ctx, tc, files)
 	if err != nil {

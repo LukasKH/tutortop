@@ -1,28 +1,28 @@
 # Tutortop
 
-A desktop app for learning anything you can check with a program. You write your own curriculum with an AI coach, solve tasks in a built-in editor, and a sandboxed test runner decides whether you passed. The AI never grades you.
+A desktop app for learning anything you can check with a program. You write your own curriculum with an AI tutor, solve tasks in a built-in editor, and a sandboxed test runner decides whether you passed. The AI never grades you.
 
 Tutortop runs on the coding agent you already have: your own signed-in **Claude Code** or **Codex** CLI. No API keys, and nothing is sent anywhere except through that CLI.
 
 ## How it works
 
-1. **Create a workspace** for a topic ("Go", "Python for data work"), or start from an idea on the home screen ("Build your own shell"). The coach interviews you about why you're learning it and writes `MISSION.md`.
-2. **Approve a curriculum.** The coach proposes modules of objectives. Every objective must be provable by unit tests.
-3. **Learn, then practise.** Each objective starts with a short lesson: the theory with worked examples and sources, then a quick quiz with instant feedback. Quiz results help the coach plan but never count as progress. You can skip a lesson if you know the topic.
-4. **Solve tasks.** The coach writes each task just in time. Before you see it, the app runs a **quality gate** in a sandbox:
+1. **Create a workspace** for a topic ("Go", "Python for data work"), or start from an idea on the home screen ("Build your own shell"). The tutor interviews you about why you're learning it and writes `MISSION.md`.
+2. **Approve a curriculum.** The tutor proposes modules of objectives. Every objective must be provable by unit tests.
+3. **Learn, then practise.** Each objective starts with a short lesson: the theory with worked examples and sources, then a quick quiz with instant feedback. Quiz results help the tutor plan but never count as progress. You can skip a lesson if you know the topic.
+4. **Solve tasks.** The tutor writes each task just in time. Before you see it, the app runs a **quality gate** in a sandbox:
    - the hidden reference solution passes every test three times, in shuffled order;
    - the starter code compiles and fails;
    - at least two plausible wrong solutions ("mutants") are caught by the tests.
 5. **Run** checks the visible tests. **Submit** also runs hidden edge-case tests. Progress counts only submissions that passed.
 6. **Ask for help** in the chat, or use the hint ladder (nudge → pointer → snippet → reveal). Hints are recorded.
-7. **Change the plan any time** ("make tasks longer", "focus on web dev"). The coach asks a few questions and proposes a revised curriculum. Objectives you've passed keep their progress.
+7. **Change the plan any time** ("make tasks longer", "focus on web dev"). The tutor asks a few questions and proposes a revised curriculum. Objectives you've passed keep their progress.
 
 ## Workspace files
 
 Each workspace is a git repo of plain files in `~/Tutortop/<topic>` (choose another folder in Settings, or set `TUTORTOP_HOME`):
 
 ```
-MISSION.md  NOTES.md  GLOSSARY.md  RESOURCES.md  learning-records/   written by the coach
+MISSION.md  NOTES.md  GLOSSARY.md  RESOURCES.md  learning-records/   written by the tutor
 lessons/0001-wrapping-errors/{README.md,lesson.yaml}                theory before a task
 curriculum.yaml                                                      the approved plan
 tasks/0001-reverse-words/{README.md,task.yaml,starter/,tests/,work/} work/ is your code
@@ -79,34 +79,3 @@ The pre-commit hooks and GitHub Actions run:
 - A TypeScript typecheck of the frontend, when frontend files change.
 
 Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/) (`feat:`, `fix:`, `refactor:`, `docs:`, `test:`, `build:`, `ci:`, `chore:`), checked by commitlint.
-
-### Releasing
-
-Push a tag and the [Release workflow](.github/workflows/release.yml) builds every installer and attaches them to a **draft** release.
-
-```sh
-git tag v0.2.0 && git push origin v0.2.0
-```
-
-Check the draft on GitHub, then publish it. To build installers without a release, run the workflow from the Actions tab, or locally:
-
-```sh
-wails3 task linux:package               # .deb, .rpm, Arch package, AppImage in bin/
-wails3 task windows:package ARCH=amd64  # Windows installer; needs makensis (the nsis package)
-```
-
-`packaging/aur/PKGBUILD` is the AUR package `tutortop-bin`. For each release, set `pkgver`, run `updpkgsums` and `makepkg --printsrcinfo > .SRCINFO`, and push both files to the AUR repo.
-
-## Architecture
-
-See [docs/architecture.md](docs/architecture.md) for the file layout, data on disk and UI structure, [docs/call-stacks.md](docs/call-stacks.md) for how the main flows run through the code, [docs/agents.md](docs/agents.md) for how Claude Code and Codex are driven, and [docs/design.md](docs/design.md) for the visual rules.
-
-| Package | Role |
-|---|---|
-| `internal/runner` | Runs checks in a throwaway container (non-root, no network, all capabilities dropped, CPU/memory/PID limits, 20 s test timeout, 4 MB output cap), parses `go test -json` and pytest JUnit output, and implements the quality gate |
-| `internal/workspace` | The workspace files, curriculum validation, tasks, attempt log and derived progress |
-| `internal/agent` | Drives the CLIs: Claude Code over its stream-json protocol (as the Claude Agent SDK does), Codex over `codex app-server` JSON-RPC (as T3 Code does) |
-| `internal/app` | The Wails service for the frontend, the coach prompt, and a localhost MCP server per workspace (`get_state`, `ask_user`, `propose_curriculum`, `set_icon`, `set_toolchain`; background writers, one per objective, get `create_lesson` and `create_task`) |
-| `frontend/` | React + TypeScript UI (Monaco editor) |
-
-The coach's instructions are in `internal/app/prompts/coach.md`.

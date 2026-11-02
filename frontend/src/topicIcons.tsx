@@ -41,7 +41,7 @@ import {
 } from "simple-icons";
 
 // A workspace's picture. The names match workspace.Icons in Go, which the
-// coach picks from with set_icon; keep the two lists in step. Languages and
+// tutor picks from with set_icon; keep the two lists in step. Languages and
 // tools use their logo (Simple Icons, CC0), drawn in one colour. Other topics
 // use a glyph on the same 24px grid.
 

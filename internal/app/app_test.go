@@ -15,7 +15,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// TestToolsEndToEnd drives the MCP tools the way the coach would, without an
+// TestToolsEndToEnd drives the MCP tools the way the tutor would, without an
 // AI: propose → approve → create_task (quality gate) → learner submits.
 // Set TUTORTOP_RUNNER=local to run without Docker.
 func TestToolsEndToEnd(t *testing.T) {
@@ -184,6 +184,19 @@ func newTestApp(t *testing.T, emit Emitter) *App {
 	return a
 }
 
+// sandboxApp is newTestApp for tests that need a container engine.
+func sandboxApp(t *testing.T) *App {
+	t.Helper()
+	a := newTestApp(t, nil)
+	if err := a.runner.Check(context.Background()); err != nil {
+		t.Skip(err)
+	}
+	if a.runner.Engine == "local" {
+		t.Skip("needs a container engine")
+	}
+	return a
+}
+
 // toolCaller connects to one thread's MCP tools, the way that thread's agent
 // would, and returns a function that calls a tool and reports its text and
 // whether it was an error.
@@ -273,7 +286,7 @@ func TestEmpty(t *testing.T) {
 }
 `
 
-// Each chat thread gets its own coach session, MCP endpoint and role, and
+// Each chat thread gets its own tutor session, MCP endpoint and role, and
 // answers to a form go back to the thread that asked.
 func TestThreadsGetOwnSessions(t *testing.T) {
 	a := newTestApp(t, nil)

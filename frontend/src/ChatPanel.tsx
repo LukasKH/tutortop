@@ -30,7 +30,7 @@ type Props = {
   onSend: (text: string) => void;
   onCollapse: () => void;
   /** The configured agent, model and effort, shown under the composer; clicking opens Settings. */
-  coach: string;
+  tutor: string;
   onSettings: () => void;
 };
 
@@ -63,10 +63,10 @@ export function ChatPanel(p: Props) {
   }
 
   return (
-    <aside className="coach">
-      <header className="coach-head">
-        <h2 className="coach-title">Tutor</h2>
-        <span className="coach-context">{p.context}</span>
+    <aside className="tutor">
+      <header className="tutor-head">
+        <h2 className="tutor-title">Tutor</h2>
+        <span className="tutor-context">{p.context}</span>
         <IconButton label="Hide tutor" onClick={p.onCollapse} aria-expanded>
           <PanelRight />
         </IconButton>
@@ -115,8 +115,8 @@ export function ChatPanel(p: Props) {
           ↑
         </button>
       </div>
-      <button className="composer-coach" onClick={p.onSettings} title="Change the tutor's agent, model and reasoning">
-        <span className="truncate">{p.coach}</span>
+      <button className="composer-tutor" onClick={p.onSettings} title="Change the tutor's agent, model and reasoning">
+        <span className="truncate">{p.tutor}</span>
       </button>
     </aside>
   );
@@ -142,10 +142,10 @@ function HintPill({ level, busy, onHint }: { level: number; busy: boolean; onHin
   );
 }
 
-/** The coach folded into a strip: a way back, and a sign of new or running work. */
+/** The tutor folded into a strip: a way back, and a sign of new or running work. */
 export function ChatRail({ attention, busy, onExpand }: { attention: boolean; busy: boolean; onExpand: () => void }) {
   return (
-    <aside className="coach-rail">
+    <aside className="tutor-rail">
       <IconButton label="Show tutor" onClick={onExpand} aria-expanded={false}>
         <PanelRight />
       </IconButton>
@@ -187,7 +187,7 @@ type StatusProps = {
   onOpenTask: (id: string) => void;
 };
 
-/** One quiet line above the composer: sandbox checks, a new task, or the coach working. */
+/** One quiet line above the composer: sandbox checks, a new task, or the tutor working. */
 export function StatusLine({ gate, newTask, busy, onStop, onOpenTask }: StatusProps) {
   let text = "";
   let action: ReactNode = null;
@@ -202,7 +202,7 @@ export function StatusLine({ gate, newTask, busy, onStop, onOpenTask }: StatusPr
       </button>
     );
   } else if (gate && !gate.passed) {
-    // Normal: the coach (in the plan thread) reads the gate report and resubmits.
+    // Normal: the tutor (in the plan thread) reads the gate report and resubmits.
     text = setup ? `Fixing the ${gate.title} setup…` : `Fixing “${gate.title}” after the sandbox checks…`;
   } else if (gate?.passed) {
     text = setup ? `${gate.title} is set up` : `“${gate.title}” is ready`;

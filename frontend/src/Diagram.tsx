@@ -37,7 +37,7 @@ function loadMermaid() {
   return ready;
 }
 
-/** A diagram, or its source as code when it doesn't parse (for example while the coach is still writing it). */
+/** A diagram, or its source as code when it doesn't parse (for example while the tutor is still writing it). */
 export function Diagram({ code }: { code: string }) {
   const id = `diagram-${useId().replace(/[^a-zA-Z0-9]/g, "")}`;
   const [svg, setSvg] = useState("");

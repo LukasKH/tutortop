@@ -342,7 +342,7 @@ textarea::placeholder {
 }
 
 /* "Claude Code · Opus · High   Change" */
-.coach-line {
+.tutor-line {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -351,7 +351,7 @@ textarea::placeholder {
   color: var(--ink-2);
   font-size: var(--t-sm);
 }
-.coach-line .btn.text {
+.tutor-line .btn.text {
   flex: none;
 }
 
@@ -944,7 +944,7 @@ body.is-resizing-y * {
 .ws.no-chat {
   grid-template-columns: var(--side-w) minmax(0, 1fr);
 }
-/* The coach's resize handle sits on its left border, in the shell, so one
+/* The tutor's resize handle sits on its left border, in the shell, so one
    drag can fold the panel into its rail and pull it back out. */
 .ws > .chat-resizer {
   position: absolute;
@@ -1406,7 +1406,7 @@ button.obj:hover {
   border-top: 1px solid var(--line);
 }
 
-/* ---------- prose: statements, mission, coach replies ---------- */
+/* ---------- prose: statements, mission, tutor replies ---------- */
 
 /* ```diff: a change, line by line */
 .prose pre.diff code {
@@ -2139,9 +2139,9 @@ summary.test-row::-webkit-details-marker {
   overflow-x: hidden;
 }
 
-/* ---------- coach ---------- */
+/* ---------- tutor ---------- */
 
-.coach {
+.tutor {
   display: flex;
   flex-direction: column;
   min-width: 0;
@@ -2149,7 +2149,7 @@ summary.test-row::-webkit-details-marker {
   border-left: 1px solid var(--line);
   background: var(--surface);
 }
-.coach-head {
+.tutor-head {
   flex: none;
   display: flex;
   align-items: stretch;
@@ -2158,17 +2158,17 @@ summary.test-row::-webkit-details-marker {
   padding: 0 8px 0 16px;
   border-bottom: 1px solid var(--line);
 }
-.coach-title {
+.tutor-title {
   align-self: center;
   margin-right: auto;
   font: 650 15px / 1 var(--sans);
 }
-.coach-context {
+.tutor-context {
   align-self: center;
   color: var(--muted);
   font-size: var(--t-sm);
 }
-.coach-head .icon-btn {
+.tutor-head .icon-btn {
   align-self: center;
 }
 .thread {
@@ -2344,8 +2344,8 @@ summary.test-row::-webkit-details-marker {
 .send:disabled {
   background: var(--line-2);
 }
-/* the configured coach under the composer; opens Settings */
-.composer-coach {
+/* the configured tutor under the composer; opens Settings */
+.composer-tutor {
   flex: none;
   display: flex;
   max-width: calc(100% - 24px);
@@ -2356,10 +2356,10 @@ summary.test-row::-webkit-details-marker {
   font-size: var(--t-xs);
   text-align: left;
 }
-.composer-coach:hover {
+.composer-tutor:hover {
   color: var(--ink);
 }
-.coach-rail {
+.tutor-rail {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -2380,7 +2380,7 @@ summary.test-row::-webkit-details-marker {
 .rail-label.is-loud {
   font-weight: 600;
 }
-.coach-rail .spinner {
+.tutor-rail .spinner {
   color: var(--muted);
 }
 

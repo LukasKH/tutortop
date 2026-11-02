@@ -5,15 +5,6 @@
 // @ts-ignore: Unused imports
 import * as workspace$0 from "../workspace/models.js";
 
-/**
- * CoachChoice is an agent's model and reasoning effort. Empty fields use the
- * agent's own defaults.
- */
-export interface CoachChoice {
-    "model": string;
-    "effort": string;
-}
-
 export interface Environment {
     "providers": ProviderStatus[] | null;
     "sandboxOk": boolean;
@@ -78,21 +69,30 @@ export interface ProviderStatus {
  */
 export interface Settings {
     /**
-     * Agent is the coding agent that coaches: "claude" or "codex".
+     * Agent is the coding agent that tutors: "claude" or "codex".
      */
     "agent": string;
 
     /**
-     * Coach holds the model and reasoning effort chosen for each agent, so
+     * Tutor holds the model and reasoning effort chosen for each agent, so
      * switching agents and back keeps both choices.
      */
-    "coach": { [_ in string]?: CoachChoice } | null;
+    "tutor": { [_ in string]?: TutorChoice } | null;
 
     /**
      * WorkspacesFolder holds the workspaces; "" means workspace.DefaultRoot.
      * The app reads it at startup.
      */
     "workspacesFolder"?: string;
+}
+
+/**
+ * TutorChoice is an agent's model and reasoning effort. Empty fields use the
+ * agent's own defaults.
+ */
+export interface TutorChoice {
+    "model": string;
+    "effort": string;
 }
 
 /**
@@ -112,7 +112,7 @@ export interface WorkspaceState {
     "questions": workspace$0.Questions | null;
 
     /**
-     * thread -> its coach or writer is working
+     * thread -> its tutor or writer is working
      */
     "busy": { [_ in string]?: boolean } | null;
 

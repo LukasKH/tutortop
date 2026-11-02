@@ -84,8 +84,13 @@ func markdownLinks(md string) []string {
 	return out
 }
 
-// brokenLinksError tells the coach which links to fix.
-func brokenLinksError(bad []string, tool string) error {
+// brokenLinks opens the links a tool call cites and returns an error naming
+// the ones that don't exist, so the tutor fixes them and calls tool again.
+func (a *App) brokenLinks(ctx context.Context, tool string, urls []string) error {
+	bad := a.linkCheck(ctx, urls)
+	if len(bad) == 0 {
+		return nil
+	}
 	msg := "These links don't open:\n"
 	for _, b := range bad {
 		msg += "- " + b + "\n"

@@ -33,7 +33,7 @@ func main() {
 
 	wails = application.New(application.Options{
 		Name:        "Tutortop",
-		Description: "Learn anything verifiable, with your own AI coach",
+		Description: "Learn anything verifiable, with your own AI tutor",
 		Services:    []application.Service{application.NewService(svc)},
 		Assets:      application.AssetOptions{Handler: application.AssetFileServerFS(assets)},
 		Mac:         application.MacOptions{ApplicationShouldTerminateAfterLastWindowClosed: true},

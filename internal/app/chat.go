@@ -25,11 +25,11 @@ import (
 // lesson's thread, or an objective's writer.
 type threadKey struct{ ws, thread string }
 
-// agentSession is one live coach process for one chat thread.
+// agentSession is one live tutor process for one chat thread.
 // Messages are handled one turn at a time, in order.
 type agentSession struct {
 	thread  string
-	cfg     coachConfig // the agent, model and effort it was started with
+	cfg     tutorConfig // the agent, model and effort it was started with
 	queue   chan string
 	cancel  context.CancelFunc
 	busy    bool
@@ -187,9 +187,9 @@ func (a *App) taskContext(w *workspace.Workspace, thread string) string {
 	return b.String()
 }
 
-// message is one thing sent to the coach. What the learner sees in the chat
-// (Shown) can differ from what the coach receives (Agent): the app attaches
-// the open task as context, and its own instructions to the coach are shown
+// message is one thing sent to the tutor. What the learner sees in the chat
+// (Shown) can differ from what the tutor receives (Agent): the app attaches
+// the open task as context, and its own instructions to the tutor are shown
 // as short notices.
 type message struct {
 	Role  string // workspace.RoleUser for the learner's words, RoleNotice for app events
@@ -198,7 +198,7 @@ type message struct {
 }
 
 // send records the message in a thread's chat and queues it for that
-// thread's coach.
+// thread's tutor.
 func (a *App) send(w *workspace.Workspace, thread string, m message) error {
 	a.post(w, workspace.ChatItem{Thread: thread, Role: m.Role, Text: m.Shown})
 	s, err := a.session(w, thread)
@@ -222,15 +222,15 @@ func (a *App) postFailure(w *workspace.Workspace, thread, msg string) {
 	a.post(w, workspace.ChatItem{Thread: thread, Role: workspace.RoleNotice, Status: "failed", Text: msg})
 }
 
-// session returns a thread's live coach, starting (or resuming) it if needed,
+// session returns a thread's live tutor, starting (or resuming) it if needed,
 // and marks the thread busy for the message the caller is about to queue.
-// Busy starts here, not when the turn starts, so the learner sees the coach
+// Busy starts here, not when the turn starts, so the learner sees the tutor
 // working while its process starts, which can take several seconds.
 // The agent process starts outside a.mu, so a slow start doesn't block the
 // rest of the app; concurrent callers wait for the same start.
 func (a *App) session(w *workspace.Workspace, thread string) (*agentSession, error) {
 	key := threadKey{w.ID, thread}
-	cfg := a.Settings().coach()
+	cfg := a.Settings().tutor()
 	a.mu.Lock()
 	s := a.sessions[key]
 	// The settings changed since it started: restart it with the new ones
@@ -249,9 +249,9 @@ func (a *App) session(w *workspace.Workspace, thread string) (*agentSession, err
 	return s, a.waitStarted(w, s)
 }
 
-// startSession starts a thread's coach process in the background. Call with
+// startSession starts a thread's tutor process in the background. Call with
 // a.mu held.
-func (a *App) startSession(w *workspace.Workspace, thread string, cfg coachConfig) *agentSession {
+func (a *App) startSession(w *workspace.Workspace, thread string, cfg tutorConfig) *agentSession {
 	key := threadKey{w.ID, thread}
 	ctx, cancel := context.WithCancel(context.Background())
 	s := &agentSession{thread: thread, cfg: cfg, queue: make(chan string, 32), cancel: cancel, ready: make(chan struct{})}
@@ -274,7 +274,7 @@ func (a *App) waitStarted(w *workspace.Workspace, s *agentSession) error {
 	return nil
 }
 
-// closeIdleTaskSessions stops the coach processes of the workspace's other
+// closeIdleTaskSessions stops the tutor processes of the workspace's other
 // idle task and lesson threads, so moving through tasks doesn't pile up
 // processes. Writers close themselves when they're done.
 // Their conversations resume from the saved session if reopened. Call with
@@ -316,7 +316,7 @@ func (a *App) runSession(ctx context.Context, w *workspace.Workspace, s *agentSe
 			Cwd:          w.Dir,
 			MCPName:      mcpName,
 			MCPURL:       a.mcp.URL(w, s.thread),
-			Instructions: coachPrompt + "\n\n" + roleInstructions(w, s.thread),
+			Instructions: tutorPrompt + "\n\n" + roleInstructions(w, s.thread),
 			ResumeID:     resume[s.thread],
 			Model:        s.cfg.Model,
 			Effort:       s.cfg.Effort,
@@ -379,7 +379,7 @@ func lessonContext(w *workspace.Workspace, id string) string {
 	return b.String()
 }
 
-// roleInstructions tells a coach which conversation it's in. A title that
+// roleInstructions tells a tutor which conversation it's in. A title that
 // can't be read falls back to the id.
 func roleInstructions(w *workspace.Workspace, thread string) string {
 	if thread == workspace.PlanThread {
@@ -505,11 +505,11 @@ func (t *turnState) flush() {
 	t.app.emit(t.ws.ID, "changed", nil)
 }
 
-// mcpName is the name the coach knows Tutortop's MCP server by.
+// mcpName is the name the tutor knows Tutortop's MCP server by.
 const mcpName = "tutortop"
 
 // toolLabel turns an agent tool call into a short line for the learner, or
-// hides it. The coach reading files or keeping its todo list is noise;
+// hides it. The tutor reading files or keeping its todo list is noise;
 // changes to the learner's mission or plan are worth seeing.
 func toolLabel(t agent.Tool) (string, bool) {
 	switch t.Kind {
