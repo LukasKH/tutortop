@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/LukasKH/tutortop/internal/app"
+	"github.com/LukasKH/tutortop/internal/shellenv"
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
@@ -17,6 +18,9 @@ func init() {
 }
 
 func main() {
+	// Before anything looks for docker, podman, claude or codex.
+	shellenv.LoadPath()
+
 	var wails *application.App
 	svc, err := app.New(func(name string, data any) {
 		if wails != nil {
