@@ -38,13 +38,16 @@ type Store struct {
 	locks sync.Map // workspace id -> *sync.Mutex, shared by every Open of that id
 }
 
-func NewStore() *Store {
-	root := os.Getenv("TUTORTOP_HOME")
-	if root == "" {
-		home, _ := os.UserHomeDir()
-		root = filepath.Join(home, "Tutortop")
-	}
+// NewStore keeps workspaces in root and their private files under the
+// user's data folder.
+func NewStore(root string) *Store {
 	return &Store{Root: root, PrivateRoot: filepath.Join(xdg.DataHome, "tutortop", "private")}
+}
+
+// DefaultRoot is ~/Tutortop, the workspaces folder unless the learner picks another.
+func DefaultRoot() string {
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, "Tutortop")
 }
 
 type Meta struct {
@@ -124,7 +127,11 @@ func (s *Store) Create(title, provider string) (*Workspace, error) {
 	base := slugify(title)
 	id := base
 	for i := 2; ; i++ {
-		if _, err := os.Stat(filepath.Join(s.Root, id)); errors.Is(err, os.ErrNotExist) {
+		// Private files are kept by id across workspaces folders, so a new
+		// workspace mustn't take an id whose private files are still around.
+		_, errDir := os.Stat(filepath.Join(s.Root, id))
+		_, errPrivate := os.Stat(filepath.Join(s.PrivateRoot, id))
+		if errors.Is(errDir, os.ErrNotExist) && errors.Is(errPrivate, os.ErrNotExist) {
 			break
 		}
 		id = fmt.Sprintf("%s-%d", base, i)

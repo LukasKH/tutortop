@@ -18,7 +18,14 @@ export interface Environment {
     "providers": ProviderStatus[] | null;
     "sandboxOk": boolean;
     "sandboxHint"?: string;
+
+    /**
+     * Root is the workspaces folder in use. A folder chosen in the settings
+     * is used from the next start; TUTORTOP_HOME overrides it (RootFromEnv).
+     */
     "root": string;
+    "defaultRoot": string;
+    "rootFromEnv": boolean;
 }
 
 /**
@@ -66,8 +73,8 @@ export interface ProviderStatus {
 }
 
 /**
- * Settings are app-wide preferences, kept in the user's config folder. They
- * apply to every workspace.
+ * Settings are app-wide preferences, kept in settings.yaml in the user's
+ * config folder. They apply to every workspace.
  */
 export interface Settings {
     /**
@@ -80,6 +87,12 @@ export interface Settings {
      * switching agents and back keeps both choices.
      */
     "coach": { [_ in string]?: CoachChoice } | null;
+
+    /**
+     * WorkspacesFolder holds the workspaces; "" means workspace.DefaultRoot.
+     * The app reads it at startup.
+     */
+    "workspacesFolder"?: string;
 }
 
 /**

@@ -3,10 +3,12 @@
 package app
 
 import (
+	"cmp"
 	"context"
 	_ "embed"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"slices"
@@ -60,8 +62,12 @@ type App struct {
 }
 
 func New(emit Emitter) (*App, error) {
-	a := &App{store: workspace.NewStore(), runner: runner.New(), emitFn: emit, sessions: map[threadKey]*agentSession{}, lastResults: map[threadKey]runner.Result{}, checks: map[threadKey]GateEvent{}, servers: map[string]*languageServer{}, startAgent: agent.Start, linkCheck: checkLinks,
-		settingsPath: filepath.Join(xdg.ConfigHome, "tutortop", "settings.json"), models: map[string]modelList{}}
+	a := &App{runner: runner.New(), emitFn: emit, sessions: map[threadKey]*agentSession{}, lastResults: map[threadKey]runner.Result{}, checks: map[threadKey]GateEvent{}, servers: map[string]*languageServer{}, startAgent: agent.Start, linkCheck: checkLinks,
+		settingsPath: filepath.Join(xdg.ConfigHome, "tutortop", "settings.yaml"), models: map[string]modelList{}}
+	// The workspaces folder: TUTORTOP_HOME, else the one chosen in the
+	// settings, else ~/Tutortop. It's fixed for the run: live sessions open
+	// their workspace by id.
+	a.store = workspace.NewStore(cmp.Or(os.Getenv("TUTORTOP_HOME"), a.loadSettings().WorkspacesFolder, workspace.DefaultRoot()))
 	h, err := startMCP(a)
 	if err != nil {
 		return nil, err
@@ -118,11 +124,15 @@ type Environment struct {
 	Providers   []ProviderStatus `json:"providers"`
 	SandboxOK   bool             `json:"sandboxOk"`
 	SandboxHint string           `json:"sandboxHint,omitempty"`
-	Root        string           `json:"root"`
+	// Root is the workspaces folder in use. A folder chosen in the settings
+	// is used from the next start; TUTORTOP_HOME overrides it (RootFromEnv).
+	Root        string `json:"root"`
+	DefaultRoot string `json:"defaultRoot"`
+	RootFromEnv bool   `json:"rootFromEnv"`
 }
 
 func (a *App) Environment() Environment {
-	env := Environment{Root: a.store.Root}
+	env := Environment{Root: a.store.Root, DefaultRoot: workspace.DefaultRoot(), RootFromEnv: os.Getenv("TUTORTOP_HOME") != ""}
 	for _, p := range agent.Providers() {
 		path, err := exec.LookPath(p.Binary)
 		env.Providers = append(env.Providers, ProviderStatus{ID: p.ID, Name: p.Name, Installed: err == nil, Path: path})
