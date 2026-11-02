@@ -20,6 +20,9 @@ type Settings struct {
 	// Coach holds the model and reasoning effort chosen for each agent, so
 	// switching agents and back keeps both choices.
 	Coach map[string]CoachChoice `json:"coach"`
+	// WorkspacesFolder holds the workspaces; "" means workspace.DefaultRoot.
+	// The app reads it at startup.
+	WorkspacesFolder string `json:"workspacesFolder,omitempty"`
 }
 
 // CoachChoice is an agent's model and reasoning effort. Empty fields use the
@@ -79,6 +82,15 @@ func (a *App) SaveSettings(s Settings) error {
 	for id := range s.Coach {
 		if !knownProvider(id) {
 			delete(s.Coach, id)
+		}
+	}
+	if s.WorkspacesFolder != "" {
+		if !filepath.IsAbs(s.WorkspacesFolder) {
+			return fmt.Errorf("the workspaces folder needs a full path, not %q", s.WorkspacesFolder)
+		}
+		s.WorkspacesFolder = filepath.Clean(s.WorkspacesFolder)
+		if err := os.MkdirAll(s.WorkspacesFolder, 0o755); err != nil {
+			return fmt.Errorf("can't use %s for workspaces: %w", s.WorkspacesFolder, err)
 		}
 	}
 	b, err := json.MarshalIndent(s, "", "  ")

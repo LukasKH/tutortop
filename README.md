@@ -19,7 +19,7 @@ Tutortop runs on the coding agent you already have: your own signed-in **Claude 
 
 ## Workspace files
 
-Each workspace is a git repo of plain files in `~/Tutortop/<topic>`:
+Each workspace is a git repo of plain files in `~/Tutortop/<topic>` (choose another folder in Settings, or set `TUTORTOP_HOME`):
 
 ```
 MISSION.md  NOTES.md  GLOSSARY.md  RESOURCES.md  learning-records/   written by the coach

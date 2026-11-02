@@ -355,6 +355,22 @@ textarea::placeholder {
   flex: none;
 }
 
+/* "~/Tutortop   Use default  Change…" */
+.folder-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+  color: var(--ink-2);
+  font-size: var(--t-sm);
+}
+.folder-actions {
+  display: flex;
+  flex: none;
+  gap: 4px;
+}
+
 /* a popup that asks before something can't be undone */
 .confirm {
   width: min(420px, calc(100vw - 48px));

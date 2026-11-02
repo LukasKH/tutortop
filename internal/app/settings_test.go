@@ -2,6 +2,8 @@ package app
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strconv"
 	"sync"
 	"testing"
@@ -23,6 +25,23 @@ func TestSettingsRoundTrip(t *testing.T) {
 	}
 	if err := a.SaveSettings(Settings{Agent: "nope"}); err == nil {
 		t.Fatal("an unknown agent was accepted")
+	}
+}
+
+func TestSettingsWorkspacesFolder(t *testing.T) {
+	a := newTestApp(t, nil)
+	folder := filepath.Join(t.TempDir(), "learning", "..", "learning")
+	if err := a.SaveSettings(Settings{Agent: "claude", WorkspacesFolder: folder}); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := a.Settings().WorkspacesFolder, filepath.Clean(folder); got != want {
+		t.Errorf("folder = %q, want %q", got, want)
+	}
+	if _, err := os.Stat(filepath.Clean(folder)); err != nil {
+		t.Errorf("the folder wasn't created: %v", err)
+	}
+	if err := a.SaveSettings(Settings{Agent: "claude", WorkspacesFolder: "relative/path"}); err == nil {
+		t.Error("a relative folder was accepted")
 	}
 }
 

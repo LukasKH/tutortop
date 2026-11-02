@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { Dialogs } from "@wailsio/runtime";
 import { App, errorText, providerName, type AgentModel, type Environment, type Settings } from "./api";
 import { ErrorText } from "./ui";
 
@@ -207,8 +208,81 @@ export function SettingsDialog({ settings, onChange, onClose }: Props) {
         <p className="field-note">
           Changes apply from the tutor's next message. Switching agent starts new conversations; your mission, notes and progress stay.
         </p>
+
+        <h2 className="settings-section">Files</h2>
+        <WorkspacesFolder env={env} folder={settings.workspacesFolder ?? ""} onChange={(f) => save({ ...settings, workspacesFolder: f })} onError={setError} />
+
         <ErrorText error={error} />
       </section>
     </dialog>
+  );
+}
+
+/**
+ * Where workspaces live. The app opens workspaces by name while it runs, so a
+ * new folder is used from the next start.
+ */
+function WorkspacesFolder({
+  env,
+  folder,
+  onChange,
+  onError,
+}: {
+  env: Environment | null;
+  folder: string;
+  onChange: (folder: string) => void;
+  onError: (error: string) => void;
+}) {
+  if (!env) return <p className="muted">Loading…</p>;
+  const shown = env.rootFromEnv ? env.root : folder || env.defaultRoot;
+  const pending = !env.rootFromEnv && shown !== env.root;
+
+  function pick() {
+    // The system's own folder picker. Not available in server mode (a browser).
+    Dialogs.OpenFile({
+      Title: "Choose where to keep workspaces",
+      ButtonText: "Use this folder",
+      Directory: shown,
+      CanChooseDirectories: true,
+      CanChooseFiles: false,
+      CanCreateDirectories: true,
+    })
+      .then((path) => path && onChange(path))
+      .catch((e) => onError(errorText(e)));
+  }
+
+  return (
+    <div className="field">
+      <span className="field-label">Workspaces folder</span>
+      <div className="folder-line">
+        <code className="truncate" title={shown}>
+          {shown}
+        </code>
+        {!env.rootFromEnv && (
+          <span className="folder-actions">
+            {folder && (
+              <button type="button" className="btn text" onClick={() => onChange("")}>
+                Use default
+              </button>
+            )}
+            <button type="button" className="btn text" onClick={pick}>
+              Change…
+            </button>
+          </span>
+        )}
+      </div>
+      <p className="field-note">
+        {env.rootFromEnv ? (
+          <>Set by the TUTORTOP_HOME environment variable, which overrides this setting.</>
+        ) : pending ? (
+          <>
+            Tutortop switches to this folder the next time it starts. Workspaces in <code>{env.root}</code> stay where they are; move their folders over to
+            keep them.
+          </>
+        ) : (
+          <>Each workspace is a folder of plain files with its own git history. Hidden tests and reference solutions are kept elsewhere, so the tutor can't see them.</>
+        )}
+      </p>
+    </div>
   );
 }

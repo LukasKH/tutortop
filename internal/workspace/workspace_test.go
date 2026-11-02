@@ -2,6 +2,8 @@ package workspace
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 
@@ -50,5 +52,27 @@ func TestParallelSaveTaskGetsUniqueNumbers(t *testing.T) {
 	}
 	if len(tasks) != 8 {
 		t.Fatalf("got %d tasks", len(tasks))
+	}
+}
+
+// Private files are kept by id, not by workspaces folder: after switching
+// folders, a new workspace mustn't pick up an old one's hidden tests.
+func TestCreateSkipsIDWithPrivateFiles(t *testing.T) {
+	private := t.TempDir()
+	old := &Store{Root: t.TempDir(), PrivateRoot: private}
+	if _, err := old.Create("Go", "claude"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(private, "go"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	moved := &Store{Root: t.TempDir(), PrivateRoot: private}
+	w, err := moved.Create("Go", "claude")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w.ID != "go-2" {
+		t.Errorf("id = %q, want go-2", w.ID)
 	}
 }
