@@ -2,34 +2,36 @@ package app
 
 import (
 	"context"
-	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/LukasKH/tutortop/internal/agent"
+	"gopkg.in/yaml.v3"
 )
 
-// Settings are app-wide preferences, kept in the user's config folder. They
-// apply to every workspace.
+// Settings are app-wide preferences, kept in settings.yaml in the user's
+// config folder. They apply to every workspace.
 type Settings struct {
 	// Agent is the coding agent that coaches: "claude" or "codex".
-	Agent string `json:"agent"`
+	Agent string `yaml:"agent" json:"agent"`
 	// Coach holds the model and reasoning effort chosen for each agent, so
 	// switching agents and back keeps both choices.
-	Coach map[string]CoachChoice `json:"coach"`
+	Coach map[string]CoachChoice `yaml:"coach" json:"coach"`
 	// WorkspacesFolder holds the workspaces; "" means workspace.DefaultRoot.
 	// The app reads it at startup.
-	WorkspacesFolder string `json:"workspacesFolder,omitempty"`
+	WorkspacesFolder string `yaml:"workspaces_folder,omitempty" json:"workspacesFolder,omitempty"`
 }
 
 // CoachChoice is an agent's model and reasoning effort. Empty fields use the
 // agent's own defaults.
 type CoachChoice struct {
-	Model  string `json:"model"`
-	Effort string `json:"effort"`
+	Model  string `yaml:"model,omitempty" json:"model"`
+	Effort string `yaml:"effort,omitempty" json:"effort"`
 }
 
 // coachConfig is what a coach session is started with. A session started
@@ -55,8 +57,13 @@ func (a *App) Settings() Settings {
 
 func (a *App) loadSettings() Settings {
 	var s Settings
-	if b, err := os.ReadFile(a.settingsPath); err == nil {
-		_ = json.Unmarshal(b, &s)
+	b, err := os.ReadFile(a.settingsPath)
+	if errors.Is(err, os.ErrNotExist) {
+		// Settings were saved as settings.json before; JSON is also YAML.
+		b, err = os.ReadFile(strings.TrimSuffix(a.settingsPath, ".yaml") + ".json")
+	}
+	if err == nil {
+		_ = yaml.Unmarshal(b, &s)
 	}
 	if s.Coach == nil {
 		s.Coach = map[string]CoachChoice{}
@@ -93,7 +100,7 @@ func (a *App) SaveSettings(s Settings) error {
 			return fmt.Errorf("can't use %s for workspaces: %w", s.WorkspacesFolder, err)
 		}
 	}
-	b, err := json.MarshalIndent(s, "", "  ")
+	b, err := yaml.Marshal(s)
 	if err != nil {
 		return err
 	}

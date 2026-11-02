@@ -73,8 +73,8 @@ export interface ProviderStatus {
 }
 
 /**
- * Settings are app-wide preferences, kept in the user's config folder. They
- * apply to every workspace.
+ * Settings are app-wide preferences, kept in settings.yaml in the user's
+ * config folder. They apply to every workspace.
  */
 export interface Settings {
     /**

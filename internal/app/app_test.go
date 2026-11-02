@@ -175,7 +175,7 @@ func newTestApp(t *testing.T, emit Emitter) *App {
 		t.Fatal(err)
 	}
 	a.store = &workspace.Store{Root: t.TempDir(), PrivateRoot: t.TempDir()}
-	a.settingsPath = filepath.Join(t.TempDir(), "settings.json")
+	a.settingsPath = filepath.Join(t.TempDir(), "settings.yaml")
 	a.linkCheck = func(context.Context, []string) []string { return nil }
 	// Never start a real agent from a test; tests that watch the agent replace this.
 	a.startAgent = func(context.Context, string, agent.Options, func(agent.Event)) (agent.Session, error) {

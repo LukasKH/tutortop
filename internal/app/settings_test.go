@@ -28,6 +28,18 @@ func TestSettingsRoundTrip(t *testing.T) {
 	}
 }
 
+// Settings saved as settings.json before the switch to YAML are still read.
+func TestSettingsReadsOldJSON(t *testing.T) {
+	a := newTestApp(t, nil)
+	old := filepath.Join(filepath.Dir(a.settingsPath), "settings.json")
+	if err := os.WriteFile(old, []byte(`{"agent": "codex", "coach": {"codex": {"model": "gpt-x", "effort": "high"}}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := a.Settings(); got.Agent != "codex" || got.Coach["codex"] != (CoachChoice{Model: "gpt-x", Effort: "high"}) {
+		t.Fatalf("got %+v", got)
+	}
+}
+
 func TestSettingsWorkspacesFolder(t *testing.T) {
 	a := newTestApp(t, nil)
 	folder := filepath.Join(t.TempDir(), "learning", "..", "learning")
