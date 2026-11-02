@@ -1,0 +1,24 @@
+# Maintainer: LukasKH
+# AUR package "tutortop-bin": installs the .deb from the GitHub release.
+# For a release: set pkgver, then run `updpkgsums` and `makepkg --printsrcinfo > .SRCINFO`.
+pkgname=tutortop-bin
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="Learn anything you can check with a program, coached by your own AI CLI"
+arch=('x86_64')
+url="https://github.com/LukasKH/tutortop"
+license=('MIT')
+depends=('gtk4' 'webkitgtk-6.0')
+optdepends=(
+  'docker: sandbox for running tests'
+  'podman: sandbox for running tests'
+  'git: history of your workspaces'
+)
+provides=('tutortop')
+conflicts=('tutortop')
+source=("tutortop-${pkgver}.deb::${url}/releases/download/v${pkgver}/tutortop_${pkgver}_amd64.deb")
+sha256sums=('SKIP')
+
+package() {
+  bsdtar -xf data.tar.* -C "${pkgdir}"
+}

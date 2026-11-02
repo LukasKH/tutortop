@@ -1,0 +1,37 @@
+name: Set up a release build
+description: Installs Go, Node and the Wails CLI, and stamps the version from the tag into the build files.
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-go@v6
+      with:
+        go-version-file: go.mod
+        cache-dependency-path: go.sum
+    - uses: actions/setup-node@v6
+      with:
+        node-version: 26
+        cache: npm
+        cache-dependency-path: frontend/package-lock.json
+    - name: Install the Wails CLI (same version as go.mod)
+      shell: bash
+      run: go install "github.com/wailsapp/wails/v3/cmd/wails3@$(go list -m -f '{{.Version}}' github.com/wailsapp/wails/v3)"
+
+    - name: Set the version
+      shell: bash
+      run: |
+        if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+          version="${GITHUB_REF_NAME#v}"
+          # Windows needs plain x.y.z version numbers.
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Tag $GITHUB_REF_NAME isn't vX.Y.Z" >&2
+            exit 1
+          fi
+          version="$version" yq -i '.info.version = strenv(version)' build/config.yml
+          # Writes the version into Info.plist, info.json, the NSIS script and the exe manifest.
+          wails3 task common:update:build-assets
+        else
+          version=$(yq '.info.version' build/config.yml)
+        fi
+        echo "VERSION=$version" >> "$GITHUB_ENV"
+        echo "Building version $version"

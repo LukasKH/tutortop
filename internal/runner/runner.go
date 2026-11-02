@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -83,10 +84,18 @@ type Runner struct {
 	prepared map[string]bool
 }
 
+// New uses the engine in TUTORTOP_RUNNER, or else Docker if it's installed,
+// or else Podman. With neither installed it keeps "docker", and Check says
+// how to get one.
 func New() *Runner {
 	engine := os.Getenv("TUTORTOP_RUNNER")
 	if engine == "" {
 		engine = "docker"
+		if _, err := exec.LookPath("docker"); err != nil {
+			if _, err := exec.LookPath("podman"); err == nil {
+				engine = "podman"
+			}
+		}
 	}
 	return &Runner{Engine: engine, prepared: map[string]bool{}}
 }
@@ -96,15 +105,34 @@ func (r *Runner) Check(ctx context.Context) error {
 	if r.Engine == "local" {
 		return nil
 	}
-	out, err := exec.CommandContext(ctx, r.Engine, "info", "--format", "{{.ServerVersion}}").CombinedOutput()
+	// Works for both engines, and for Podman's `docker` shim: it fails when
+	// Docker's daemon or the Podman machine can't be reached.
+	out, err := exec.CommandContext(ctx, r.Engine, "version", "--format", "{{.Server.Version}}").CombinedOutput()
 	if err != nil {
-		msg := strings.TrimSpace(string(out))
-		if strings.Contains(msg, "permission denied") {
-			return fmt.Errorf("can't reach Docker (permission denied). Add yourself to the docker group: `sudo usermod -aG docker $USER`, then log out and back in")
-		}
-		return fmt.Errorf("can't reach Docker: %s", msg)
+		return engineHint(r.Engine, strings.TrimSpace(string(out)), errors.Is(err, exec.ErrNotFound))
 	}
 	return nil
+}
+
+// engineHint turns a failed `<engine> version` into a fix the learner can act on.
+func engineHint(engine, output string, notFound bool) error {
+	desktop := runtime.GOOS == "windows" || runtime.GOOS == "darwin"
+	switch {
+	case notFound && desktop:
+		return errors.New("install Docker Desktop (or Podman Desktop), then restart Tutortop")
+	case notFound:
+		return errors.New("install docker or podman with your package manager, then restart Tutortop")
+	case engine == "podman" && desktop:
+		return fmt.Errorf("can't reach Podman. Start it with `podman machine start`: %s", output)
+	case strings.Contains(output, "permission denied") && runtime.GOOS == "linux":
+		return errors.New("can't reach Docker (permission denied). Add yourself to the docker group: `sudo usermod -aG docker $USER`, then log out and back in")
+	case desktop:
+		return fmt.Errorf("can't reach Docker. Start Docker Desktop: %s", output)
+	case engine == "docker":
+		return fmt.Errorf("can't reach Docker. Start it with `sudo systemctl start docker`: %s", output)
+	default:
+		return fmt.Errorf("can't reach %s: %s", engine, output)
+	}
 }
 
 // Prepare builds the language image. The first call can take a few minutes.

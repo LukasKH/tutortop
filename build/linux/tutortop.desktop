@@ -1,10 +1,11 @@
 [Desktop Entry]
 Type=Application
-Name=tutortop
+Name=Tutortop
 Exec=tutortop
 Icon=tutortop
-Categories=Development;
+Categories=Development;Education;
+Comment=Learn anything you can check with a program
 Terminal=false
-Keywords=wails
+Keywords=learning;tutor;programming;
 Version=1.0
 StartupNotify=false
