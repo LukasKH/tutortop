@@ -31,11 +31,30 @@ tasks/0001-reverse-words/{README.md,task.yaml,starter/,tests/,work/} work/ is yo
 
 Reference solutions, hidden tests and mutants live outside the workspace (`~/.local/share/tutortop/private/`), so neither you nor the tutor sees them by accident.
 
-## Requirements
+## Install
+
+Download the installer for your system from [Releases](https://github.com/LukasKH/tutortop/releases):
+
+| System | File | Install |
+|---|---|---|
+| Ubuntu 24.04+, Debian 13+ | `.deb` | `sudo apt install ./tutortop_*_amd64.deb` |
+| Fedora | `.rpm` | `sudo dnf install ./tutortop-*.x86_64.rpm` |
+| Arch | `.pkg.tar.zst` | `sudo pacman -U tutortop-*.pkg.tar.zst` |
+| Other Linux | `.AppImage` | `chmod +x` it and run it |
+| Windows 10/11 | `-setup.exe` | Run it. It's unsigned, so SmartScreen asks first: *More info → Run anyway*. |
+| macOS | `.dmg` | Drag to Applications. It's unsigned, so the first time macOS blocks it: open *System Settings → Privacy & Security* and click *Open Anyway*. |
+
+Tutortop also needs two things it doesn't install for you. It shows what's missing on the home screen.
+
+- **A sandbox:** Docker or Podman. Tutortop uses whichever is installed (Docker first), or the one in `TUTORTOP_RUNNER`. On Windows and macOS that's Docker Desktop or Podman Desktop. On Linux, Docker must work without sudo: `sudo usermod -aG docker $USER`, then log out and in. The first check for each language builds a sandbox image, which takes a few minutes.
+- **A coding agent:** [Claude Code](https://docs.claude.com/en/docs/claude-code/setup) (`claude`) or [Codex](https://github.com/openai/codex) (`codex`), signed in.
+
+Git is optional. With it, every workspace keeps a history of its changes.
+
+## Requirements for development
 
 - Go 1.27+, Node 20+, and the Wails v3 CLI (`wails3`)
-- Docker (or Podman with `TUTORTOP_RUNNER=podman`), usable without sudo (on Linux: `sudo usermod -aG docker $USER`, then log out and in). The first check per language builds a sandbox image, which takes a few minutes.
-- Claude Code (`claude`) and/or Codex (`codex`), signed in
+- Docker or Podman, and Claude Code and/or Codex, as above
 
 ## Development
 
@@ -60,6 +79,23 @@ The pre-commit hooks and GitHub Actions run:
 - A TypeScript typecheck of the frontend, when frontend files change.
 
 Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/) (`feat:`, `fix:`, `refactor:`, `docs:`, `test:`, `build:`, `ci:`, `chore:`), checked by commitlint.
+
+### Releasing
+
+Push a tag and the [Release workflow](.github/workflows/release.yml) builds every installer and attaches them to a **draft** release.
+
+```sh
+git tag v0.2.0 && git push origin v0.2.0
+```
+
+Check the draft on GitHub, then publish it. To build installers without a release, run the workflow from the Actions tab, or locally:
+
+```sh
+wails3 task linux:package               # .deb, .rpm, Arch package, AppImage in bin/
+wails3 task windows:package ARCH=amd64  # Windows installer; needs makensis (the nsis package)
+```
+
+`packaging/aur/PKGBUILD` is the AUR package `tutortop-bin`. For each release, set `pkgver`, run `updpkgsums` and `makepkg --printsrcinfo > .SRCINFO`, and push both files to the AUR repo.
 
 ## Architecture
 

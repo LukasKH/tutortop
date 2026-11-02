@@ -1,0 +1,66 @@
+# Linux package config for .deb, .rpm and Arch packages (https://nfpm.goreleaser.com).
+# Wails regenerates nfpm.yaml from build/config.yml and would drop our changes,
+# so this file is ours and nfpm.yaml is ignored.
+#
+# VERSION comes from the environment; the linux:generate:* tasks set it.
+
+name: "tutortop"
+arch: ${GOARCH}
+platform: "linux"
+version: ${VERSION}
+version_schema: semver
+release: "1"
+section: "education"
+priority: "optional"
+maintainer: "LukasKH"
+description: "Learn anything you can check with a program, coached by your own AI CLI"
+vendor: "LukasKH"
+homepage: "https://github.com/LukasKH/tutortop"
+license: "MIT"
+
+contents:
+  - src: "./bin/tutortop"
+    dst: "/usr/bin/tutortop"
+  - src: "./build/appicon.png"
+    dst: "/usr/share/icons/hicolor/1024x1024/apps/tutortop.png"
+    file_info:
+      mode: 0644
+  - src: "./build/linux/tutortop.desktop"
+    dst: "/usr/share/applications/tutortop.desktop"
+    file_info:
+      mode: 0644
+  - src: "./LICENSE"
+    dst: "/usr/share/licenses/tutortop/LICENSE"
+    file_info:
+      mode: 0644
+
+# What the app needs to start: GTK4 + WebKitGTK 6.0 (Ubuntu 24.04+ / Debian 13+).
+# Docker or Podman and the Claude Code / Codex CLIs are optional: users pick
+# their own, and the app tells them what's missing on first start.
+depends:
+  - libgtk-4-1
+  - libwebkitgtk-6.0-4
+recommends:
+  - git
+  - docker.io | podman
+
+overrides:
+  rpm:
+    depends:
+      - gtk4
+      - webkitgtk6.0
+    recommends:
+      - git
+      - (podman or moby-engine)
+  archlinux:
+    depends:
+      - gtk4
+      - webkitgtk-6.0
+    # nfpm can't write optdepends; the AUR PKGBUILD (packaging/aur) has them.
+    recommends: []
+
+archlinux:
+  packager: "LukasKH"
+
+scripts:
+  postinstall: "./build/linux/nfpm/scripts/postinstall.sh"
