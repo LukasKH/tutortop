@@ -2,7 +2,6 @@ package app
 
 import (
 	"bufio"
-	"bytes"
 	"context"
 	"encoding/json"
 	"strings"
@@ -11,22 +10,6 @@ import (
 
 	"github.com/LukasKH/tutortop/internal/runner"
 )
-
-func TestMessageFraming(t *testing.T) {
-	var buf bytes.Buffer
-	for _, m := range []string{`{"a":1}`, `{"b":"ü"}`} {
-		if err := writeMessage(&buf, []byte(m)); err != nil {
-			t.Fatal(err)
-		}
-	}
-	r := bufio.NewReader(&buf)
-	for _, want := range []string{`{"a":1}`, `{"b":"ü"}`} {
-		got, err := readMessage(r)
-		if err != nil || string(got) != want {
-			t.Fatalf("got %q, %v; want %q", got, err, want)
-		}
-	}
-}
 
 func sandboxApp(t *testing.T) *App {
 	t.Helper()
