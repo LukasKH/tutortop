@@ -56,7 +56,8 @@ overrides:
     depends:
       - gtk4
       - webkitgtk-6.0
-    # nfpm can't write optdepends; the AUR PKGBUILD (packaging/aur) has them.
+    # The nfpm in Wails (v2.44.1) can't write optdepends (v2.48.0+ can);
+    # the AUR PKGBUILD (packaging/aur) has them.
     recommends: []
 
 archlinux:

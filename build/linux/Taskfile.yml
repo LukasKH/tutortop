@@ -13,7 +13,9 @@ vars:
   # Docker image for cross-compilation (used when building on non-Linux or no CC available)
   CROSS_IMAGE: wails-cross
 
-  # Package version, taken from build/config.yml (info.version).
+env:
+  # Package version for nfpm's ${VERSION} (build/linux/nfpm/tutortop.yaml),
+  # taken from build/config.yml (info.version).
   VERSION:
     sh: |
       sed -n 's/^  version: "\(.*\)".*/\1/p' "{{.ROOT_DIR}}/build/config.yml"
@@ -159,22 +161,16 @@ tasks:
     summary: Creates a deb package
     cmds:
       - wails3 tool package -name "{{.APP_NAME}}" -format deb -config ./build/linux/nfpm/tutortop.yaml -out {{.ROOT_DIR}}/bin
-    env:
-      VERSION: '{{.VERSION}}'
 
   generate:rpm:
     summary: Creates a rpm package
     cmds:
       - wails3 tool package -name "{{.APP_NAME}}" -format rpm -config ./build/linux/nfpm/tutortop.yaml -out {{.ROOT_DIR}}/bin
-    env:
-      VERSION: '{{.VERSION}}'
 
   generate:aur:
     summary: Creates a arch linux packager package
     cmds:
       - wails3 tool package -name "{{.APP_NAME}}" -format archlinux -config ./build/linux/nfpm/tutortop.yaml -out {{.ROOT_DIR}}/bin
-    env:
-      VERSION: '{{.VERSION}}'
 
   generate:dotdesktop:
     summary: Generates a `.desktop` file

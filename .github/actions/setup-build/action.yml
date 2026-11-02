@@ -27,12 +27,11 @@ runs:
             echo "Tag $GITHUB_REF_NAME isn't vX.Y.Z" >&2
             exit 1
           fi
-          sed -i.bak -E "s/^  version: \"[^\"]*\"/  version: \"$version\"/" build/config.yml
-          rm build/config.yml.bak
+          version="$version" yq -i '.info.version = strenv(version)' build/config.yml
           # Writes the version into Info.plist, info.json, the NSIS script and the exe manifest.
           wails3 task common:update:build-assets
         else
-          version=$(sed -n -E 's/^  version: "([^"]*)".*/\1/p' build/config.yml)
+          version=$(yq '.info.version' build/config.yml)
         fi
         echo "VERSION=$version" >> "$GITHUB_ENV"
         echo "Building version $version"

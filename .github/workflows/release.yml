@@ -35,7 +35,6 @@ jobs:
       - name: Linux packages
         run: |
           wails3 task linux:build
-          wails3 task linux:generate:dotdesktop
           wails3 task linux:generate:deb
           wails3 task linux:generate:rpm
           wails3 task linux:generate:aur

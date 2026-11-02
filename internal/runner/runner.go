@@ -85,21 +85,19 @@ type Runner struct {
 }
 
 // New uses the engine in TUTORTOP_RUNNER, or else Docker if it's installed,
-// or else Podman.
+// or else Podman. With neither installed it keeps "docker", and Check says
+// how to get one.
 func New() *Runner {
-	return &Runner{Engine: pickEngine(os.Getenv("TUTORTOP_RUNNER"), exec.LookPath), prepared: map[string]bool{}}
-}
-
-func pickEngine(env string, lookPath func(string) (string, error)) string {
-	if env != "" {
-		return env
-	}
-	for _, engine := range []string{"docker", "podman"} {
-		if _, err := lookPath(engine); err == nil {
-			return engine
+	engine := os.Getenv("TUTORTOP_RUNNER")
+	if engine == "" {
+		engine = "docker"
+		if _, err := exec.LookPath("docker"); err != nil {
+			if _, err := exec.LookPath("podman"); err == nil {
+				engine = "podman"
+			}
 		}
 	}
-	return "docker" // neither is installed; Check explains how to get one
+	return &Runner{Engine: engine, prepared: map[string]bool{}}
 }
 
 // Check reports whether the sandbox is usable, with a fix-it hint if not.
@@ -107,20 +105,18 @@ func (r *Runner) Check(ctx context.Context) error {
 	if r.Engine == "local" {
 		return nil
 	}
-	format := "{{.ServerVersion}}"
-	if r.Engine == "podman" {
-		format = "{{.Version.Version}}"
-	}
-	out, err := exec.CommandContext(ctx, r.Engine, "info", "--format", format).CombinedOutput()
+	// Works for both engines, and for Podman's `docker` shim: it fails when
+	// Docker's daemon or the Podman machine can't be reached.
+	out, err := exec.CommandContext(ctx, r.Engine, "version", "--format", "{{.Server.Version}}").CombinedOutput()
 	if err != nil {
-		return engineHint(r.Engine, runtime.GOOS, strings.TrimSpace(string(out)), errors.Is(err, exec.ErrNotFound))
+		return engineHint(r.Engine, strings.TrimSpace(string(out)), errors.Is(err, exec.ErrNotFound))
 	}
 	return nil
 }
 
-// engineHint turns a failed `<engine> info` into a fix the learner can act on.
-func engineHint(engine, goos, output string, notFound bool) error {
-	desktop := goos == "windows" || goos == "darwin"
+// engineHint turns a failed `<engine> version` into a fix the learner can act on.
+func engineHint(engine, output string, notFound bool) error {
+	desktop := runtime.GOOS == "windows" || runtime.GOOS == "darwin"
 	switch {
 	case notFound && desktop:
 		return errors.New("install Docker Desktop (or Podman Desktop), then restart Tutortop")
@@ -128,7 +124,7 @@ func engineHint(engine, goos, output string, notFound bool) error {
 		return errors.New("install docker or podman with your package manager, then restart Tutortop")
 	case engine == "podman" && desktop:
 		return fmt.Errorf("can't reach Podman. Start it with `podman machine start`: %s", output)
-	case strings.Contains(output, "permission denied") && goos == "linux":
+	case strings.Contains(output, "permission denied") && runtime.GOOS == "linux":
 		return errors.New("can't reach Docker (permission denied). Add yourself to the docker group: `sudo usermod -aG docker $USER`, then log out and back in")
 	case desktop:
 		return fmt.Errorf("can't reach Docker. Start Docker Desktop: %s", output)
