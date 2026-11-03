@@ -102,9 +102,9 @@ type (
 		Gate      *runner.GateReport `json:"gate,omitempty"`
 		Report    string             `json:"report"`
 	}
-	// GateEvent tells the UI a new task, or a new language's sandbox (Kind
+	// Gate tells the UI a new task, or a new language's sandbox (Kind
 	// "toolchain"), is being checked.
-	GateEvent struct {
+	Gate struct {
 		Kind      string `json:"kind,omitempty"`
 		Objective string `json:"objective,omitempty"` // for a task: whose writer is checking it
 		Title     string `json:"title"`
@@ -154,7 +154,7 @@ func (h *mcpHost) newServer(w *workspace.Workspace, thread string) *mcp.Server {
 		if err := w.SetQuestions(&in); err != nil {
 			return nil, nil, err
 		}
-		a.emit(w.ID, "questions", in)
+		emit(questionsAsked, QuestionsEvent{Workspace: w.ID, Questions: in})
 		return textResult("The learner can see the questions now. End your turn; the answers will arrive as the next message."), nil, nil
 	})
 
@@ -166,7 +166,7 @@ func (h *mcpHost) newServer(w *workspace.Workspace, thread string) *mcp.Server {
 		if err := w.SetIcon(in.Icon); err != nil {
 			return nil, nil, err
 		}
-		a.emit(w.ID, "changed", nil)
+		emit(workspaceChanged, WorkspaceEvent{Workspace: w.ID})
 		return textResult("The workspace shows the " + in.Icon + " icon now."), nil, nil
 	})
 
@@ -180,7 +180,7 @@ func (h *mcpHost) newServer(w *workspace.Workspace, thread string) *mcp.Server {
 		if err := w.Propose(in); err != nil {
 			return nil, nil, fmt.Errorf("%w\nFix these and call propose_curriculum again", err)
 		}
-		a.emit(w.ID, "proposal", nil)
+		emit(curriculumProposed, WorkspaceEvent{Workspace: w.ID})
 		return textResult("The proposal is shown to the learner. End your turn now. If they approve, the app has writers prepare the first lessons and tasks; if they want changes, you'll get a message."), nil, nil
 	})
 
@@ -195,7 +195,7 @@ func (h *mcpHost) newServer(w *workspace.Workspace, thread string) *mcp.Server {
 		if err != nil {
 			return nil, nil, err
 		}
-		a.emit(w.ID, "gate", GateEvent{Kind: "toolchain", Title: tc.Name, Running: true})
+		emit(gateStatus, GateEvent{Workspace: w.ID, Gate: Gate{Kind: "toolchain", Title: tc.Name, Running: true}})
 		report, err := a.checkToolchain(ctx, tc, in.Example)
 		// The editor's language server is a nice-to-have: without one the
 		// editor still highlights syntax, so it doesn't fail the setup.
@@ -209,7 +209,7 @@ func (h *mcpHost) newServer(w *workspace.Workspace, thread string) *mcp.Server {
 					". To add one, fix language_server and call set_toolchain again."
 			}
 		}
-		a.emit(w.ID, "gate", GateEvent{Kind: "toolchain", Title: tc.Name, Passed: err == nil && report == ""})
+		emit(gateStatus, GateEvent{Workspace: w.ID, Gate: Gate{Kind: "toolchain", Title: tc.Name, Passed: err == nil && report == ""}})
 		if err != nil {
 			return nil, nil, fmt.Errorf("sandbox problem: %w", err)
 		}
@@ -219,7 +219,7 @@ func (h *mcpHost) newServer(w *workspace.Workspace, thread string) *mcp.Server {
 		if err := w.SaveToolchain(in.Toolchain); err != nil {
 			return nil, nil, err
 		}
-		a.emit(w.ID, "changed", nil)
+		emit(workspaceChanged, WorkspaceEvent{Workspace: w.ID})
 		return textResult(fmt.Sprintf("%s is set up. Use language %q in the curriculum.%s", tc.Name, tc.Language, note)), nil, nil
 	})
 	return s
@@ -249,12 +249,12 @@ func (h *mcpHost) addWriterTools(s *mcp.Server, w *workspace.Workspace, objectiv
 		if err != nil {
 			return nil, createTaskOutput{}, err
 		}
-		a.writerCheck(w.ID, GateEvent{Objective: spec.ObjectiveID, Title: spec.Title, Running: true})
+		a.writerCheck(w.ID, Gate{Objective: spec.ObjectiveID, Title: spec.Title, Running: true})
 		rep, err := a.runner.Gate(ctx, runner.GateInput{
 			Toolchain: tc, Starter: spec.Starter, Reference: spec.Reference,
 			Tests: spec.Tests, HiddenTests: spec.HiddenTests, Mutants: spec.Mutants,
 		})
-		a.writerCheck(w.ID, GateEvent{Objective: spec.ObjectiveID, Title: spec.Title, Passed: rep.Passed})
+		a.writerCheck(w.ID, Gate{Objective: spec.ObjectiveID, Title: spec.Title, Passed: rep.Passed})
 		if err != nil {
 			return nil, createTaskOutput{}, fmt.Errorf("sandbox problem (not your fault, tell the learner): %w", err)
 		}
@@ -269,7 +269,7 @@ func (h *mcpHost) addWriterTools(s *mcp.Server, w *workspace.Workspace, objectiv
 		}
 		out.Published, out.TaskID = true, info.ID
 		out.Report += "Task " + info.ID + " is now available to the learner."
-		a.emit(w.ID, "task", info)
+		emit(taskPublished, TaskEvent{Workspace: w.ID, Task: info})
 		return nil, out, nil
 	})
 
@@ -291,7 +291,7 @@ func (h *mcpHost) addWriterTools(s *mcp.Server, w *workspace.Workspace, objectiv
 		if err != nil {
 			return nil, nil, err
 		}
-		a.emit(w.ID, "lesson", info)
+		emit(lessonPublished, LessonEvent{Workspace: w.ID, Lesson: info})
 		return textResult("The lesson " + info.ID + " is available to the learner. Now create the task for this objective, if it doesn't have one."), nil, nil
 	})
 }

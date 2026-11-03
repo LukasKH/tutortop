@@ -9,7 +9,47 @@ import type {} from "../github.com/wailsapp/wails/v3/internal/eventdata.js";
 import "../github.com/wailsapp/wails/v3/internal/eventcreate.js";
 
 /**
- * Name of the custom event "tutortop".
+ * Name of the custom event "chat:message".
  */
-export const Tutortop = "tutortop";
+export const ChatMessage = "chat:message";
+
+/**
+ * Name of the custom event "curriculum:proposed".
+ */
+export const CurriculumProposed = "curriculum:proposed";
+
+/**
+ * Name of the custom event "gate:status".
+ */
+export const GateStatus = "gate:status";
+
+/**
+ * Name of the custom event "lesson:published".
+ */
+export const LessonPublished = "lesson:published";
+
+/**
+ * Name of the custom event "lsp:message".
+ */
+export const LspMessage = "lsp:message";
+
+/**
+ * Name of the custom event "questions:asked".
+ */
+export const QuestionsAsked = "questions:asked";
+
+/**
+ * Name of the custom event "task:published".
+ */
+export const TaskPublished = "task:published";
+
+/**
+ * Name of the custom event "thread:busy".
+ */
+export const ThreadBusy = "thread:busy";
+
+/**
+ * Name of the custom event "workspace:changed".
+ */
+export const WorkspaceChanged = "workspace:changed";
 

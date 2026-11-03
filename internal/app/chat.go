@@ -214,7 +214,7 @@ func (a *App) send(w *workspace.Workspace, thread string, m message) error {
 func (a *App) post(w *workspace.Workspace, item workspace.ChatItem) {
 	item.ID, item.At = uuid.New().String(), time.Now()
 	_ = w.AppendChat(item)
-	a.emit(w.ID, "chat", item)
+	emit(chatMessage, ChatEvent{Workspace: w.ID, Item: item})
 }
 
 // postFailure shows a problem in a thread as a red notice.
@@ -245,7 +245,7 @@ func (a *App) session(w *workspace.Workspace, thread string) (*agentSession, err
 	}
 	s.busy = true
 	a.mu.Unlock()
-	a.emit(w.ID, "busy", busyEvent{Thread: thread, Busy: true})
+	emit(threadBusy, BusyEvent{Workspace: w.ID, Thread: thread, Busy: true})
 	return s, a.waitStarted(w, s)
 }
 
@@ -403,11 +403,6 @@ func roleInstructions(w *workspace.Workspace, thread string) string {
 	return strings.NewReplacer("{{id}}", id, "{{title}}", cmp.Or(title, id)).Replace(role)
 }
 
-type busyEvent struct {
-	Thread string `json:"thread"`
-	Busy   bool   `json:"busy"`
-}
-
 // retire ends a writer after its turn, unless more work was queued for it.
 // It leaves the sessions before it stops showing as busy, so a new request
 // for the same objective starts a new writer instead of queueing on this one.
@@ -422,7 +417,7 @@ func (a *App) retire(key threadKey, s *agentSession) bool {
 	}
 	s.busy = false
 	a.mu.Unlock()
-	a.emit(key.ws, "busy", busyEvent{Thread: s.thread, Busy: false})
+	emit(threadBusy, BusyEvent{Workspace: key.ws, Thread: s.thread, Busy: false})
 	return true
 }
 
@@ -430,7 +425,7 @@ func (a *App) setBusy(wsID string, s *agentSession, busy bool) {
 	a.mu.Lock()
 	s.busy = busy
 	a.mu.Unlock()
-	a.emit(wsID, "busy", busyEvent{Thread: s.thread, Busy: busy})
+	emit(threadBusy, BusyEvent{Workspace: wsID, Thread: s.thread, Busy: busy})
 }
 
 // turnState turns agent events into chat items. Streaming text is sent to
@@ -457,7 +452,7 @@ func (t *turnState) handle(ev agent.Event) {
 			t.current = &workspace.ChatItem{ID: uuid.New().String(), Thread: t.thread, Role: workspace.RoleAssistant, At: time.Now()}
 		}
 		t.current.Text += ev.Text
-		a.emit(w.ID, "chat", *t.current)
+		emit(chatMessage, ChatEvent{Workspace: w.ID, Item: *t.current})
 	case agent.EventTool:
 		t.endText()
 		tool := ev.Tool
@@ -477,7 +472,7 @@ func (t *turnState) handle(ev agent.Event) {
 			return
 		}
 		item.Status = tool.Status
-		a.emit(w.ID, "chat", *item)
+		emit(chatMessage, ChatEvent{Workspace: w.ID, Item: *item})
 		if tool.Status != agent.ToolRunning {
 			_ = w.AppendChat(*item)
 		}
@@ -502,7 +497,7 @@ func (t *turnState) flush() {
 		}
 	}
 	clear(t.tools)
-	t.app.emit(t.ws.ID, "changed", nil)
+	emit(workspaceChanged, WorkspaceEvent{Workspace: t.ws.ID})
 }
 
 // mcpName is the name the tutor knows Tutortop's MCP server by.

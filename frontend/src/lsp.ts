@@ -3,7 +3,8 @@
 // this maps them onto Monaco: completions, hover, signature help, errors
 // and formatting. Positions are UTF-16 in both, so only the base differs
 // (LSP counts from 0, Monaco from 1).
-import { App, errorText, onAppEvent } from "./api";
+import { Events } from "@wailsio/runtime";
+import { App, AppEvents, errorText } from "./api";
 import { monaco } from "./monaco";
 
 type M = typeof monaco;
@@ -93,10 +94,10 @@ export class LanguageClient {
       if (!info.id) return this.onStatus("off");
       this.id = info.id;
       this.root = info.rootUri;
-      this.unsubscribe = onAppEvent((ev) => {
-        if (ev.kind !== "lsp" || ev.data.id !== this.id) return;
-        if (ev.data.closed) this.stopped();
-        else this.receive(JSON.parse(ev.data.message));
+      this.unsubscribe = Events.On(AppEvents.LspMessage, ({ data }) => {
+        if (data.id !== this.id) return;
+        if (data.closed) this.stopped();
+        else this.receive(JSON.parse(data.message));
       });
       const res = await this.request("initialize", {
         processId: null,

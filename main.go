@@ -13,25 +13,16 @@ import (
 //go:embed all:frontend/dist
 var assets embed.FS
 
-func init() {
-	application.RegisterEvent[app.Event]("tutortop")
-}
-
 func main() {
 	// Before anything looks up claude, codex, docker or git.
 	shellpath.Fix()
 
-	var wails *application.App
-	svc, err := app.New(func(name string, data any) {
-		if wails != nil {
-			wails.Event.Emit(name, data)
-		}
-	})
+	svc, err := app.New()
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	wails = application.New(application.Options{
+	wails := application.New(application.Options{
 		Name:        "Tutortop",
 		Description: "Learn anything verifiable, with your own AI tutor",
 		Services:    []application.Service{application.NewService(svc)},

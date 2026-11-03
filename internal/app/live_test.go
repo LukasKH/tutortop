@@ -4,7 +4,6 @@ package app
 
 import (
 	"os"
-	"sync"
 	"testing"
 	"time"
 
@@ -20,22 +19,7 @@ func TestLiveInterview(t *testing.T) {
 		provider = "claude"
 	}
 
-	var mu sync.Mutex
-	var kinds []string
-	var questions any
-	idle := make(chan struct{}, 8)
-	a := newTestApp(t, func(_ string, data any) {
-		ev := data.(Event)
-		mu.Lock()
-		defer mu.Unlock()
-		kinds = append(kinds, ev.Kind)
-		if ev.Kind == "questions" {
-			questions = ev.Data
-		}
-		if b, ok := ev.Data.(busyEvent); ev.Kind == "busy" && ok && !b.Busy {
-			idle <- struct{}{}
-		}
-	})
+	a := newTestApp(t)
 	defer a.ServiceShutdown()
 
 	if err := a.SaveSettings(Settings{Agent: provider}); err != nil {
@@ -45,19 +29,21 @@ func TestLiveInterview(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	select {
-	case <-idle:
-	case <-time.After(4 * time.Minute):
-		t.Fatal("tutor didn't finish its first turn")
+	// The tutor's questions show up in the workspace once it calls ask_user.
+	var questions *workspace.Questions
+	for deadline := time.Now().Add(4 * time.Minute); questions == nil && time.Now().Before(deadline); time.Sleep(2 * time.Second) {
+		st, err := a.Workspace(id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		questions = st.Questions
 	}
 	chat, _ := a.Chat(id, workspace.PlanThread)
 	for _, c := range chat {
 		t.Logf("%-9s %-7s %s", c.Role, c.Status, text.Truncate(c.Text, 300))
 	}
-	mu.Lock()
-	defer mu.Unlock()
 	if questions == nil {
-		t.Fatalf("tutor didn't call ask_user; events: %v", kinds)
+		t.Fatal("tutor didn't call ask_user")
 	}
-	t.Logf("questions: %+v", questions)
+	t.Logf("questions: %+v", *questions)
 }

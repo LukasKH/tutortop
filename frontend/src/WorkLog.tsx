@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { plural, type ChatItem, type GateEvent } from "./api";
+import { plural, type ChatItem, type Gate } from "./api";
 import { ChevronDown, Spinner } from "./icons";
 import { Markdown } from "./Markdown";
 
@@ -7,7 +7,7 @@ type Props = {
   /** One stretch of the planning conversation: what the tutor did since the learner last wrote. */
   items: ChatItem[];
   busy: boolean;
-  gate?: GateEvent | null;
+  gate?: Gate | null;
   lang?: string;
   onStop?: () => void;
 };

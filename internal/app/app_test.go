@@ -19,7 +19,7 @@ import (
 // AI: propose → approve → create_task (quality gate) → learner submits.
 // Set TUTORTOP_RUNNER=local to run without Docker.
 func TestToolsEndToEnd(t *testing.T) {
-	a := newTestApp(t, nil)
+	a := newTestApp(t)
 	var prompts []string
 	a.startAgent = func(_ context.Context, _ string, _ agent.Options, _ func(agent.Event)) (agent.Session, error) {
 		return &fakeSession{prompts: &prompts}, nil
@@ -168,9 +168,9 @@ func TestToolsEndToEnd(t *testing.T) {
 
 // newTestApp keeps a test's workspaces in temp dirs. (Setting XDG_DATA_HOME
 // wouldn't work: adrg/xdg reads it once at startup.)
-func newTestApp(t *testing.T, emit Emitter) *App {
+func newTestApp(t *testing.T) *App {
 	t.Helper()
-	a, err := New(emit)
+	a, err := New()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -187,7 +187,7 @@ func newTestApp(t *testing.T, emit Emitter) *App {
 // sandboxApp is newTestApp for tests that need a container engine.
 func sandboxApp(t *testing.T) *App {
 	t.Helper()
-	a := newTestApp(t, nil)
+	a := newTestApp(t)
 	if err := a.runner.Check(context.Background()); err != nil {
 		t.Skip(err)
 	}
@@ -289,7 +289,7 @@ func TestEmpty(t *testing.T) {
 // Each chat thread gets its own tutor session, MCP endpoint and role, and
 // answers to a form go back to the thread that asked.
 func TestThreadsGetOwnSessions(t *testing.T) {
-	a := newTestApp(t, nil)
+	a := newTestApp(t)
 	type started struct {
 		opts    agent.Options
 		prompts []string

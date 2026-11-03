@@ -36,14 +36,10 @@ var (
 	writerRole string
 )
 
-// Emitter sends an event to the frontend.
-type Emitter func(name string, data any)
-
 type App struct {
 	store  *workspace.Store
 	runner *runner.Runner
 	mcp    *mcpHost
-	emitFn Emitter
 
 	// startAgent is agent.Start; tests replace it.
 	startAgent func(ctx context.Context, provider string, opts agent.Options, onEvent func(agent.Event)) (agent.Session, error)
@@ -53,7 +49,7 @@ type App struct {
 	mu          sync.Mutex
 	sessions    map[threadKey]*agentSession // live tutor per chat thread
 	lastResults map[threadKey]runner.Result // latest check per task, for tutor context
-	checks      map[threadKey]GateEvent     // a writer's latest sandbox check, by objective, while it works
+	checks      map[threadKey]Gate          // a writer's latest sandbox check, by objective, while it works
 	servers     map[string]*languageServer  // running language servers by id
 
 	settingsMu   sync.Mutex
@@ -61,8 +57,8 @@ type App struct {
 	models       map[string]modelList // provider -> recently listed models
 }
 
-func New(emit Emitter) (*App, error) {
-	a := &App{runner: runner.New(), emitFn: emit, sessions: map[threadKey]*agentSession{}, lastResults: map[threadKey]runner.Result{}, checks: map[threadKey]GateEvent{}, servers: map[string]*languageServer{}, startAgent: agent.Start, linkCheck: checkLinks,
+func New() (*App, error) {
+	a := &App{runner: runner.New(), sessions: map[threadKey]*agentSession{}, lastResults: map[threadKey]runner.Result{}, checks: map[threadKey]Gate{}, servers: map[string]*languageServer{}, startAgent: agent.Start, linkCheck: checkLinks,
 		settingsPath: filepath.Join(xdg.ConfigHome, "tutortop", "settings.yaml"), models: map[string]modelList{}}
 	// The workspaces folder: TUTORTOP_HOME, else the one chosen in the
 	// settings, else ~/Tutortop. It's fixed for the run: live sessions open
@@ -74,19 +70,6 @@ func New(emit Emitter) (*App, error) {
 	}
 	a.mcp = h
 	return a, nil
-}
-
-// Event is the single event type the frontend listens to.
-type Event struct {
-	Workspace string `json:"workspace"`
-	Kind      string `json:"kind"`
-	Data      any    `json:"data,omitempty"`
-}
-
-func (a *App) emit(wsID, kind string, data any) {
-	if a.emitFn != nil {
-		a.emitFn("tutortop", Event{Workspace: wsID, Kind: kind, Data: data})
-	}
 }
 
 // ServiceShutdown is called by Wails on exit and stops all agent processes
@@ -271,7 +254,7 @@ type WorkspaceState struct {
 	Questions  *workspace.Questions     `json:"questions"`
 	Busy       map[string]bool          `json:"busy"` // thread -> its tutor or writer is working
 	// Checks are writers' latest sandbox checks of new tasks, by objective.
-	Checks map[string]GateEvent `json:"checks"`
+	Checks map[string]Gate `json:"checks"`
 }
 
 func (a *App) Workspace(id string) (WorkspaceState, error) {
@@ -288,7 +271,7 @@ func (a *App) Workspace(id string) (WorkspaceState, error) {
 	st.Lessons, _ = w.LessonStatuses()
 	st.Questions = w.PendingQuestions()
 	st.Busy = map[string]bool{}
-	st.Checks = map[string]GateEvent{}
+	st.Checks = map[string]Gate{}
 	a.mu.Lock()
 	for key, s := range a.sessions {
 		if key.ws == id && s.busy {
@@ -317,7 +300,7 @@ func (a *App) ApproveProposal(wsID string) error {
 	if err != nil {
 		return err
 	}
-	a.emit(wsID, "changed", nil)
+	emit(workspaceChanged, WorkspaceEvent{Workspace: wsID})
 	a.prepare(w, c.Language)
 	// The tutor panel hides the plan thread up to the first of these notices
 	// (afterSetup in frontend/src/api.ts); keep the wording's start.
@@ -338,7 +321,7 @@ func (a *App) SaveMission(wsID, mission string) error {
 	if err != nil || !changed {
 		return err
 	}
-	a.emit(wsID, "changed", nil)
+	emit(workspaceChanged, WorkspaceEvent{Workspace: wsID})
 	go a.send(w, workspace.PlanThread, message{
 		Role:  workspace.RoleNotice,
 		Shown: "You edited your mission.",
@@ -356,7 +339,7 @@ func (a *App) RejectProposal(wsID, feedback string) error {
 	if err := w.DiscardProposal(); err != nil {
 		return err
 	}
-	a.emit(wsID, "changed", nil)
+	emit(workspaceChanged, WorkspaceEvent{Workspace: wsID})
 	text := "I'd like changes to the proposed curriculum: " + feedback
 	go a.send(w, workspace.PlanThread, message{Role: workspace.RoleUser, Shown: text, Agent: text})
 	return nil
@@ -381,7 +364,7 @@ func (a *App) AnswerQuiz(wsID, lessonID string, question, choice int) (workspace
 	}
 	r, err := w.AnswerQuiz(lessonID, question, choice)
 	if err == nil {
-		a.emit(wsID, "changed", nil)
+		emit(workspaceChanged, WorkspaceEvent{Workspace: wsID})
 	}
 	return r, err
 }
@@ -441,7 +424,7 @@ func (a *App) RunChecks(wsID, taskID string, files runner.Files, submit bool) (r
 	p, t := res.Counts()
 	firstPass := submit && res.Status == runner.StatusPassed && !w.TaskPassed(taskID)
 	_ = w.RecordAttempt(workspace.Attempt{TaskID: taskID, Kind: kind, Status: res.Status, Passed: p, Total: t})
-	a.emit(wsID, "changed", nil)
+	emit(workspaceChanged, WorkspaceEvent{Workspace: wsID})
 	if firstPass {
 		w.Commit("Pass " + taskID)
 		d, _ := w.Task(taskID)

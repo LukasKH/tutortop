@@ -96,6 +96,17 @@ export interface LessonDetail {
 }
 
 /**
+ * LessonInfo is lesson.yaml.
+ */
+export interface LessonInfo {
+    "id": string;
+    "title": string;
+    "objective": string;
+    "questions": number;
+    "createdAt": string;
+}
+
+/**
  * LessonStatus is a lesson plus how far the learner got with its quiz.
  */
 export interface LessonStatus {
@@ -235,6 +246,23 @@ export interface TaskDetail {
      */
     "editorLanguage": string;
     "hasLanguageServer": boolean;
+}
+
+/**
+ * TaskInfo is task.yaml.
+ */
+export interface TaskInfo {
+    "id": string;
+    "title": string;
+    "objective": string;
+    "language": string;
+    "size": string;
+
+    /**
+     * learner-editable files
+     */
+    "files": string[] | null;
+    "createdAt": string;
 }
 
 /**

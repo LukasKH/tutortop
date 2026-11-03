@@ -12,10 +12,11 @@ import {
   objectiveOfWriter,
   todoOfKey,
   upsertChat,
-  useAppEvents,
+  AppEvents,
+  useEvent,
   writerThread,
   type ChatItem,
-  type GateEvent,
+  type Gate,
   type QuestionForm,
   type WorkspaceState,
 } from "./api";
@@ -101,8 +102,8 @@ export function WorkspaceView({ id, tutor, onSettings, onBack }: Props) {
   const [questions, setQuestions] = useState<QuestionForm | null>(null);
   // The planning tutor's sandbox check (a new language), shown in the chat's
   // status line. Writers' checks of new exercises show on their objective.
-  const [gate, setGate] = useState<GateEvent | null>(null);
-  const [checks, setChecks] = useState<Record<string, GateEvent | undefined>>({});
+  const [gate, setGate] = useState<Gate | null>(null);
+  const [checks, setChecks] = useState<Record<string, Gate | undefined>>({});
   // Why an objective's writer stopped, if it failed.
   const [writeFailed, setWriteFailed] = useState<Record<string, string | undefined>>({});
   const [newTask, setNewTask] = useState<NewItem | null>(null);
@@ -151,7 +152,7 @@ export function WorkspaceView({ id, tutor, onSettings, onBack }: Props) {
       if (mine !== seq.current) return null;
       setWs(s);
       setBusy((cur) => newer<boolean | undefined>(s.busy ?? {}, cur, "busy:"));
-      setChecks((cur) => newer<GateEvent | undefined>(s.checks ?? {}, cur, "check:"));
+      setChecks((cur) => newer<Gate | undefined>(s.checks ?? {}, cur, "check:"));
       setQuestions(s.questions ?? null);
       setLoadError("");
       setTaskId((cur) => resolveOpen(s, cur));
@@ -196,86 +197,83 @@ export function WorkspaceView({ id, tutor, onSettings, onBack }: Props) {
     if (chatOpen) setUnread((u) => (u[thread] ? { ...u, [thread]: false } : u));
   }, [thread, chatOpen]);
 
-  useAppEvents((ev) => {
-    if (ev.workspace !== id) return;
-    switch (ev.kind) {
-      case "chat": {
-        const item = ev.data;
-        const t = item.thread || PLAN;
-        // Writers aren't chats; only their failures matter here.
-        const writing = objectiveOfWriter(t);
-        if (writing) {
-          if (item.status === "failed") setWriteFailed((f) => ({ ...f, [writing]: item.text }));
-          break;
-        }
-        setThreads((all) => ({ ...all, [t]: upsertChat(all[t] ?? [], item) }));
-        if (t !== thread || !chatOpen) setUnread((u) => (u[t] ? u : { ...u, [t]: true }));
-        break;
-      }
-      case "busy": {
-        const b = ev.data;
-        const t = b.thread || PLAN;
-        changed(`busy:${t}`);
-        setBusy((all) => ({ ...all, [t]: b.busy }));
-        // A writer starting or finishing starts its objective's status afresh.
-        const writing = objectiveOfWriter(t);
-        if (writing) {
-          changed(`check:${writing}`);
-          setChecks((c) => ({ ...c, [writing]: undefined }));
-          if (b.busy) setWriteFailed((f) => ({ ...f, [writing]: undefined }));
-        }
-        // A finished gate result is only interesting while the plan thread works on it.
-        if (t === PLAN && !b.busy) setGate((g) => (g?.running ? g : null));
-        break;
-      }
-      case "changed":
-        refresh();
-        break;
-      case "questions":
-        setQuestions(ev.data);
-        break;
-      case "proposal":
-        refresh().then((s) => s?.proposal && setView("proposal"));
-        break;
-      case "gate": {
-        const g = ev.data;
-        if (g.objective) {
-          changed(`check:${g.objective}`);
-          setChecks((c) => ({ ...c, [g.objective!]: g }));
-        } else setGate(g);
-        break;
-      }
-      case "task": {
-        const info = ev.data;
-        refresh();
-        if (todo?.part === "exercise" && todo.objective === info.objective) {
-          openTask(info.id);
-        } else if (!taskId) {
-          openTask(info.id);
-        } else if (ws?.tasks?.find((t) => t.id === taskId)?.passed) {
-          // Tasks are written ahead in the background; only point at a new one
-          // once the learner is done with the open task. Its lesson, if
-          // announced, comes first.
-          setNewTask((cur) => (cur?.kind === "lesson" ? cur : { id: info.id, title: info.title, kind: "task" }));
-        }
-        break;
-      }
-      case "lesson": {
-        const info = ev.data;
-        refresh();
-        if (todo?.part === "lesson" && todo.objective === info.objective) {
-          openTask(lessonKey(info.id));
-        } else if (!taskId) {
-          openTask(lessonKey(info.id));
-        } else if (ws?.tasks?.find((t) => t.id === taskId)?.passed) {
-          setNewTask({
-            id: lessonKey(info.id),
-            title: info.title,
-            kind: "lesson",
-          });
-        }
-        break;
-      }
+  useEvent(AppEvents.ChatMessage, ({ workspace, item }) => {
+    if (workspace !== id) return;
+    const t = item.thread || PLAN;
+    // Writers aren't chats; only their failures matter here.
+    const writing = objectiveOfWriter(t);
+    if (writing) {
+      if (item.status === "failed") setWriteFailed((f) => ({ ...f, [writing]: item.text }));
+      return;
+    }
+    setThreads((all) => ({ ...all, [t]: upsertChat(all[t] ?? [], item) }));
+    if (t !== thread || !chatOpen) setUnread((u) => (u[t] ? u : { ...u, [t]: true }));
+  });
+
+  useEvent(AppEvents.ThreadBusy, (b) => {
+    if (b.workspace !== id) return;
+    const t = b.thread || PLAN;
+    changed(`busy:${t}`);
+    setBusy((all) => ({ ...all, [t]: b.busy }));
+    // A writer starting or finishing starts its objective's status afresh.
+    const writing = objectiveOfWriter(t);
+    if (writing) {
+      changed(`check:${writing}`);
+      setChecks((c) => ({ ...c, [writing]: undefined }));
+      if (b.busy) setWriteFailed((f) => ({ ...f, [writing]: undefined }));
+    }
+    // A finished gate result is only interesting while the plan thread works on it.
+    if (t === PLAN && !b.busy) setGate((g) => (g?.running ? g : null));
+  });
+
+  useEvent(AppEvents.WorkspaceChanged, ({ workspace }) => {
+    if (workspace === id) refresh();
+  });
+
+  useEvent(AppEvents.QuestionsAsked, ({ workspace, questions }) => {
+    if (workspace === id) setQuestions(questions);
+  });
+
+  useEvent(AppEvents.CurriculumProposed, ({ workspace }) => {
+    if (workspace === id) refresh().then((s) => s?.proposal && setView("proposal"));
+  });
+
+  useEvent(AppEvents.GateStatus, ({ workspace, gate: g }) => {
+    if (workspace !== id) return;
+    if (g.objective) {
+      changed(`check:${g.objective}`);
+      setChecks((c) => ({ ...c, [g.objective!]: g }));
+    } else setGate(g);
+  });
+
+  useEvent(AppEvents.TaskPublished, ({ workspace, task }) => {
+    if (workspace !== id) return;
+    refresh();
+    if (todo?.part === "exercise" && todo.objective === task.objective) {
+      openTask(task.id);
+    } else if (!taskId) {
+      openTask(task.id);
+    } else if (ws?.tasks?.find((t) => t.id === taskId)?.passed) {
+      // Tasks are written ahead in the background; only point at a new one
+      // once the learner is done with the open task. Its lesson, if
+      // announced, comes first.
+      setNewTask((cur) => (cur?.kind === "lesson" ? cur : { id: task.id, title: task.title, kind: "task" }));
+    }
+  });
+
+  useEvent(AppEvents.LessonPublished, ({ workspace, lesson }) => {
+    if (workspace !== id) return;
+    refresh();
+    if (todo?.part === "lesson" && todo.objective === lesson.objective) {
+      openTask(lessonKey(lesson.id));
+    } else if (!taskId) {
+      openTask(lessonKey(lesson.id));
+    } else if (ws?.tasks?.find((t) => t.id === taskId)?.passed) {
+      setNewTask({
+        id: lessonKey(lesson.id),
+        title: lesson.title,
+        kind: "lesson",
+      });
     }
   });
 

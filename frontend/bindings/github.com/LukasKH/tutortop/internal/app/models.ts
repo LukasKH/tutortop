@@ -5,6 +5,23 @@
 // @ts-ignore: Unused imports
 import * as workspace$0 from "../workspace/models.js";
 
+/**
+ * BusyEvent tells when a thread's tutor or writer starts or stops working.
+ */
+export interface BusyEvent {
+    "workspace": string;
+    "thread": string;
+    "busy": boolean;
+}
+
+/**
+ * ChatEvent is a new or updated chat message.
+ */
+export interface ChatEvent {
+    "workspace": string;
+    "item": workspace$0.ChatItem;
+}
+
 export interface Environment {
     "providers": ProviderStatus[] | null;
     "sandboxOk": boolean;
@@ -20,19 +37,10 @@ export interface Environment {
 }
 
 /**
- * Event is the single event type the frontend listens to.
- */
-export interface Event {
-    "workspace": string;
-    "kind": string;
-    "data"?: any;
-}
-
-/**
- * GateEvent tells the UI a new task, or a new language's sandbox (Kind
+ * Gate tells the UI a new task, or a new language's sandbox (Kind
  * "toolchain"), is being checked.
  */
-export interface GateEvent {
+export interface Gate {
     "kind"?: string;
 
     /**
@@ -42,6 +50,24 @@ export interface GateEvent {
     "title": string;
     "running": boolean;
     "passed": boolean;
+}
+
+/**
+ * GateEvent tells how a sandbox check of a new task or toolchain is going.
+ */
+export interface GateEvent {
+    "workspace": string;
+    "gate": Gate;
+}
+
+/**
+ * LSPEvent carries one message from a language server to the editor, or
+ * tells it the server has stopped.
+ */
+export interface LSPEvent {
+    "id": string;
+    "message": string;
+    "closed": boolean;
 }
 
 /**
@@ -56,11 +82,27 @@ export interface LanguageServerInfo {
     "rootUri": string;
 }
 
+/**
+ * LessonEvent announces a newly published lesson.
+ */
+export interface LessonEvent {
+    "workspace": string;
+    "lesson": workspace$0.LessonInfo;
+}
+
 export interface ProviderStatus {
     "id": string;
     "name": string;
     "installed": boolean;
     "path"?: string;
+}
+
+/**
+ * QuestionsEvent carries the tutor's questions for the learner.
+ */
+export interface QuestionsEvent {
+    "workspace": string;
+    "questions": workspace$0.Questions;
 }
 
 /**
@@ -87,12 +129,24 @@ export interface Settings {
 }
 
 /**
+ * TaskEvent announces a newly published task.
+ */
+export interface TaskEvent {
+    "workspace": string;
+    "task": workspace$0.TaskInfo;
+}
+
+/**
  * TutorChoice is an agent's model and reasoning effort. Empty fields use the
  * agent's own defaults.
  */
 export interface TutorChoice {
     "model": string;
     "effort": string;
+}
+
+export interface WorkspaceEvent {
+    "workspace": string;
 }
 
 /**
@@ -119,5 +173,5 @@ export interface WorkspaceState {
     /**
      * Checks are writers' latest sandbox checks of new tasks, by objective.
      */
-    "checks": { [_ in string]?: GateEvent } | null;
+    "checks": { [_ in string]?: Gate } | null;
 }

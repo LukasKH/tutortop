@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { type ChatItem, type GateEvent, type QuestionForm } from "./api";
+import { type ChatItem, type Gate, type QuestionForm } from "./api";
 import { QuestionsForm } from "./Questions";
 import { AutoTextarea, ErrorText, usePending } from "./ui";
 import { WorkLog } from "./WorkLog";
@@ -8,7 +8,7 @@ type Props = {
   /** The planning conversation so far. */
   items: ChatItem[];
   busy: boolean;
-  gate: GateEvent | null;
+  gate: Gate | null;
   questions: QuestionForm | null;
   lang?: string;
   onAnswer: (answers: Record<string, string>) => Promise<void>;

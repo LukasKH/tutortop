@@ -29,7 +29,7 @@ func (a *App) writeObjective(w *workspace.Workspace, o workspace.Objective, why 
 	s := a.startSession(w, thread, cfg)
 	s.busy = true
 	a.mu.Unlock()
-	a.emit(w.ID, "busy", busyEvent{Thread: thread, Busy: true})
+	emit(threadBusy, BusyEvent{Workspace: w.ID, Thread: thread, Busy: true})
 
 	if err := a.waitStarted(w, s); err != nil {
 		a.postFailure(w, thread, err.Error())
@@ -41,11 +41,11 @@ func (a *App) writeObjective(w *workspace.Workspace, o workspace.Objective, why 
 
 // writerCheck records and shows how a writer's sandbox check of its task is
 // going, so the objective's page shows it even after the learner looks away.
-func (a *App) writerCheck(wsID string, ev GateEvent) {
+func (a *App) writerCheck(wsID string, g Gate) {
 	a.mu.Lock()
-	a.checks[threadKey{wsID, ev.Objective}] = ev
+	a.checks[threadKey{wsID, g.Objective}] = g
 	a.mu.Unlock()
-	a.emit(wsID, "gate", ev)
+	emit(gateStatus, GateEvent{Workspace: wsID, Gate: g})
 }
 
 // keepReady starts writers for the next unpassed objectives in plan order
