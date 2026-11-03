@@ -1,0 +1,206 @@
+/* Rendered markdown: lesson theory, task statements, the mission, tutor replies.
+   The Markdown component renders plain elements, so they are styled here by
+   element rather than with utility classes. */
+
+/* ---------- prose: statements, mission, tutor replies ---------- */
+
+/* ```diff: a change, line by line */
+.prose pre.diff code {
+  display: flex;
+  flex-direction: column;
+}
+.prose pre.diff span {
+  margin: 0 -12px;
+  padding: 0 12px;
+  white-space: pre;
+}
+.prose pre.diff .diff-add {
+  background: rgb(85 184 134 / 0.1);
+  color: #a6d189;
+}
+.prose pre.diff .diff-del {
+  background: rgb(229 104 79 / 0.1);
+  color: #e5968a;
+}
+.prose pre.diff .diff-ctx {
+  color: var(--muted-foreground);
+}
+
+.prose {
+  color: var(--soft-foreground);
+  line-height: 1.6;
+  overflow-wrap: break-word;
+}
+.prose > * + * {
+  margin-top: 10px;
+}
+.prose h1 {
+  margin-bottom: 10px;
+  color: var(--foreground);
+  font: 700 24px / 1.2 var(--font-sans);
+}
+.prose h2,
+.prose h3,
+.prose h4 {
+  margin-top: 20px;
+  color: var(--foreground);
+  font-size: 13px;
+  font-weight: 600;
+}
+.prose h2 + *,
+.prose h3 + * {
+  margin-top: 6px;
+}
+.prose ul,
+.prose ol {
+  padding-left: 20px;
+}
+.prose ul {
+  list-style: disc;
+}
+.prose ol {
+  list-style: decimal;
+}
+.prose li + li {
+  margin-top: 4px;
+}
+.prose li::marker {
+  color: var(--muted-foreground);
+}
+.prose li > p + * {
+  margin-top: 4px;
+}
+.prose a {
+  color: var(--foreground);
+  text-decoration: underline;
+  text-decoration-color: var(--input);
+  text-underline-offset: 3px;
+}
+.prose a:hover {
+  text-decoration-color: var(--foreground);
+}
+.prose strong {
+  color: var(--foreground);
+  font-weight: 600;
+}
+.prose code {
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: var(--muted);
+  font-size: 12px;
+  /* Spaces can be the point of an example: "  grace   brewster ". */
+  white-space: break-spaces;
+}
+/* Wide code scrolls inside its box. */
+.prose pre {
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--background);
+  font-size: 12px;
+  line-height: 1.6;
+  overflow-x: auto;
+}
+.prose pre code {
+  padding: 0;
+  background: none;
+  font-size: inherit;
+  white-space: pre;
+}
+/* mermaid diagrams */
+.prose .diagram {
+  display: flex;
+  justify-content: center;
+  margin-left: 0;
+  margin-right: 0;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--background);
+  overflow-x: auto;
+}
+.prose .diagram svg {
+  max-width: 100%;
+  height: auto;
+}
+.prose .diagram-pending {
+  color: var(--faint);
+}
+/* a statement's "Example N": input, output and explanation in a box */
+.prose .example-io {
+  padding: 10px 14px;
+  border-left: 2px solid var(--input);
+  border-radius: 0 6px 6px 0;
+  background: var(--background);
+  line-height: 1.9;
+}
+.prose .example-io strong {
+  color: var(--foreground);
+}
+.prose h2 + .example-io {
+  margin-top: 8px;
+}
+/* worked examples fold away */
+.prose details.example {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.prose details.example summary {
+  display: flex;
+  gap: 8px;
+  padding: 9px 12px;
+  color: var(--soft-foreground);
+  font-size: var(--text-sm);
+  list-style: none;
+  cursor: pointer;
+}
+.prose details.example summary::-webkit-details-marker {
+  display: none;
+}
+.prose details.example summary::before {
+  content: "›";
+  width: 8px;
+  color: var(--muted-foreground);
+}
+.prose details.example[open] summary::before {
+  content: "⌄";
+}
+.prose details.example pre {
+  margin: 0;
+  padding: 0 12px 12px;
+  border: 0;
+  background: none;
+}
+.prose blockquote {
+  margin-left: 0;
+  padding-left: 12px;
+  border-left: 2px solid var(--input);
+  color: var(--muted-foreground);
+}
+.prose .table-wrap {
+  overflow-x: auto;
+}
+.prose table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+}
+.prose th,
+.prose td {
+  padding: 6px 12px 6px 0;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+}
+.prose th {
+  border-bottom-color: var(--input);
+  color: var(--foreground);
+  font-weight: 600;
+}
+.prose td code {
+  overflow-wrap: normal;
+}
+.prose hr {
+  border: 0;
+  border-top: 1px solid var(--border);
+}

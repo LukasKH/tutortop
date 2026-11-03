@@ -63,4 +63,5 @@ jobs:
           fi
       - run: npm ci
       - run: npx tsc --noEmit
+      - run: npm run format:check
       - run: npm run build

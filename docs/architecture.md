@@ -20,7 +20,7 @@ Tutortop is a Go program with a React frontend, shipped as one desktop app by [W
 - `internal/workspace` stores one topic as plain files in `~/Tutortop/<id>`, plus private files (hidden tests, reference solutions) under the XDG data dir. It knows nothing about agents or Wails.
 - `internal/agent` starts the Claude Code or Codex CLI, streams its output as text and tool events, and decides which tool calls to allow. The agent may change files in the workspace, except under `tasks/`, and may not run commands.
 - `internal/runner` runs tests in a Docker or Podman container built for the task's toolchain. It also runs the quality gate for new tasks.
-- `frontend/src/api.ts` is the only frontend file that talks to Wails. Components import from it.
+- `frontend/src/lib/api.ts` is the only frontend file that talks to Wails. Components import from it. The frontend's own layout is described under [Frontend](#frontend).
 
 ## How Wails fits in
 
@@ -28,7 +28,7 @@ Wails links the two halves in two directions. The frontend calls Go methods and 
 
 ### Calls from the frontend
 
-`main.go` registers `App` as the app's only service. `wails3 generate bindings` reads it and writes `frontend/bindings`, with one TypeScript function per exported method and a TypeScript type for every struct those methods take or return. `api.ts` re-exports them as `App`, so a component writes `App.RunChecks(wsID, taskID, files, false)`. A returned Go error becomes a rejected promise.
+`main.go` registers `App` as the app's only service. `wails3 generate bindings` reads it and writes `frontend/bindings`, with one TypeScript function per exported method and a TypeScript type for every struct those methods take or return. `lib/api.ts` re-exports them as `App`, so a component writes `App.RunChecks(wsID, taskID, files, false)`. A returned Go error becomes a rejected promise.
 
 The bindings are generated, and committed. After changing an exported method or a type it returns, run `wails3 generate bindings -clean=true -ts -i` and commit the result. CI regenerates them and fails if they differ.
 
@@ -59,6 +59,25 @@ To add an event, add the payload struct, the constant and the `RegisterEvent` li
 ### Server mode
 
 Built with `-tags server`, the same binary serves the frontend at `http://localhost:8080` with no window. Calls go over `POST /wails/runtime` and events over a WebSocket at `/wails/events`. This is handy for previewing the UI in a browser. Point `TUTORTOP_HOME` and `XDG_DATA_HOME` at scratch folders so a preview never touches real workspaces.
+
+## Frontend
+
+React 19 with Vite, styled with [Tailwind CSS v4](https://tailwindcss.com) and [shadcn/ui](https://ui.shadcn.com) components. Files use kebab-case names, and each file puts its exported components first.
+
+```
+frontend/src/
+  main.tsx, app.tsx     entry point and the top-level screen switch
+  features/<area>/      one folder per screen area: home, settings, workspace, lesson, task, tutor
+  components/ui/        shadcn primitives (Button, Dialog, Tabs, ...), restyled to the app's look
+  components/           the app's shared components: Markdown, Page and PageHeader, Splitter, ...
+  hooks/                shared React hooks
+  lib/                  api.ts (the Wails bindings and events), helpers for workspaces, chat and wording
+  styles/               globals.css (theme and base), prose.css (rendered markdown)
+```
+
+The theme lives in `styles/globals.css`. Colours are CSS variables named the shadcn way (`--background`, `--foreground`, `--muted-foreground`, `--border`, ...), plus Tutortop's own `--soft-foreground`, `--faint`, `--pass` and `--fail`. Use them through Tailwind classes such as `text-muted-foreground` or `text-pass`, not raw colours. Colour is only for check results, green passed and red failed.
+
+Components are styled with utility classes in their markup. The one exception is rendered markdown (lessons, task statements, tutor replies), which `prose.css` styles by element because `Markdown` renders plain HTML. Add shadcn components with `npx shadcn@latest add <name>`; they land in `components/ui/`.
 
 ## The agent and its tools
 
