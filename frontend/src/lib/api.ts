@@ -18,7 +18,7 @@ import type {
   TaskDetail,
   TaskStatus as TaskInfo,
 } from "@bindings/github.com/LukasKH/tutortop/internal/workspace";
-import type { Files, Result, TestResult } from "@bindings/github.com/LukasKH/tutortop/internal/runner";
+import type { Result, TestResult } from "@bindings/github.com/LukasKH/tutortop/internal/runner";
 
 export type {
   Activity,
@@ -26,7 +26,6 @@ export type {
   ChatItem,
   Curriculum,
   Environment,
-  Files,
   Gate,
   LessonDetail,
   LessonStatus,
@@ -67,15 +66,6 @@ export const App: typeof Bindings = new Proxy(Bindings, {
   },
 });
 
-/**
- * The app's own server didn't answer (the request never got a reply), as
- * opposed to a call that failed. Callers retry quietly instead of showing it.
- */
-export function isOffline(err: unknown): boolean {
-  const text = err instanceof Error ? err.message : String(err);
-  return /failed to fetch|networkerror|load failed|network request failed/i.test(text);
-}
-
 export function errorText(err: unknown): string {
   if (isOffline(err)) return "Can't reach Tutortop. Reload the page once it's running again.";
   const text = err instanceof Error ? err.message : typeof err === "string" ? err : JSON.stringify(err);
@@ -101,4 +91,13 @@ async function patiently<T>(call: () => Promise<T>): Promise<T> {
       await new Promise((r) => setTimeout(r, RETRY_MS));
     }
   }
+}
+
+/**
+ * The app's own server didn't answer (the request never got a reply), as
+ * opposed to a call that failed. Callers retry quietly instead of showing it.
+ */
+function isOffline(err: unknown): boolean {
+  const text = err instanceof Error ? err.message : String(err);
+  return /failed to fetch|networkerror|load failed|network request failed/i.test(text);
 }

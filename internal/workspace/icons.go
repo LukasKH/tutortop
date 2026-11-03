@@ -8,7 +8,7 @@ import (
 
 // Icons are the pictures the app can draw for a workspace: languages and
 // tools by their logo, other topics by a simple glyph. The frontend draws
-// each one (frontend/src/topicIcons.tsx); keep the two lists in step.
+// each one (frontend/src/components/topic-icon.tsx); keep the two lists in step.
 var Icons = []string{
 	// languages
 	"go", "python", "rust", "typescript", "javascript", "c", "cplusplus", "java", "kotlin", "swift",

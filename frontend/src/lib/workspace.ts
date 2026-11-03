@@ -3,6 +3,9 @@ import type { Curriculum, LessonStatus, TaskInfo } from "@/lib/api";
 // Keys and lookups for what's open in a workspace. They follow the backend's
 // names for chat threads (internal/workspace).
 
+/** The planning conversation: mission, curriculum and anything not written yet (workspace.PlanThread). */
+export const PLAN_THREAD = "plan";
+
 /**
  * The open item in a workspace is a task id or a lesson's key. A lesson's key
  * is also its chat thread, as the backend names it (workspace.LessonThread).

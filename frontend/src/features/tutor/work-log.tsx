@@ -121,7 +121,7 @@ function groupTools(items: ChatItem[]): (ChatItem | ChatItem[])[] {
 }
 
 /** "Read 18 pages, updated your mission and noted your preferences". */
-export function summarize(tools: ChatItem[]): string {
+function summarize(tools: ChatItem[]): string {
   let pages = 0;
   let searches = 0;
   const other: string[] = [];

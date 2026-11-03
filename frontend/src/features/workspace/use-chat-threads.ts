@@ -1,0 +1,42 @@
+import { useEffect, useState } from "react";
+import { App, AppEvents, useEvent, type ChatItem } from "@/lib/api";
+import { mergeChat, upsertChat } from "@/lib/chat";
+import { objectiveOfWriter, PLAN_THREAD } from "@/lib/workspace";
+
+/**
+ * The workspace's conversations by thread, and which have unread messages.
+ * The shown thread loads its saved transcript; new messages stream in by
+ * event. Conversations stay in memory, so live (still streaming) items survive
+ * switching between threads.
+ */
+export function useChatThreads(id: string, thread: string, { ready, visible, onError }: { ready: boolean; visible: boolean; onError: (e: unknown) => void }) {
+  const [threads, setThreads] = useState<Record<string, ChatItem[]>>({});
+  const [unread, setUnread] = useState<Record<string, boolean>>({});
+
+  // Load the shown thread's transcript whenever it changes, merged with
+  // anything that arrived live and isn't saved yet.
+  useEffect(() => {
+    if (!ready) return;
+    let current = true;
+    App.Chat(id, thread)
+      .then((saved) => current && setThreads((t) => ({ ...t, [thread]: mergeChat(saved, t[thread] ?? []) })))
+      .catch((e) => current && onError(e));
+    return () => {
+      current = false;
+    };
+  }, [id, thread, ready]);
+
+  // What the learner can see counts as read.
+  useEffect(() => {
+    if (visible) setUnread((u) => (u[thread] ? { ...u, [thread]: false } : u));
+  }, [thread, visible]);
+
+  useEvent(AppEvents.ChatMessage, ({ workspace, item }) => {
+    const t = item.thread || PLAN_THREAD;
+    if (workspace !== id || objectiveOfWriter(t)) return;
+    setThreads((all) => ({ ...all, [t]: upsertChat(all[t] ?? [], item) }));
+    if (t !== thread || !visible) setUnread((u) => (u[t] ? u : { ...u, [t]: true }));
+  });
+
+  return { threads, unread };
+}

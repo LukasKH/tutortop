@@ -14,7 +14,7 @@ import { cn } from "cn";
 export type Attention = { attention: boolean; questions: number };
 
 /** What the visible conversation is about. It follows the centre pane: there are no tabs. */
-export type ChatContext = "Exercise" | "Lesson" | "Plan";
+type ChatContext = "Exercise" | "Lesson" | "Plan";
 
 type Props = {
   /** The visible thread id: "plan", a task id, or a lesson's key. */

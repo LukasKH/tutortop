@@ -77,6 +77,8 @@ frontend/src/
 
 The theme lives in `styles/globals.css`. Colours are CSS variables named the shadcn way (`--background`, `--foreground`, `--muted-foreground`, `--border`, ...), plus Tutortop's own `--soft-foreground`, `--faint`, `--pass` and `--fail`. Use them through Tailwind classes such as `text-muted-foreground` or `text-pass`, not raw colours. Colour is only for check results, green passed and red failed.
 
+A feature's state and its backend calls live in hooks next to its components, such as `features/workspace/use-workspace.ts` (the workspace snapshot, kept current by events) or `features/task/use-task-work.ts` (autosave, running checks). The components render what the hooks return.
+
 Components are styled with utility classes in their markup. The one exception is rendered markdown (lessons, task statements, tutor replies), which `prose.css` styles by element because `Markdown` renders plain HTML. Add shadcn components with `npx shadcn@latest add <name>`; they land in `components/ui/`.
 
 ## The agent and its tools
