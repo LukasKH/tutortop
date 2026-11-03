@@ -1,8 +1,7 @@
 import { useEffect, useEffectEvent } from "react";
 import { Events } from "@wailsio/runtime";
-import { Tutortop } from "../bindings/events";
 import { App as Bindings } from "../bindings/github.com/LukasKH/tutortop/internal/app";
-import type { Environment, GateEvent, Settings, WorkspaceState } from "../bindings/github.com/LukasKH/tutortop/internal/app";
+import type { Environment, Gate, Settings, WorkspaceState } from "../bindings/github.com/LukasKH/tutortop/internal/app";
 import type { Model as AgentModel } from "../bindings/github.com/LukasKH/tutortop/internal/agent";
 import type {
   Activity,
@@ -28,7 +27,7 @@ export type {
   Curriculum,
   Environment,
   Files,
-  GateEvent,
+  Gate,
   LessonDetail,
   LessonStatus,
   Progress,
@@ -47,32 +46,13 @@ export type {
 
 // ---- events ----
 
-/** What each kind of the backend's "tutortop" event carries (App.emit in internal/app). */
-type EventData = {
-  chat: ChatItem;
-  busy: { thread: string; busy: boolean };
-  gate: GateEvent;
-  // workspace.TaskInfo and LessonInfo: the status without the learner's progress.
-  task: Omit<TaskInfo, "passed" | "hintLevel">;
-  lesson: Omit<LessonStatus, "answered" | "correct">;
-  questions: QuestionForm;
-  // A message from a language server, or (closed) its end.
-  lsp: { id: string; closed?: false; message: string } | { id: string; closed: true };
-  changed: undefined;
-  proposal: undefined;
-};
+/** The names of the backend's events. Importing them also registers their data types with the runtime. */
+export * as AppEvents from "../bindings/events";
 
-export type AppEvent = { [K in keyof EventData]: { workspace: string; kind: K; data: EventData[K] } }[keyof EventData];
-
-/** Subscribes to the backend's single "tutortop" event. Returns the unsubscribe function. */
-export function onAppEvent(handler: (ev: AppEvent) => void): () => void {
-  return Events.On(Tutortop, (ev) => handler(ev.data as AppEvent));
-}
-
-/** onAppEvent for the component's lifetime. */
-export function useAppEvents(handler: (ev: AppEvent) => void) {
+/** Listens to one of the backend's events (internal/app/events.go) for the component's lifetime. */
+export function useEvent<E extends keyof Events.CustomEvents>(name: E, handler: (data: Events.CustomEvents[E]) => void) {
   const onEvent = useEffectEvent(handler);
-  useEffect(() => onAppEvent((ev) => onEvent(ev)), []);
+  useEffect(() => Events.On(name, (ev) => onEvent(ev.data)), [name]);
 }
 
 // ---- helpers ----

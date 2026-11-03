@@ -7,6 +7,7 @@ export type {
     ChatItem,
     Curriculum,
     LessonDetail,
+    LessonInfo,
     LessonStatus,
     Module,
     Objective,
@@ -20,5 +21,6 @@ export type {
     Summary,
     TaskDefaults,
     TaskDetail,
+    TaskInfo,
     TaskStatus
 } from "./models.js";

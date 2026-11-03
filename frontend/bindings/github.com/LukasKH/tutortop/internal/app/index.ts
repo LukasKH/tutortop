@@ -7,12 +7,19 @@ export {
 };
 
 export type {
+    BusyEvent,
+    ChatEvent,
     Environment,
-    Event,
+    Gate,
     GateEvent,
+    LSPEvent,
     LanguageServerInfo,
+    LessonEvent,
     ProviderStatus,
+    QuestionsEvent,
     Settings,
+    TaskEvent,
     TutorChoice,
+    WorkspaceEvent,
     WorkspaceState
 } from "./models.js";

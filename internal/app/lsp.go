@@ -43,14 +43,6 @@ type LanguageServerInfo struct {
 	RootURI string `json:"rootUri"`
 }
 
-// lspEvent carries one message from a server to the editor, or tells it the
-// server has stopped.
-type lspEvent struct {
-	ID      string `json:"id"`
-	Message string `json:"message,omitempty"`
-	Closed  bool   `json:"closed,omitempty"`
-}
-
 // StartLanguageServer starts a language server for a task with the learner's
 // current code and the visible tests. It returns an empty ID if the task's
 // language has none. The first start may build the sandbox image.
@@ -97,7 +89,7 @@ func (a *App) StartLanguageServer(wsID, taskID string) (LanguageServerInfo, erro
 		s.srv.Close()
 	}
 
-	go a.relay(wsID, ls)
+	go a.relay(ls)
 	return LanguageServerInfo{ID: ls.id, RootURI: "file://" + srv.Root}, nil
 }
 
@@ -114,20 +106,20 @@ func (a *App) oldestServer(skip []*languageServer) *languageServer {
 }
 
 // relay forwards every message from the server to the editor until it stops.
-func (a *App) relay(wsID string, ls *languageServer) {
+func (a *App) relay(ls *languageServer) {
 	r := bufio.NewReader(ls.srv.Stdout)
 	for {
 		msg, err := readMessage(r)
 		if err != nil {
 			break
 		}
-		a.emit(wsID, "lsp", lspEvent{ID: ls.id, Message: string(msg)})
+		emit(lspMessage, LSPEvent{ID: ls.id, Message: string(msg)})
 	}
 	a.mu.Lock()
 	delete(a.servers, ls.id)
 	a.mu.Unlock()
 	ls.srv.Close()
-	a.emit(wsID, "lsp", lspEvent{ID: ls.id, Closed: true})
+	emit(lspMessage, LSPEvent{ID: ls.id, Closed: true})
 }
 
 // SendLanguageServer sends one JSON-RPC message from the editor to a server.

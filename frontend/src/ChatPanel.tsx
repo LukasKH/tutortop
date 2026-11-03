@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef, type ReactNode, type RefObject } from "react";
-import { type ChatItem, type GateEvent } from "./api";
+import { type ChatItem, type Gate } from "./api";
 import type { NewItem } from "./WorkspaceView";
 import { Markdown } from "./Markdown";
 import { AutoTextarea, IconButton, useArmed } from "./ui";
@@ -180,7 +180,7 @@ function Message({ item, lang }: { item: ChatItem; lang?: string }) {
 }
 
 type StatusProps = {
-  gate: GateEvent | null;
+  gate: Gate | null;
   newTask: NewItem | null;
   busy: boolean;
   onStop: () => void;

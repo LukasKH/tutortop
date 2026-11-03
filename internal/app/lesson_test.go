@@ -10,7 +10,7 @@ import (
 )
 
 func TestCreateLessonTool(t *testing.T) {
-	a := newTestApp(t, nil)
+	a := newTestApp(t)
 	w, err := a.store.Create("Go", "claude")
 	if err != nil {
 		t.Fatal(err)

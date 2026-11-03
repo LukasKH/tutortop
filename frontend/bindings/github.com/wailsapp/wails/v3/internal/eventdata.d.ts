@@ -12,7 +12,15 @@ import type * as app$0 from "../../../../LukasKH/tutortop/internal/app/models.js
 declare module "@wailsio/runtime" {
     namespace Events {
         interface CustomEvents {
-            "tutortop": app$0.Event;
+            "chat:message": app$0.ChatEvent;
+            "curriculum:proposed": app$0.WorkspaceEvent;
+            "gate:status": app$0.GateEvent;
+            "lesson:published": app$0.LessonEvent;
+            "lsp:message": app$0.LSPEvent;
+            "questions:asked": app$0.QuestionsEvent;
+            "task:published": app$0.TaskEvent;
+            "thread:busy": app$0.BusyEvent;
+            "workspace:changed": app$0.WorkspaceEvent;
         }
     }
 }
