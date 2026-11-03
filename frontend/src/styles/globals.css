@@ -1,0 +1,158 @@
+/* Layers, weakest first: rendered-markdown styles sit under Tailwind's
+   components and utilities, so utility classes on a Markdown wrapper win. */
+@layer theme, base, prose, components, utilities;
+
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+@import "./prose.css" layer(prose);
+
+@custom-variant dark (&:is(.dark *));
+
+/* Tutortop is white on black. Colour is only for check results: green passed,
+   red failed, on text and ✓ ✗ marks. No chips, badges or status dots; the
+   only pill is the Hint button. What's in focus is bright, the rest steps back
+   in grey. */
+:root {
+  --background: #0a0a0a;
+  --foreground: #ededed;
+  --card: #111111;
+  --card-foreground: #ededed;
+  --popover: #111111;
+  --popover-foreground: #ededed;
+  --primary: #ededed;
+  --primary-foreground: #0a0a0a;
+  --secondary: #111111;
+  --secondary-foreground: #ededed;
+  --muted: #1a1a1a;
+  --muted-foreground: #858585;
+  --accent: #1f1f1f;
+  --accent-foreground: #ededed;
+  --destructive: #e5684f;
+  --border: #1f1f1f;
+  --input: #2d2d2d;
+  --ring: #ededed;
+  --radius: 7px;
+
+  /* Tutortop's own: secondary text, the faintest grey, check results. */
+  --soft-foreground: #b8b8b8;
+  --faint: #575757;
+  --pass: #55b886;
+  --fail: #e5684f;
+
+  color-scheme: dark;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-soft-foreground: var(--soft-foreground);
+  --color-faint: var(--faint);
+  --color-pass: var(--pass);
+  --color-fail: var(--fail);
+}
+
+@theme static {
+  --font-sans: "Atkinson Hyperlegible Next Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Geist Mono Variable", ui-monospace, monospace;
+
+  /* The app's type scale, smaller than Tailwind's default. */
+  --text-xs: 12px;
+  --text-xs--line-height: 1.5;
+  --text-sm: 13px;
+  --text-sm--line-height: 1.5;
+  --text-base: 14px;
+  --text-base--line-height: 1.5;
+  --text-lg: 16px;
+  --text-lg--line-height: 1.5;
+
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 7px;
+  --radius-xl: 10px;
+
+  --animate-spin: spin 800ms linear infinite;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  html,
+  body,
+  #root {
+    @apply h-full;
+  }
+  body {
+    @apply overflow-hidden bg-background font-sans text-base text-foreground antialiased;
+  }
+  button {
+    text-align: inherit;
+  }
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+  /* shadcn components draw their own focus ring. */
+  :focus-visible:not([data-slot]) {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+  code,
+  kbd,
+  pre {
+    @apply font-mono;
+    font-variant-ligatures: none;
+    tab-size: 4;
+  }
+  kbd {
+    @apply text-[11px] opacity-50;
+  }
+  ::placeholder {
+    color: var(--faint);
+  }
+  ::selection {
+    background: rgb(255 255 255 / 0.18);
+  }
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: rgb(255 255 255 / 0.1);
+    border: 2px solid transparent;
+    border-radius: 10px;
+    background-clip: padding-box;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: rgb(255 255 255 / 0.18);
+  }
+  /* While a Splitter is dragged, the whole page shows its cursor. */
+  body.is-resizing-x,
+  body.is-resizing-x * {
+    cursor: col-resize !important;
+    user-select: none;
+  }
+  body.is-resizing-y,
+  body.is-resizing-y * {
+    cursor: row-resize !important;
+    user-select: none;
+  }
+}
