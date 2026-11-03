@@ -5,6 +5,7 @@ linters:
   enable:
     - govet
     - staticcheck
+    - unused
 
 formatters:
   enable:

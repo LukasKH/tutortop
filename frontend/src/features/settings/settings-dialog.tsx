@@ -9,10 +9,6 @@ import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 
-export function effortLabel(id: string) {
-  return EFFORT_LABELS[id] ?? id.charAt(0).toUpperCase() + id.slice(1);
-}
-
 export function loadModels(agent: string): Promise<AgentModel[]> {
   const cached = modelCache.get(agent);
   if (cached) return Promise.resolve(cached);
@@ -200,6 +196,10 @@ export function SettingsDialog({ settings, onChange, onClose }: Props) {
       </DialogContent>
     </Dialog>
   );
+}
+
+function effortLabel(id: string) {
+  return EFFORT_LABELS[id] ?? id.charAt(0).toUpperCase() + id.slice(1);
 }
 
 const EFFORT_LABELS: Record<string, string> = {
