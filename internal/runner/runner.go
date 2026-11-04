@@ -24,11 +24,13 @@ import (
 	"github.com/LukasKH/tutortop/internal/text"
 )
 
-// Status of a check run.
+// Status is how a check run ended.
+type Status string
+
 const (
-	StatusPassed = "passed" // compiled and every test passed
-	StatusFailed = "failed" // compiled, at least one test failed
-	StatusError  = "error"  // didn't compile, timed out, or the sandbox broke
+	StatusPassed Status = "passed" // compiled and every test passed
+	StatusFailed Status = "failed" // compiled, at least one test failed
+	StatusError  Status = "error"  // didn't compile, timed out, or the sandbox broke
 )
 
 type TestResult struct {
@@ -40,7 +42,7 @@ type TestResult struct {
 }
 
 type Result struct {
-	Status     string       `json:"status"`
+	Status     Status       `json:"status"`
 	Tests      []TestResult `json:"tests"`
 	Output     string       `json:"output"`
 	DurationMs int64        `json:"durationMs"`
@@ -225,7 +227,7 @@ func (r *Runner) Run(ctx context.Context, job Job) (Result, error) {
 	out := &cappedBuffer{max: maxOutput, stop: func() { stop(errTooMuchOutput) }}
 
 	start := time.Now()
-	runErr := r.exec(runCtx, tc, tc.Script(max(job.Repeat, 1)), files, out)
+	runErr := r.exec(runCtx, tc, tc.script(max(job.Repeat, 1)), files, out)
 	res := Result{DurationMs: time.Since(start).Milliseconds()}
 	stdout := out.String()
 
@@ -243,7 +245,7 @@ func (r *Runner) Run(ctx context.Context, job Job) (Result, error) {
 		return Result{}, runErr
 	}
 
-	tests, ok := tc.Parse(stdout, hidden)
+	tests, ok := tc.parse(stdout, hidden)
 	res.Output = readable(tc, stdout)
 	if !ok || len(tests) == 0 {
 		res.Status = StatusError

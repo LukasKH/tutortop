@@ -13,6 +13,7 @@ import (
 )
 
 // Toolchain knows how to run one language's tests and read the results.
+// The built-in ones are below; ToolchainSpec makes the others.
 type Toolchain struct {
 	Language string // id used in the curriculum, e.g. "go"
 	Name     string // shown to people, e.g. "Go"
@@ -23,20 +24,20 @@ type Toolchain struct {
 	// Dockerfile changes.
 	Image      string
 	Dockerfile string
-	// Script returns the shell command that runs the tests in the task
-	// directory, repeating each test `repeat` times, and prints everything
-	// Parse needs.
-	Script func(repeat int) string
 	// ExtraFiles are written next to the task files before running.
 	ExtraFiles map[string]string
-	// Parse turns the script's output into per-test results.
-	// hiddenNames holds names of tests defined in hidden check files.
-	Parse func(stdout string, hiddenNames map[string]bool) ([]TestResult, bool)
 	// LanguageServer is the command that runs a language server over stdio
 	// inside the image, for completions and diagnostics in the editor.
 	// Empty means the editor gets syntax highlighting only.
 	LanguageServer []string
 
+	// script returns the shell command that runs the tests in the task
+	// directory, repeating each test `repeat` times, and prints everything
+	// parse needs.
+	script func(repeat int) string
+	// parse turns the script's output into per-test results, labelling
+	// those in hidden as hidden. ok is false when the code didn't build.
+	parse     func(stdout string, hidden map[string]bool) (tests []TestResult, ok bool)
 	testFiles string // glob matching a test file's base name
 }
 
@@ -80,14 +81,14 @@ RUN mkdir /tmp/warm && cd /tmp/warm \
 WORKDIR /work
 `,
 	ExtraFiles: map[string]string{"go.mod": "module task\n\ngo 1.27\n"},
-	Script: func(repeat int) string {
+	script: func(repeat int) string {
 		flags := "-count=1"
 		if repeat > 1 {
 			flags = fmt.Sprintf("-count=%d -shuffle=on", repeat)
 		}
 		return "CGO_ENABLED=0 GOFLAGS=-mod=mod GOTOOLCHAIN=local go test -json " + flags + " -timeout=20s ./... 2>&1"
 	},
-	Parse:          parseGoTestJSON,
+	parse:          parseGoTestJSON,
 	LanguageServer: []string{"/home/runner/go/bin/gopls"},
 	testFiles:      "*_test.go",
 }
@@ -192,14 +193,14 @@ ENV PYTHONDONTWRITEBYTECODE=1
 WORKDIR /work
 `,
 	// pytest repeats tests itself (pytest-repeat), so the report is written once.
-	Script: func(repeat int) string {
+	script: func(repeat int) string {
 		count := ""
 		if repeat > 1 {
 			count = fmt.Sprintf(" --count=%d", repeat)
 		}
 		return junitScript("python -m pytest -q -p no:cacheprovider --timeout=20"+count+" --junitxml=/tmp/junit.xml", 1)
 	},
-	Parse:          parseJUnitRuns,
+	parse:          parseJUnitRuns,
 	LanguageServer: []string{"basedpyright-langserver", "--stdio"},
 	testFiles:      "test_*.py",
 }
