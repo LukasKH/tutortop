@@ -1,0 +1,124 @@
+# Adding an agent
+
+`internal/agent` drives the learner's own coding-agent CLI: Claude Code over its stream-json stdio protocol, Codex over `codex app-server` JSON-RPC. Each CLI has an adapter. The adapter turns what the CLI prints into a few events and holds the tutor to Tutortop's tool policy. To add an agent (Gemini CLI, OpenCode, anything that speaks the Agent Client Protocol), you need this package and nothing else from the app.
+
+The contract is in code. `agent.go` has the types and their doc comments, and `policy.go` has the tool policy. This page explains them and adds the steps.
+
+## What an adapter is
+
+An adapter is one file, like `claude.go` or `codex.go`. It has three parts:
+
+- `startX(ctx, opts, onEvent) (Session, error)`, which starts the CLI and returns a `Session`;
+- `xModels(ctx) ([]Model, error)`, which lists the models it offers;
+- an entry in `Providers()` with an id, a display name and the binary to look up on `PATH`.
+
+That's all the app needs. Settings list `Providers()` and show the ones that aren't installed as missing. Workspaces save session ids per provider id. The frontend's `providerName` in `frontend/src/lib/format.ts` falls back to showing the id, so give it the display name too.
+
+## The contract
+
+### Starting
+
+`Start` returns once the CLI is ready for a prompt and the session has an id. Do any handshake (initialize, sign-in check, new or resumed session) before returning, under its own timeout, so a CLI that hangs can't block the app. The process runs in `opts.Cwd`, the learner's workspace.
+
+When start fails, return an error the learner can act on. If the CLI isn't installed, `startProcess` already says so. If it isn't signed in, say which command to run. If it exited, return `process.abort(err)`, which wraps `ErrStopped` around the end of the CLI's stderr.
+
+### Options
+
+Every field must be honoured:
+
+- `MCPName` and `MCPURL`: Tutortop's MCP server, a streamable HTTP endpoint. It must be the only MCP server the agent sees, under exactly this name, because the policy allows that server's tools and no others. Allow its tool calls at least 10 minutes, because `create_task` runs the sandbox checks.
+- `Instructions`: add these to the agent's system prompt. Keep the CLI's own prompt.
+- `ResumeID`: an id from an earlier `Session.ID()`. If the CLI can't resume it (the transcript was deleted, or it came from another machine), start a fresh session and return its id. Don't fail.
+- `Model` and `Effort`: ids from your `Models` list. An empty string means the CLI's default.
+
+### A turn
+
+`Prompt` sends the learner's message and blocks until the turn ends. The app sends one prompt at a time. It returns:
+
+| Outcome | Return | The session afterwards |
+| --- | --- | --- |
+| the turn ended | `nil` | takes the next prompt |
+| `Cancel` ended it | `nil` | takes the next prompt |
+| the agent reports the turn failed (usage limit, API error) | an error with the agent's reason | takes the next prompt |
+| the process exited | an error wrapping `ErrStopped` | finished; the app starts a new one |
+| `ctx` ended first | `ctx.Err()` | the turn may still be running |
+
+The second row is easy to get wrong. CLIs often report an interrupted turn as a failure, and Claude Code does. The adapter has to remember that it asked for the interrupt.
+
+`Cancel` asks the CLI to end the current turn. It must not block, may be called from any goroutine, and does nothing without a turn. `Close` stops the process without waiting (callers may hold a lock) and may be called twice. `startProcess` sends an interrupt first, so the CLI can save its session.
+
+### Events
+
+`onEvent` gets events from one goroutine, in the order the CLI reported them. Deliver every event of a turn before `Prompt` returns. In practice that means calling `onEvent` from the same read loop that sees the end of the turn, before it wakes `Prompt`.
+
+- `EventText` is the next piece of the reply to the learner. Joined, the pieces are the reply. Don't send reasoning or thinking text. The app starts a new message after each tool call.
+- `EventTool` is a tool call starting or changing status. Its first event describes the call in full: `Kind`, `Title`, `Paths`, and `MCPServer`/`MCPTool` for MCP tools. Later events for the same `ID` may carry only `ID` and `Status`. End every call with `ToolDone` or `ToolFailed`; a declined call is `ToolFailed`. Ids must be unique within the session.
+- `EventWarning` is something the learner must know. Send one if the CLI reports that Tutortop's MCP server didn't connect, since without it the tutor can talk but can't create tasks or ask questions. Send it once, not on every turn.
+
+`ToolKind` matters beyond display. The app hides reads, searches and `think`. The policy decides by kind, so a call that changes files must be `ToolEdit` and carry its paths.
+
+### The tool policy
+
+The tutor may read and change files in the workspace, except under `tasks/`, which the app manages through `create_task`. It may use Tutortop's MCP tools and the web. It may not run commands, use other MCP servers, or start work that outlives the turn, such as background subagents.
+
+Enforce this in two layers:
+
+1. **Configure the CLI** so it refuses what it can by itself: no shell tool, no writes under `tasks/` or outside the workspace, only our MCP server. Never use a mode that approves everything. Claude uses `--disallowedTools` with an `Edit(./tasks/**)` deny rule, `--strict-mcp-config` and `acceptEdits`. Codex uses a permission profile, with the workspace writable and `tasks/` read-only, plus `approvalPolicy: "untrusted"`.
+2. **Answer every permission request** the CLI still makes with `policy.allow(tool)`. Describe the call as a `Tool`, with its kind and the paths it touches. If a request names a file change by id only, remember the paths from when the item started, as Codex's adapter does. Refuse anything you can't describe, or don't recognise: unknown request types get an error or a decline, never an approval. The reason `allow` returns goes back to the agent, so pass it on if the protocol has room for it.
+
+Build the policy with `newPolicy(opts)` when the session starts.
+
+## Shared pieces
+
+| File | What it gives an adapter |
+| --- | --- |
+| `process.go` | `startProcess` finds and starts the CLI with piped stdio; `send` writes one line of JSON; `await` waits for a reply unless the process exits first; `abort` and `exitError` turn an exit into `ErrStopped` with stderr. `decode[T]` decodes a message or a field of one. |
+| `rpc.go` | `rpcConn`, newline-delimited JSON-RPC: `Call[T]`, `Notify`, and handlers for the CLI's notifications and requests. |
+| `policy.go` | `policy.allow`, the one place that decides tool calls. |
+| `agent.go` | `optional`, for titles like `"Searched files" + optional(": ", pattern)`. |
+
+`rpcConn` is hand-rolled because Codex's app-server leaves out the `"jsonrpc":"2.0"` field, and most Go JSON-RPC 2.0 libraries reject messages without it. A library would replace about 100 lines, and it would have to tolerate Codex's dialect. Use `rpcConn` for a JSON-RPC CLI. For an ACP agent, use the ACP SDK's connection instead (see below).
+
+## Testing an adapter
+
+`fakecli_test.go` lets a test play the CLI. `fakeBinary(t, "mycli")` puts the test binary on `PATH` as `mycli`. When the adapter starts it, `TestMain` turns it into a relay between its stdio and the test. The adapter runs unchanged, through the real `startProcess`, and the test:
+
+- reads what the adapter wrote with `cli.recv(t)`, which returns a `message` with a dotted-path `get`/`str`;
+- writes the CLI's output with `cli.send(t, lines...)`. Strings go as they are, so recorded transcripts can be pasted in;
+- makes the CLI exit with `cli.exit(t, code, stderr)`;
+- checks how the CLI was started through `cli.Args`, `cli.Env` and `cli.Dir`.
+
+`Start` and `Prompt` block, so run them with `async` and collect their result with `wait`. `eventLog` records events. Every wait times out, so a test that leaves the adapter hanging fails rather than stalling the run. `claude_test.go` and `codex_test.go` show the pattern. Start with their `startFakeClaude` and `startFakeCodex` helpers, which play the handshake.
+
+Cover what can break:
+
+- the start arguments and settings that carry the policy, the MCP server, the instructions, the model and the effort;
+- resume, including an id the CLI no longer has;
+- a turn's text deltas, tool calls starting, finishing and failing, and the turn ending;
+- a failed turn as an error, after which the next prompt still works;
+- `Cancel` sending the CLI's interrupt, and the interrupted turn returning `nil`;
+- the process exiting during start and during a turn, giving `ErrStopped` with stderr;
+- the MCP warning, if the CLI reports MCP status;
+- the model list;
+- the policy: call `testPolicy(t, cwd, ask)` from `policy_test.go`. `ask` makes your fake CLI request permission for a `Tool` and reports whether the adapter allowed it. It runs the shared cases: shell refused, edits under `tasks/` refused, paths outside the workspace refused, our MCP server allowed and others refused. A case your CLI never asks about calls `t.Skip` with the reason.
+
+Get the real messages from the CLI's own schema or by recording a session. `codex app-server generate-json-schema --out DIR` writes Codex's schema.
+
+Add a live test too (`//go:build live`, see `live_test.go`). It checks the real CLI end to end, and `task test:live` runs it.
+
+## An ACP agent
+
+The Agent Client Protocol is JSON-RPC over stdio. It maps onto this package closely, which is why `ToolKind` uses ACP's kinds. [`github.com/coder/acp-go-sdk`](https://github.com/coder/acp-go-sdk) is a maintained Go SDK generated from the ACP schema. Gemini CLI and OpenCode speak ACP natively. Zed's `claude-agent-acp` and `codex-acp` adapters need Node, and the app must not depend on Node.
+
+| This package | ACP |
+| --- | --- |
+| `startX` | start the binary with `startProcess`, then `acp.NewClientSideConnection(client, proc.stdin, proc.stdout)`, `Initialize` (don't offer the terminal capability) and `NewSession` with `Cwd` and an HTTP `McpServers` entry for `MCPName`/`MCPURL` |
+| `ResumeID` | `LoadSession`, if the agent offers it; otherwise start fresh |
+| `Prompt` | `Prompt`; the `StopReason` is `end_turn` or `cancelled` → `nil`, `refusal`, `max_tokens` and the like → an error |
+| `Cancel` | the `session/cancel` notification |
+| `EventText` | `session/update` with `agent_message_chunk` (skip `agent_thought_chunk`) |
+| `EventTool` | `tool_call` (full: kind, title, locations → `Paths`) and `tool_call_update`; status `pending`/`in_progress` → running, `completed` → done, `failed` → failed |
+| `policy.allow` | `session/request_permission`: describe the tool call, then pick an allow-once or reject-once option |
+| `Instructions` | agent-specific (a flag, a config file or the first prompt), since ACP has no system-prompt field |
+
+Don't offer the terminal capability. If you offer file access, put each read and write through the policy too. Pass the SDK's connection the `process` pipes, so `ErrStopped`, stderr and `Close` work the same as for the other adapters.
