@@ -1,7 +1,7 @@
 import { useEffect, useEffectEvent, useState } from "react";
 import { App, AppEvents, useEvent, type ChatItem } from "@/lib/api";
 import { mergeChat, upsertChat } from "@/lib/chat";
-import { objectiveOfWriter, PLAN_THREAD } from "@/lib/workspace";
+import { objectiveOfWriter } from "@/lib/workspace";
 
 /**
  * The workspace's conversations by thread, and which have unread messages.
@@ -31,7 +31,7 @@ export function useChatThreads(id: string, thread: string, { ready, visible, onE
   if (visible && unread[thread]) setUnread({ ...unread, [thread]: false });
 
   useEvent(AppEvents.ChatMessage, ({ workspace, item }) => {
-    const t = item.thread || PLAN_THREAD;
+    const t = item.thread;
     if (workspace !== id || objectiveOfWriter(t)) return;
     setThreads((all) => ({ ...all, [t]: upsertChat(all[t] ?? [], item) }));
     if (t !== thread || !visible) setUnread((u) => (u[t] ? u : { ...u, [t]: true }));

@@ -28,3 +28,17 @@ export function mergeChat(saved: ChatItem[] | null, live: ChatItem[]): ChatItem[
   const ids = new Set(out.map((x) => x.id));
   return [...out, ...live.filter((x) => !ids.has(x.id))];
 }
+
+/**
+ * Whether a conversation shows that its tutor is thinking: the tutor is
+ * working and nothing in the conversation moves already. A running tool call
+ * has its own spinner, and a reply moves as it streams in. Tool calls at the
+ * end run together, so any of them still running counts.
+ */
+export function showThinking(items: ChatItem[], busy: boolean): boolean {
+  if (!busy || items.at(-1)?.role === "assistant") return false;
+  for (let i = items.length - 1; i >= 0 && items[i].role === "tool"; i--) {
+    if (items[i].status === "running") return false;
+  }
+  return true;
+}

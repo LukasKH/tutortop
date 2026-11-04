@@ -3,6 +3,7 @@ import { type ChatItem, type Gate } from "@/lib/api";
 import type { OpenItem } from "@/features/workspace/open-item";
 import type { NewItem } from "@/features/workspace/use-open-item";
 import type { Composer } from "@/features/tutor/use-composer";
+import { Thinking } from "@/features/tutor/thinking";
 import { Markdown } from "@/components/markdown";
 import { AutoTextarea } from "@/components/auto-textarea";
 import { IconButton } from "@/components/icon-button";
@@ -91,11 +92,7 @@ export function ChatPanel({ composer: { draft, setDraft, inputRef }, ...p }: Pro
             <Message key={item.id} item={item} lang={p.lang} />
           ))}
           {p.questions}
-          {p.busy && (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground" role="status">
-              <Spinner className="size-[12px]" aria-hidden /> Thinking…
-            </div>
-          )}
+          <Thinking items={p.items} busy={p.busy} />
         </div>
         {p.hint && <HintPill level={p.hint.level} busy={p.busy} onHint={p.hint.onHint} />}
       </div>

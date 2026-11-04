@@ -260,7 +260,10 @@ function NewWorkspace({
 }) {
   const [title, setTitle] = useState(draft.title);
   const { pending, error, setError, run } = usePending();
-  const noAgent = !!env && !(env.providers ?? []).some((p) => p.installed);
+  const providers = env?.providers ?? [];
+  const noAgent = !!env && !providers.some((p) => p.installed);
+  // "Claude Code or Codex": every agent the backend offers.
+  const agents = new Intl.ListFormat("en", { type: "disjunction" }).format(providers.map((p) => p.name));
 
   function submit(e: FormEvent) {
     e.preventDefault();
@@ -294,7 +297,7 @@ function NewWorkspace({
       <div className={FIELD}>
         <span className={FIELD_LABEL}>Tutor</span>
         <TutorLine tutor={tutor} onSettings={onSettings} />
-        <ErrorText error={noAgent ? "Install Claude Code or Codex, sign in, then restart Tutortop." : ""} />
+        <ErrorText error={noAgent ? `Install ${agents}, sign in, then restart Tutortop.` : ""} />
       </div>
 
       <div className="flex flex-wrap items-center gap-2">

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { plural } from "@/lib/format";
 import { type ChatItem, type Gate } from "@/lib/api";
 import { ChevronDownIcon } from "lucide-react";
+import { Thinking } from "@/features/tutor/thinking";
 import { Spinner } from "@/components/ui/spinner";
 import { Markdown } from "@/components/markdown";
 import { Button } from "@/components/ui/button";
@@ -28,10 +29,8 @@ export function WorkLog({ items, busy, gate, lang, onStop }: Props) {
   const end = busy ? now : items.length ? Date.parse(items.at(-1)!.at) : start;
   const elapsed = formatDuration(Math.max(0, end - start));
 
-  const groups = groupTools(items.filter((i) => i.role !== "user" || !i.text.startsWith("My answers:")));
-  const last = groups.at(-1);
-  // Something visibly moving already (a running tool or text streaming in) needs no extra "Thinking".
-  const moving = Array.isArray(last) ? last.some((t) => t.status === "running") : last?.role === "assistant";
+  const shown = items.filter((i) => i.role !== "user" || !i.text.startsWith("My answers:"));
+  const groups = groupTools(shown);
 
   return (
     <section className="mt-7 flex flex-col gap-3" aria-live="polite">
@@ -71,11 +70,7 @@ export function WorkLog({ items, busy, gate, lang, onStop }: Props) {
             : `Checking “${gate.title}” in the sandbox…`}
         </div>
       )}
-      {busy && !moving && !gate?.running && (
-        <div className="flex min-w-0 items-center gap-2 text-sm text-muted-foreground">
-          <Spinner className="size-[12px]" aria-hidden /> Thinking…
-        </div>
-      )}
+      {!gate?.running && <Thinking items={shown} busy={busy} />}
     </section>
   );
 }

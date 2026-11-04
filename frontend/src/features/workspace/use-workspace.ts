@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useReducer } from "react";
 import { App, AppEvents, errorText, useEvent } from "@/lib/api";
-import { PLAN_THREAD } from "@/lib/workspace";
 import { initialWorkspace, reduceWorkspace, tutorBusy, writingObjectives } from "@/features/workspace/workspace-state";
 
 /**
@@ -35,7 +34,7 @@ export function useWorkspace(id: string) {
   useEvent(AppEvents.LessonPublished, ({ workspace }) => workspace === id && refresh());
 
   useEvent(AppEvents.ThreadBusy, ({ workspace, thread, busy }) => {
-    if (workspace === id) dispatch({ type: "busy", thread: thread || PLAN_THREAD, busy, at: performance.now() });
+    if (workspace === id) dispatch({ type: "busy", thread, busy, at: performance.now() });
   });
   useEvent(AppEvents.GateStatus, ({ workspace, gate }) => {
     if (workspace === id) dispatch({ type: "gate", gate, at: performance.now() });

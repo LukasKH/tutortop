@@ -12,7 +12,7 @@ export function ModuleList({ className, ...props }: ComponentProps<"ol">) {
 }
 
 /** One module: its heading over its objectives. */
-export function Module({ heading, children }: { heading: ReactNode; children: ReactNode }) {
+export function ModuleItem({ heading, children }: { heading: ReactNode; children: ReactNode }) {
   return (
     <li>
       <ModuleHeading>{heading}</ModuleHeading>
@@ -32,7 +32,7 @@ export function ModuleNote({ className, ...props }: ComponentProps<"span">) {
 }
 
 /** An objective: a ✓ once passed, then its short name with the full goal the tests prove under it. */
-export function Objective({ done, children }: { done: boolean; children: ReactNode }) {
+export function ObjectiveItem({ done, children }: { done: boolean; children: ReactNode }) {
   return (
     <li className="flex items-baseline gap-2 border-b py-2.5 text-base text-foreground">
       <span className="w-3 flex-none text-[11px] text-pass">{done ? "✓" : ""}</span>

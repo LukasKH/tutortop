@@ -1,8 +1,8 @@
 import { useEffect, useEffectEvent } from "react";
 import { Events } from "@wailsio/runtime";
 import { App as Bindings } from "@bindings/github.com/LukasKH/tutortop/internal/app";
-import type { Environment, Gate, Settings, WorkspaceState } from "@bindings/github.com/LukasKH/tutortop/internal/app";
-import type { Model as AgentModel } from "@bindings/github.com/LukasKH/tutortop/internal/agent";
+import type { Environment, Gate, ProviderStatus, Settings, WorkspaceState } from "@bindings/github.com/LukasKH/tutortop/internal/app";
+import type { Model } from "@bindings/github.com/LukasKH/tutortop/internal/agent";
 import type {
   Activity,
   ChatItem,
@@ -10,14 +10,14 @@ import type {
   LessonDetail,
   LessonStatus,
   Objective,
-  QuizResult,
   Progress,
   Question,
+  Questions,
+  QuizResult,
   Source,
-  Questions as QuestionForm,
   Summary,
   TaskDetail,
-  TaskStatus as TaskInfo,
+  TaskStatus,
 } from "@bindings/github.com/LukasKH/tutortop/internal/workspace";
 import type { Result, TestResult } from "@bindings/github.com/LukasKH/tutortop/internal/runner";
 
@@ -26,24 +26,25 @@ export { ChatRole } from "@bindings/github.com/LukasKH/tutortop/internal/workspa
 
 export type {
   Activity,
-  AgentModel,
   ChatItem,
   Curriculum,
   Environment,
   Gate,
   LessonDetail,
   LessonStatus,
+  Model,
   Objective,
   Progress,
+  ProviderStatus,
   Question,
-  QuestionForm,
+  Questions,
   QuizResult,
   Result,
   Source,
   Settings,
   Summary,
   TaskDetail,
-  TaskInfo,
+  TaskStatus,
   TestResult,
   WorkspaceState,
 };

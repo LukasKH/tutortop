@@ -8,7 +8,16 @@ import { Page, PageIntro, ReadingPage } from "@/components/page";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { usePending } from "@/hooks/use-pending";
-import { CurriculumTitle, Module, ModuleHeading, ModuleList, ModuleNote, Objective, ObjectiveName, ObjectiveNote } from "@/features/workspace/curriculum-list";
+import {
+  CurriculumTitle,
+  ModuleItem,
+  ModuleHeading,
+  ModuleList,
+  ModuleNote,
+  ObjectiveItem,
+  ObjectiveName,
+  ObjectiveNote,
+} from "@/features/workspace/curriculum-list";
 
 type Props = {
   wsId: string;
@@ -60,7 +69,7 @@ export function ProposalView({ wsId, proposal, current, progress, mission }: Pro
           </p>
           <ModuleList className="mt-5">
             {(proposal.modules ?? []).map((m) => (
-              <Module
+              <ModuleItem
                 key={m.id}
                 heading={
                   <>
@@ -74,7 +83,7 @@ export function ProposalView({ wsId, proposal, current, progress, mission }: Pro
                   const renamed = !!current && before.has(o.id) && before.get(o.id) !== o.title;
                   const done = objectives[o.id]?.status === "passed";
                   return (
-                    <Objective key={o.id} done={done}>
+                    <ObjectiveItem key={o.id} done={done}>
                       <span className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
                         <ObjectiveName>{o.name || o.title}</ObjectiveName>
                         {o.language && o.language !== proposal.language && <ObjectiveNote>{languageLabel(o.language)}</ObjectiveNote>}
@@ -82,10 +91,10 @@ export function ProposalView({ wsId, proposal, current, progress, mission }: Pro
                         {renamed && <Tag title={`Was: ${before.get(o.id)}`}>renamed</Tag>}
                       </span>
                       {o.name && <ObjectiveNote>{o.title}</ObjectiveNote>}
-                    </Objective>
+                    </ObjectiveItem>
                   );
                 })}
-              </Module>
+              </ModuleItem>
             ))}
           </ModuleList>
         </section>
@@ -95,10 +104,10 @@ export function ProposalView({ wsId, proposal, current, progress, mission }: Pro
             <ModuleHeading>Removed</ModuleHeading>
             <ul>
               {removed.map(([id, title]) => (
-                <Objective key={id} done={objectives[id]?.status === "passed"}>
+                <ObjectiveItem key={id} done={objectives[id]?.status === "passed"}>
                   <span className="text-muted-foreground line-through">{title}</span>
                   {objectives[id]?.status === "passed" && <ObjectiveNote>Still counts all-time</ObjectiveNote>}
-                </Objective>
+                </ObjectiveItem>
               ))}
             </ul>
           </section>
