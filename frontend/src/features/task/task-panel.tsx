@@ -27,11 +27,12 @@ type Props = {
   nextTask: TaskStatus | null;
   /** The plan has objectives left, so a next task is coming if there isn't one yet. */
   moreComing: boolean;
-  onOpenTask: (id: string) => void;
+  /** Opens the next task (or first its lesson). */
+  onOpenNext: () => void;
 };
 
 /** An exercise: the statement and tests beside the learner's editor, and the check results under it. */
-export function TaskPanel({ wsId, taskId, passed, moduleTitle, nextTask, moreComing, onOpenTask }: Props) {
+export function TaskPanel({ wsId, taskId, passed, moduleTitle, nextTask, moreComing, onOpenNext }: Props) {
   const work = useTaskWork(wsId, taskId);
   const { detail, files, dirty, error, run, running } = work;
   const [activeFile, setActiveFile] = useState("");
@@ -188,7 +189,7 @@ export function TaskPanel({ wsId, taskId, passed, moduleTitle, nextTask, moreCom
             onToggle={() => setResultsOpen(!resultsOpen)}
             onReset={work.reset}
             onCheck={check}
-            onOpenTask={onOpenTask}
+            onOpenNext={onOpenNext}
           />
         </section>
       </div>

@@ -1,8 +1,31 @@
 import { useState } from "react";
-import { AppEvents, useEvent, type LessonStatus, type Objective, type Questions, type WorkspaceSnapshot } from "@/lib/api";
+import {
+  AppEvents,
+  useEvent,
+  type Curriculum,
+  type LessonStatus,
+  type Objective,
+  type Progress,
+  type Questions,
+  type Source,
+  type TaskStatus,
+  type WorkspaceSnapshot,
+} from "@/lib/api";
 import { PLAN_THREAD } from "@/lib/workspace";
 import { readStored, useStored } from "@/hooks/use-stored";
-import { describeItem, itemKey, parseItemKey, resolveOpen, sameItem, threadOf, type OpenItem, type Part } from "@/features/workspace/open-item";
+import {
+  exerciseOf,
+  itemKey,
+  lessonOf,
+  parseItemKey,
+  resolveOpen,
+  sameItem,
+  threadOf,
+  viaLesson,
+  type ItemDetails,
+  type OpenItem,
+  type Part,
+} from "@/features/workspace/open-item";
 import type { UseWorkspaceResult } from "@/features/workspace/use-workspace";
 
 /** The centre pane shows the open item, or one of the plan's pages. */
@@ -72,16 +95,52 @@ export function useOpenItem(id: string, { ws, refresh, dismissFinishedCheck }: P
   return { item, view, thread, newItem, open, setView };
 }
 
-/** What the centre pane shows. */
+/**
+ * What the centre pane shows, and everything it shows from the snapshot.
+ * What changes between snapshots (busy threads, checks) and the calls come
+ * from useWorkspace.
+ */
 export type Center =
-  | { kind: "setup" }
-  | { kind: "proposal"; proposal: NonNullable<WorkspaceSnapshot["proposal"]> }
-  | { kind: "plan" }
+  | { kind: "setup"; questions: Questions | null; lang: string }
+  | { kind: "proposal"; proposal: Curriculum; current: Curriculum | null; progress: Progress; mission: string }
+  | {
+      kind: "plan";
+      ws: WorkspaceSnapshot;
+      /** "Back" needs an open item to go back to, once there's a plan. */
+      canGoBack: boolean;
+      /** Before the first plan there's no chat panel to ask. */
+      canAskTutor: boolean;
+    }
   | { kind: "questions"; questions: Questions }
-  | { kind: "not-written"; objective: Objective; part: Part }
-  | { kind: "lesson"; lesson: LessonStatus }
-  | { kind: "task"; id: string }
-  | { kind: "empty" };
+  | {
+      kind: "not-written";
+      objective: Objective;
+      part: Part;
+      moduleTitle: string;
+      /** The objective's other part, once it's written: the exercise from the lesson's page, or the lesson. */
+      other: OpenItem | null;
+    }
+  | {
+      kind: "lesson";
+      lesson: LessonStatus;
+      moduleTitle: string;
+      icon: string;
+      lang: string;
+      references: Source[] | null;
+      /** What "Exercise" opens: the objective's exercise, or the page that has it written. */
+      exercise: OpenItem;
+    }
+  | {
+      kind: "task";
+      id: string;
+      passed: boolean;
+      moduleTitle: string;
+      nextTask: TaskStatus | null;
+      /** What "Next task" opens: the next task, or first its objective's lesson if that isn't finished. */
+      openNext: OpenItem | null;
+      moreComing: boolean;
+    }
+  | { kind: "empty"; mission: string };
 
 /**
  * Decides the centre pane. Until the first plan is approved (setup),
@@ -89,19 +148,32 @@ export type Center =
  * review. After that, the plan's pages when chosen, else the tutor's
  * questions if placeQuestions put them here, else the open item.
  */
-export function centerOf(ws: WorkspaceSnapshot, view: CenterView, item: OpenItem | null, centred: Questions | null): Center {
+export function centerOf(ws: WorkspaceSnapshot, view: CenterView, open: ItemDetails, centred: Questions | null): Center {
+  const review = (proposal: Curriculum): Center => ({ kind: "proposal", proposal, current: ws.curriculum, progress: ws.progress, mission: ws.mission });
   if (!ws.curriculum) {
-    if (view === "plan") return { kind: "plan" };
-    return ws.proposal ? { kind: "proposal", proposal: ws.proposal } : { kind: "setup" };
+    if (view === "plan") return { kind: "plan", ws, canGoBack: true, canAskTutor: false };
+    return ws.proposal ? review(ws.proposal) : { kind: "setup", questions: centred, lang: open.lang };
   }
-  if (view === "proposal" && ws.proposal) return { kind: "proposal", proposal: ws.proposal };
-  if (view === "plan") return { kind: "plan" };
+  if (view === "proposal" && ws.proposal) return review(ws.proposal);
+  if (view === "plan") return { kind: "plan", ws, canGoBack: !!open.item, canAskTutor: true };
   if (centred) return { kind: "questions", questions: centred };
-  const { lesson, objective } = describeItem(ws, item);
-  if (item?.kind === "todo" && objective) return { kind: "not-written", objective, part: item.part };
-  if (lesson) return { kind: "lesson", lesson };
-  if (item?.kind === "task") return { kind: "task", id: item.id };
-  return { kind: "empty" };
+
+  const { item, lesson, objective, module } = open;
+  const moduleTitle = module?.title ?? "";
+  if (item?.kind === "todo" && objective) {
+    const other = item.part === "lesson" ? exerciseOf(ws, objective.id) : lessonOf(ws, objective.id);
+    return { kind: "not-written", objective, part: item.part, moduleTitle, other: other.kind === "todo" ? null : other };
+  }
+  if (lesson) {
+    const exercise = exerciseOf(ws, lesson.objective);
+    return { kind: "lesson", lesson, moduleTitle, icon: ws.icon, lang: open.lang, references: module?.references ?? null, exercise };
+  }
+  if (item?.kind === "task") {
+    const { task, nextTask } = open;
+    const openNext = nextTask && viaLesson(ws, nextTask.id);
+    return { kind: "task", id: item.id, passed: !!task?.passed, moduleTitle, nextTask, openNext, moreComing: ws.progress.passed < ws.progress.total };
+  }
+  return { kind: "empty", mission: ws.mission };
 }
 
 /** Where the tutor's open questions show on the workspace screen. */

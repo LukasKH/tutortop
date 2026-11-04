@@ -17,6 +17,9 @@ export function threadOf(item: OpenItem): string | null {
   return null;
 }
 
+/** The open item and what it points at in the snapshot (describeItem). */
+export type ItemDetails = ReturnType<typeof describeItem>;
+
 /**
  * What the open item points at in the snapshot: its task or lesson, its
  * objective and module, the language to colour code in, and the next unsolved
@@ -31,6 +34,7 @@ export function describeItem(ws: WorkspaceSnapshot, item: OpenItem | null) {
   const objective = module?.objectives?.find((o) => o.id === objectiveId) ?? null;
   const after = task ? tasks.slice(tasks.indexOf(task) + 1) : tasks;
   return {
+    item,
     task,
     lesson,
     module,
