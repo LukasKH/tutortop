@@ -9,24 +9,6 @@ import * as events$0 from "../events/models.js";
 import * as workspace$0 from "../workspace/models.js";
 
 /**
- * Environment is what's installed: the agents' CLIs and a working sandbox,
- * and the workspaces folder in use.
- */
-export interface Environment {
-    "providers": ProviderStatus[] | null;
-    "sandboxOk": boolean;
-    "sandboxHint"?: string;
-
-    /**
-     * Root is the workspaces folder in use. A folder chosen in the settings
-     * is used from the next start; TUTORTOP_HOME overrides it (RootFromEnv).
-     */
-    "root": string;
-    "defaultRoot": string;
-    "rootFromEnv": boolean;
-}
-
-/**
  * LanguageServerInfo tells the editor how to talk to a started server.
  */
 export interface LanguageServerInfo {
@@ -36,48 +18,6 @@ export interface LanguageServerInfo {
      * RootURI is the task folder as the server sees it, e.g. file:///work.
      */
     "rootUri": string;
-}
-
-/**
- * ModelChoice is an agent's model and reasoning effort. Empty fields use the
- * agent's own defaults.
- */
-export interface ModelChoice {
-    "model": string;
-    "effort": string;
-}
-
-export interface ProviderStatus {
-    "id": string;
-    "name": string;
-    "installed": boolean;
-    "path"?: string;
-}
-
-/**
- * Settings are app-wide preferences, kept in settings.yaml in the user's
- * config folder. They apply to every workspace.
- */
-export interface Settings {
-    /**
-     * Provider is the coding agent every thread runs on, tutors and writers
-     * alike, an agent.Provider ID. It's "agent" in settings.yaml and to the
-     * frontend, as the Settings screen calls it.
-     */
-    "agent": string;
-
-    /**
-     * Models holds the model and reasoning effort chosen for each agent, so
-     * switching agents and back keeps both choices. Files saved before it
-     * was renamed have it under "tutor" (loadSettings).
-     */
-    "models": { [_ in string]?: ModelChoice } | null;
-
-    /**
-     * WorkspacesFolder holds the workspaces; "" means workspace.DefaultRoot.
-     * The app reads it at startup.
-     */
-    "workspacesFolder"?: string;
 }
 
 /**

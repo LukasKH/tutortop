@@ -9,6 +9,7 @@ import (
 
 	"github.com/LukasKH/tutortop/internal/agent"
 	"github.com/LukasKH/tutortop/internal/events"
+	"github.com/LukasKH/tutortop/internal/settings"
 	"github.com/LukasKH/tutortop/internal/workspace"
 )
 
@@ -41,7 +42,7 @@ import (
 // session opens and closes, a message is queued and then answered, and stop
 // interrupts the current turn.
 type threadAgents struct {
-	settings *settingsStore // the agent, model and effort, read for every message
+	settings *settings.Store // the agent, model and effort, read for every message
 	mcp      *mcpHost
 	cli      agentCLI
 
@@ -50,8 +51,8 @@ type threadAgents struct {
 	seq    uint64 // numbers busy and check changes and snapshots in order
 }
 
-func newThreadAgents(settings *settingsStore, mcp *mcpHost, cli agentCLI) *threadAgents {
-	return &threadAgents{settings: settings, mcp: mcp, cli: cli, agents: map[threadKey]*threadAgent{}, seq: firstSeq()}
+func newThreadAgents(settingsStore *settings.Store, mcp *mcpHost, cli agentCLI) *threadAgents {
+	return &threadAgents{settings: settingsStore, mcp: mcp, cli: cli, agents: map[threadKey]*threadAgent{}, seq: firstSeq()}
 }
 
 // firstSeq is where threadAgents.seq starts. Counting from the time in
@@ -59,6 +60,20 @@ func newThreadAgents(settings *settingsStore, mcp *mcpHost, cli agentCLI) *threa
 // outlives one in server mode.
 func firstSeq() uint64 {
 	return uint64(time.Now().UnixMicro())
+}
+
+// agentConfig is what a thread's agent is started with. One started with an
+// older config restarts once it's idle.
+type agentConfig struct {
+	Provider string
+	Model    string
+	Effort   string
+}
+
+// configOf is the agent, model and effort the settings choose.
+func configOf(s settings.Settings) agentConfig {
+	c := s.Models[s.Provider]
+	return agentConfig{Provider: s.Provider, Model: c.Model, Effort: c.Effort}
 }
 
 // agentCLI opens a session with an agent's CLI. installedCLI opens the
@@ -80,7 +95,7 @@ func (installedCLI) Start(ctx context.Context, provider string, opts agent.Optio
 // It fails only if too many messages are already waiting.
 func (ag *threadAgents) queue(w *workspace.Workspace, t workspace.Thread, msg string) error {
 	key := threadKey{w.ID, t.String()}
-	cfg := ag.settings.Load().agentConfig()
+	cfg := configOf(ag.settings.Load())
 	ag.mu.Lock()
 	defer ag.mu.Unlock()
 	ta := ag.agents[key]

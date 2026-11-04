@@ -4,23 +4,17 @@
 import * as ChatService from "./chatservice.js";
 import * as EditorService from "./editorservice.js";
 import * as LessonService from "./lessonservice.js";
-import * as SettingsService from "./settingsservice.js";
 import * as TaskService from "./taskservice.js";
 import * as WorkspaceService from "./workspaceservice.js";
 export {
     ChatService,
     EditorService,
     LessonService,
-    SettingsService,
     TaskService,
     WorkspaceService
 };
 
 export type {
-    Environment,
     LanguageServerInfo,
-    ModelChoice,
-    ProviderStatus,
-    Settings,
     WorkspaceSnapshot
 } from "./models.js";

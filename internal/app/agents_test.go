@@ -11,6 +11,7 @@ import (
 
 	"github.com/LukasKH/tutortop/internal/agent"
 	"github.com/LukasKH/tutortop/internal/events"
+	"github.com/LukasKH/tutortop/internal/settings"
 	"github.com/LukasKH/tutortop/internal/workspace"
 )
 
@@ -78,7 +79,7 @@ func TestSettingsRestartIdleSession(t *testing.T) {
 	ag, fake, w := newHeldAgents(t)
 	queue(t, ag, w, workspace.PlanThread, "one")
 	first := fake.next(t)
-	if err := ag.settings.Save(Settings{Provider: "claude", Models: map[string]ModelChoice{"claude": {Model: "other"}}}); err != nil {
+	if err := ag.settings.Save(settings.Settings{Provider: "claude", Models: map[string]settings.ModelChoice{"claude": {Model: "other"}}}); err != nil {
 		t.Fatal(err)
 	}
 	queue(t, ag, w, workspace.PlanThread, "two")
@@ -208,7 +209,7 @@ func newHeldAgents(t *testing.T) (*threadAgents, *heldAgents, *workspace.Workspa
 	fake := &heldAgents{turns: make(chan heldTurn, 8)}
 	a := newTestAppWith(t, fake, fakeLinks())
 	t.Cleanup(a.agents.endAll)
-	if err := a.Settings.SaveSettings(Settings{Provider: "claude"}); err != nil {
+	if err := a.Settings.SaveSettings(settings.Settings{Provider: "claude"}); err != nil {
 		t.Fatal(err)
 	}
 	w, err := a.store.Create("Go", "claude")

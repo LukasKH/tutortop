@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -12,6 +11,7 @@ import (
 	"github.com/LukasKH/tutortop/internal/agent"
 	"github.com/LukasKH/tutortop/internal/decode"
 	"github.com/LukasKH/tutortop/internal/sandbox"
+	"github.com/LukasKH/tutortop/internal/settings"
 	"github.com/LukasKH/tutortop/internal/workspace"
 )
 
@@ -124,11 +124,10 @@ func reverseWordsTask(objective string) map[string]any {
 // and the shared pieces tests look into.
 type testApp struct {
 	*Services
-	store    *workspace.Store
-	settings *settingsStore
-	runner   *sandbox.Runner
-	agents   *threadAgents
-	mcp      *mcpHost
+	store  *workspace.Store
+	runner *sandbox.Runner
+	agents *threadAgents
+	mcp    *mcpHost
 }
 
 // newTestApp is newTestAppWith an agent CLI whose sessions take every
@@ -152,13 +151,13 @@ func quietCLI() agentCLI {
 func newTestAppWith(t *testing.T, cli agentCLI, links *linkChecker) *testApp {
 	t.Helper()
 	store := &workspace.Store{Root: t.TempDir(), PrivateRoot: t.TempDir()}
-	settings := newSettingsStore(filepath.Join(t.TempDir(), "settings.yaml"))
+	settingsStore := settings.NewStore(filepath.Join(t.TempDir(), "settings.yaml"))
 	runner := sandbox.New()
-	s, err := newServices(store, settings, runner, links, cli)
+	s, err := newServices(store, settingsStore, runner, links, cli)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &testApp{Services: s, store: store, settings: settings, runner: runner, agents: s.Chat.agents, mcp: s.Chat.agents.mcp}
+	return &testApp{Services: s, store: store, runner: runner, agents: s.Chat.agents, mcp: s.Chat.agents.mcp}
 }
 
 // startFunc is an agentCLI that starts sessions by calling itself.
@@ -296,24 +295,5 @@ func TestThreadsGetOwnSessions(t *testing.T) {
 	task, _ := a.Chat.Chat(w.ID, "0001-some-task")
 	if len(plan) != 1 || len(task) != 2 {
 		t.Fatalf("plan chat %d items, task chat %d items", len(plan), len(task))
-	}
-}
-
-// Settings saved before the model choices were renamed keep them.
-func TestSettingsLoadTheOldTutorKey(t *testing.T) {
-	a := newTestApp(t)
-	old := "agent: codex\ntutor:\n  codex:\n    model: gpt-5\n    effort: high\n"
-	if err := os.WriteFile(a.settings.path, []byte(old), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	want := ModelChoice{Model: "gpt-5", Effort: "high"}
-	if got := a.Settings.Settings().Models["codex"]; got != want {
-		t.Fatalf("got %+v, want %+v", got, want)
-	}
-	if err := a.Settings.SaveSettings(a.Settings.Settings()); err != nil {
-		t.Fatal(err)
-	}
-	if got := a.Settings.Settings().Models["codex"]; got != want {
-		t.Fatalf("after saving: got %+v, want %+v", got, want)
 	}
 }

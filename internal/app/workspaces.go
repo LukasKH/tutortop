@@ -10,6 +10,7 @@ import (
 
 	"github.com/LukasKH/tutortop/internal/events"
 	"github.com/LukasKH/tutortop/internal/sandbox"
+	"github.com/LukasKH/tutortop/internal/settings"
 	"github.com/LukasKH/tutortop/internal/workspace"
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
@@ -19,7 +20,7 @@ import (
 // changes to the plan. It builds the plans' sandbox images ahead.
 type WorkspaceService struct {
 	store    *workspace.Store
-	settings *settingsStore // the agent a new workspace starts with
+	settings *settings.Store // the agent a new workspace starts with
 	runner   *sandbox.Runner
 	agents   *threadAgents // a new workspace's interview, the plan's notices, and ending a deleted workspace's agents
 	writers  *writers      // write objectives once the plan is approved or opened ahead
@@ -28,8 +29,8 @@ type WorkspaceService struct {
 
 var _ application.ServiceStartup = (*WorkspaceService)(nil)
 
-func newWorkspaceService(store *workspace.Store, settings *settingsStore, runner *sandbox.Runner, agents *threadAgents, writers *writers, servers *languageServers) *WorkspaceService {
-	return &WorkspaceService{store: store, settings: settings, runner: runner, agents: agents, writers: writers, servers: servers}
+func newWorkspaceService(store *workspace.Store, settingsStore *settings.Store, runner *sandbox.Runner, agents *threadAgents, writers *writers, servers *languageServers) *WorkspaceService {
+	return &WorkspaceService{store: store, settings: settingsStore, runner: runner, agents: agents, writers: writers, servers: servers}
 }
 
 // ServiceStartup is called by Wails as the app starts. It builds the sandbox

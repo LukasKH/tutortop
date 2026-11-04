@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/LukasKH/tutortop/internal/settings"
 	"github.com/LukasKH/tutortop/internal/text"
 	"github.com/LukasKH/tutortop/internal/workspace"
 )
@@ -22,7 +23,7 @@ func TestLiveInterview(t *testing.T) {
 	a := newTestApp(t)
 	defer a.Chat.ServiceShutdown()
 
-	if err := a.Settings.SaveSettings(Settings{Provider: provider}); err != nil {
+	if err := a.Settings.SaveSettings(settings.Settings{Provider: provider}); err != nil {
 		t.Fatal(err)
 	}
 	id, err := a.Workspaces.CreateWorkspace("Go", "")

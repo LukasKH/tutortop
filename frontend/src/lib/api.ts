@@ -1,7 +1,9 @@
 import { useEffect, useEffectEvent } from "react";
 import { Events } from "@wailsio/runtime";
 import * as Bindings from "@bindings/github.com/LukasKH/tutortop/internal/app";
-import type { Environment, ProviderStatus, Settings, WorkspaceSnapshot } from "@bindings/github.com/LukasKH/tutortop/internal/app";
+import type { WorkspaceSnapshot } from "@bindings/github.com/LukasKH/tutortop/internal/app";
+import * as SettingsBindings from "@bindings/github.com/LukasKH/tutortop/internal/settings";
+import type { Environment, ProviderStatus, Settings } from "@bindings/github.com/LukasKH/tutortop/internal/settings";
 import type { SandboxCheck } from "@bindings/github.com/LukasKH/tutortop/internal/events";
 import type { Model } from "@bindings/github.com/LukasKH/tutortop/internal/agent";
 import type {
@@ -75,10 +77,10 @@ export const LessonService = { ...Bindings.LessonService, Lesson: patiently(Bind
 export const ChatService = { ...Bindings.ChatService, Chat: patiently(Bindings.ChatService.Chat) };
 
 export const SettingsService = {
-  ...Bindings.SettingsService,
-  Settings: patiently(Bindings.SettingsService.Settings),
-  Models: patiently(Bindings.SettingsService.Models),
-  Environment: patiently(Bindings.SettingsService.Environment),
+  ...SettingsBindings.Service,
+  Settings: patiently(SettingsBindings.Service.Settings),
+  Models: patiently(SettingsBindings.Service.Models),
+  Environment: patiently(SettingsBindings.Service.Environment),
 };
 
 export { EditorService } from "@bindings/github.com/LukasKH/tutortop/internal/app";
