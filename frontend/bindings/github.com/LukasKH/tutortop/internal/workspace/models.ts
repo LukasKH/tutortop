@@ -44,6 +44,9 @@ export interface ActivityDay {
     "lessons": number;
 }
 
+/**
+ * ChatItem is one entry in the conversation shown in the UI.
+ */
 export interface ChatItem {
     "id": string;
     "thread": string;
