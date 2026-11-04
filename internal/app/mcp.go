@@ -125,8 +125,8 @@ func (h *mcpHost) newServer(w *workspace.Workspace, thread string) *mcp.Server {
 		return nil, out, nil
 	})
 
-	if objective, ok := workspace.ObjectiveOfWriter(thread); ok {
-		h.addWriterTools(s, w, objective)
+	if t := workspace.ParseThread(thread); t.Kind == workspace.WriterKind {
+		h.addWriterTools(s, w, t.ID)
 		return s
 	}
 

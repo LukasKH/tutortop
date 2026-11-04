@@ -23,7 +23,7 @@ func TestCreateLessonTool(t *testing.T) {
 	}
 	ctx := context.Background()
 	cs, err := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "1"}, nil).
-		Connect(ctx, &mcp.StreamableClientTransport{Endpoint: a.mcp.URL(w, workspace.WriterThread("go.errors"))}, nil)
+		Connect(ctx, &mcp.StreamableClientTransport{Endpoint: a.mcp.URL(w, workspace.WriterThread("go.errors").String())}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,10 +72,10 @@ func TestCreateLessonTool(t *testing.T) {
 
 	// A lesson's own chat knows which lesson it's about and how the quiz went.
 	thread := workspace.LessonThread(id)
-	if role := roleInstructions(w, thread); !strings.Contains(role, "tutor for one lesson") || !strings.Contains(role, "Errors are values") {
+	if role := instructions(w, thread); !strings.Contains(role, "tutor for one lesson") || !strings.Contains(role, "Errors are values") {
 		t.Fatalf("role = %s", role)
 	}
-	if c := a.taskContext(w, thread); !strings.Contains(c, "1 of 3 answered, 0 correct") || !strings.Contains(c, "question 3 wrong") {
+	if c := a.contextFor(w, thread); !strings.Contains(c, "1 of 3 answered, 0 correct") || !strings.Contains(c, "question 3 wrong") {
 		t.Fatalf("context = %s", c)
 	}
 }

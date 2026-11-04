@@ -11,6 +11,10 @@ import (
 // written at once, and the tutoring and planning chats stay free for the
 // learner. A writer isn't shown as a chat; the UI shows its objective as
 // being written while it's busy.
+//
+// A writer runs in a session like any thread (session.go), with three
+// differences: it starts a fresh conversation, it ends once it has nothing
+// left to do, and its MCP tools publish lessons and tasks (mcp.go).
 
 // Gate tells the UI a new task, or a new language's sandbox (Kind
 // "toolchain"), is being checked.
@@ -27,33 +31,26 @@ type Gate struct {
 const readyAhead = 2
 
 // writeObjective starts a writer for one objective, unless one is already at
-// work on it. why tells the writer what prompted it.
+// work on it. why tells the writer what prompted it. It returns once the
+// writer has started.
 func (a *App) writeObjective(w *workspace.Workspace, o workspace.Objective, why string) error {
-	thread := workspace.WriterThread(o.ID)
-	cfg := a.Settings().tutor()
-	a.mu.Lock()
-	if a.sessions[threadKey{w.ID, thread}] != nil {
-		a.mu.Unlock()
-		return nil
-	}
-	s := a.startSession(w, thread, cfg)
-	s.busy = true
-	a.mu.Unlock()
-	emit(threadBusy, BusyEvent{Workspace: w.ID, Thread: thread, Busy: true})
-
-	if err := a.waitStarted(w, s); err != nil {
-		a.postFailure(w, thread, err.Error())
+	t := workspace.WriterThread(o.ID)
+	msg := fmt.Sprintf("[app] Write for the objective “%s” (%s). %s", o.Title, o.ID, why)
+	if err := a.enqueue(w, t, msg, true); err != nil {
+		a.postFailure(w, t.String(), err.Error())
 		return err
 	}
-	s.queue <- fmt.Sprintf("[app] Write for the objective “%s” (%s). %s", o.Title, o.ID, why)
 	return nil
 }
 
 // writerCheck records and shows how a writer's sandbox check of its task is
 // going, so the objective's page shows it even after the learner looks away.
+// The check is kept on the writer's session, so it goes when the writer does.
 func (a *App) writerCheck(wsID string, g Gate) {
 	a.mu.Lock()
-	a.checks[threadKey{wsID, g.Objective}] = g
+	if s := a.sessions[threadKey{wsID, workspace.WriterThread(g.Objective).String()}]; s != nil {
+		s.gate = &g
+	}
 	a.mu.Unlock()
 	emit(gateStatus, GateEvent{Workspace: wsID, Gate: g})
 }

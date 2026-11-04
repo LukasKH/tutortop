@@ -47,7 +47,7 @@ export function ApproveProposal(wsID: string): $CancellablePromise<void> {
 }
 
 /**
- * Chat returns one thread's transcript: "plan" or a task id.
+ * Chat returns one thread's chat.
  */
 export function Chat(wsID: string, thread: string): $CancellablePromise<workspace$0.ChatItem[] | null> {
     return $Call.ByID(1835823026, wsID, thread);
@@ -160,8 +160,8 @@ export function SendLanguageServer(id: string, message: string): $CancellablePro
 }
 
 /**
- * SendMessage sends the learner's chat message to a thread. In a task's
- * thread the app adds a [context] block with their code and last check result.
+ * SendMessage sends the learner's chat message to a thread ("" for the plan).
+ * In a task's or lesson's thread the app adds a [context] block about it.
  */
 export function SendMessage(wsID: string, text: string, thread: string): $CancellablePromise<void> {
     return $Call.ByID(1296577745, wsID, text, thread);
@@ -185,7 +185,8 @@ export function StartLanguageServer(wsID: string, taskID: string): $CancellableP
 }
 
 /**
- * StopAgent interrupts the current turn in a thread.
+ * StopAgent interrupts the current turn in a thread. The session posts a
+ * notice once the cut-off reply is saved.
  */
 export function StopAgent(wsID: string, thread: string): $CancellablePromise<void> {
     return $Call.ByID(285711733, wsID, thread);

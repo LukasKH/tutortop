@@ -22,7 +22,7 @@ func TestSetToolchainEnablesALanguage(t *testing.T) {
 	}
 	ctx := context.Background()
 	client := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "1"}, nil)
-	cs, err := client.Connect(ctx, &mcp.StreamableClientTransport{Endpoint: a.mcp.URL(w, workspace.PlanThread)}, nil)
+	cs, err := client.Connect(ctx, &mcp.StreamableClientTransport{Endpoint: a.mcp.URL(w, workspace.PlanThread.String())}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -99,7 +99,7 @@ func TestSetToolchainEnablesALanguage(t *testing.T) {
 	if err := a.ApproveProposal(w.ID); err != nil {
 		t.Fatal(err)
 	}
-	out, _ = toolCaller(t, a, w, workspace.WriterThread("js.add"))("create_task", map[string]any{
+	out, _ = toolCaller(t, a, w, workspace.WriterThread("js.add").String())("create_task", map[string]any{
 		"objectiveId": "js.add",
 		"title":       "Add numbers",
 		"statement": map[string]any{

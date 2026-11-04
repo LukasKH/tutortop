@@ -17,13 +17,6 @@ import (
 // Lessons live in lessons/<id>/{lesson.yaml,README.md}. The quiz with its
 // answers is kept privately, so the app does the checking.
 
-// LessonThread is the chat thread for questions about a lesson. Task threads
-// are named by task id, so lesson threads get a prefix.
-func LessonThread(id string) string { return "lesson-" + id }
-
-// LessonOfThread returns the lesson a chat thread belongs to, if any.
-func LessonOfThread(thread string) (string, bool) { return strings.CutPrefix(thread, "lesson-") }
-
 // LessonSpec is what the tutor submits through the create_lesson tool.
 type LessonSpec struct {
 	ObjectiveID   string         `json:"objectiveId" jsonschema:"id of the curriculum objective this lesson teaches"`
