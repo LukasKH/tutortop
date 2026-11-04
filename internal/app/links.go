@@ -10,11 +10,13 @@ import (
 	"slices"
 	"sync"
 	"time"
+
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // brokenLinks opens the links a tool call cites and returns an error naming
-// the ones that don't exist, so the tutor fixes them and calls tool again.
-func (a *App) brokenLinks(ctx context.Context, tool string, urls []string) error {
+// the ones that don't exist, so the tutor fixes them and calls the tool again.
+func (a *App) brokenLinks(ctx context.Context, tool *mcp.Tool, urls []string) error {
 	bad := a.linkCheck(ctx, urls)
 	if len(bad) == 0 {
 		return nil
@@ -23,7 +25,7 @@ func (a *App) brokenLinks(ctx context.Context, tool string, urls []string) error
 	for _, b := range bad {
 		msg += "- " + b + "\n"
 	}
-	return fmt.Errorf("%sFind the right pages (open them to check), then call %s again", msg, tool)
+	return fmt.Errorf("%sFind the right pages (open them to check), then call %s again", msg, tool.Name)
 }
 
 // checkLinks opens every link and reports the ones that don't exist (404 or
