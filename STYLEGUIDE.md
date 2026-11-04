@@ -26,12 +26,12 @@ How code in Tutortop is written. Reviews check changes against it. Rules marked 
 
   ```go
   // Don't
-  type App struct {
+  type mcpHost struct {
   	findBroken func(ctx context.Context, urls []string) []string
   }
 
   // Do
-  type App struct {
+  type mcpHost struct {
   	links *linkChecker // linkChecker{client *http.Client}
   }
   ```
