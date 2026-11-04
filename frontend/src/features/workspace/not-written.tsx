@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { App, errorText, type Gate } from "@/lib/api";
-import { type Part } from "@/lib/workspace";
+import type { Part } from "@/features/workspace/open-item";
 import { Spinner } from "@/components/ui/spinner";
 import { ErrorText } from "@/components/error-text";
 import { Page, PageHeader, PageIntro, ReadingPage } from "@/components/page";

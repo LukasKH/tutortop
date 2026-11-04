@@ -1,6 +1,8 @@
-import { useLayoutEffect, useRef, type ReactNode, type RefObject } from "react";
+import { useLayoutEffect, useRef, type ReactNode } from "react";
 import { type ChatItem, type Gate } from "@/lib/api";
-import type { NewItem } from "@/lib/workspace";
+import type { OpenItem } from "@/features/workspace/open-item";
+import type { NewItem } from "@/features/workspace/use-open-item";
+import type { Composer } from "@/features/tutor/use-composer";
 import { Markdown } from "@/components/markdown";
 import { AutoTextarea } from "@/components/auto-textarea";
 import { IconButton } from "@/components/icon-button";
@@ -17,7 +19,7 @@ export type Attention = { attention: boolean; questions: number };
 type ChatContext = "Exercise" | "Lesson" | "Plan";
 
 type Props = {
-  /** The visible thread id: "plan", a task id, or a lesson's key. */
+  /** The visible thread: "plan", a task id, or a lesson's thread (lib/workspace.ts). */
   thread: string;
   context: ChatContext;
   /** The language of the open exercise or plan, for colouring code in replies. */
@@ -29,9 +31,8 @@ type Props = {
   /** Slots: the questions form (or a pointer to it) and the status line above the composer. */
   questions: ReactNode;
   status: ReactNode;
-  draft: string;
-  inputRef: RefObject<HTMLTextAreaElement | null>;
-  onDraft: (text: string) => void;
+  /** The message box's draft, kept above the panel (use-composer.ts). */
+  composer: Composer;
   onSend: (text: string) => void;
   onCollapse: () => void;
   /** The configured agent, model and effort, shown under the composer; clicking opens Settings. */
@@ -39,7 +40,7 @@ type Props = {
   onSettings: () => void;
 };
 
-export function ChatPanel({ inputRef, ...p }: Props) {
+export function ChatPanel({ composer: { draft, setDraft, inputRef }, ...p }: Props) {
   const listRef = useRef<HTMLDivElement>(null);
   const stickToBottom = useRef(true);
 
@@ -60,10 +61,10 @@ export function ChatPanel({ inputRef, ...p }: Props) {
   }
 
   function send() {
-    const text = p.draft.trim();
+    const text = draft.trim();
     if (!text) return;
     stickToBottom.current = true;
-    p.onDraft("");
+    setDraft("");
     p.onSend(text);
   }
 
@@ -105,10 +106,10 @@ export function ChatPanel({ inputRef, ...p }: Props) {
           ref={inputRef}
           className="flex-1 rounded-none border-0 bg-transparent px-0 py-1 text-[13px] leading-[1.5] focus-visible:border-0"
           maxHeight={180}
-          value={p.draft}
+          value={draft}
           placeholder={p.context === "Plan" ? "Ask about your plan" : `Ask about this ${p.context.toLowerCase()}`}
           aria-label="Message the tutor"
-          onChange={(e) => p.onDraft(e.target.value)}
+          onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.nativeEvent.isComposing) {
               e.preventDefault();
@@ -120,7 +121,7 @@ export function ChatPanel({ inputRef, ...p }: Props) {
           size="icon-sm"
           className="font-normal hover:not-disabled:border-primary hover:not-disabled:bg-primary disabled:border-input disabled:bg-input disabled:opacity-100"
           onClick={send}
-          disabled={!p.draft.trim()}
+          disabled={!draft.trim()}
           aria-label="Send"
           title="Send (Enter)"
         >
@@ -164,23 +165,23 @@ export function ChatRail({ attention, busy, onExpand }: { attention: boolean; bu
 
 type StatusProps = {
   gate: Gate | null;
-  newTask: NewItem | null;
+  newItem: NewItem | null;
   busy: boolean;
   onStop: () => void;
-  onOpenTask: (id: string) => void;
+  onOpen: (item: OpenItem) => void;
 };
 
 /** One quiet line above the composer: sandbox checks, a new task, or the tutor working. */
-export function StatusLine({ gate, newTask, busy, onStop, onOpenTask }: StatusProps) {
+export function StatusLine({ gate, newItem, busy, onStop, onOpen }: StatusProps) {
   let text = "";
   let action: ReactNode = null;
   const setup = gate?.kind === "toolchain";
   if (gate?.running) {
     text = setup ? `Setting up ${gate.title} in the sandbox. The first time can take a few minutes…` : `Checking “${gate.title}” in the sandbox…`;
-  } else if (newTask) {
-    text = `${newTask.kind === "lesson" ? "New lesson" : "New exercise"}: ${newTask.title}`;
+  } else if (newItem) {
+    text = `${newItem.item.kind === "lesson" ? "New lesson" : "New exercise"}: ${newItem.title}`;
     action = (
-      <Button variant="ghost" className="h-auto px-1.5 py-[3px] text-xs leading-normal" onClick={() => onOpenTask(newTask.id)}>
+      <Button variant="ghost" className="h-auto px-1.5 py-[3px] text-xs leading-normal" onClick={() => onOpen(newItem.item)}>
         Open
       </Button>
     );

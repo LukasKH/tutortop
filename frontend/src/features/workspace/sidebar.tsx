@@ -1,6 +1,8 @@
 import type { ReactNode } from "react";
-import { exerciseTarget, lessonDone, lessonKey, lessonOfKey, lessonTarget, todoKey, todoOfKey } from "@/lib/workspace";
+import { lessonDone } from "@/lib/workspace";
 import { type LessonStatus, type TaskInfo, type WorkspaceState } from "@/lib/api";
+import { describeItem, entryOf, itemKey, lessonOf, sameItem, type OpenItem } from "@/features/workspace/open-item";
+import type { Attention } from "@/features/tutor/chat-panel";
 import { PencilIcon } from "lucide-react";
 import { cn } from "cn";
 import { Spinner } from "@/components/ui/spinner";
@@ -9,14 +11,15 @@ import { ProgressBar } from "@/components/progress-bar";
 
 type Props = {
   ws: WorkspaceState;
-  openTaskId: string | null;
+  /** The open item, or null while a plan page is open. */
+  openItem: OpenItem | null;
   planOpen: boolean;
   /** The planning tutor wants attention: new messages, work, or questions waiting. */
-  plan: { attention: boolean; questions: number };
+  plan: Attention;
   /** Objectives whose lesson and exercise are being written in the background. */
   writing: Set<string>;
   onBack: () => void;
-  onOpenTask: (id: string) => void;
+  onOpen: (item: OpenItem) => void;
   onShowPlan: () => void;
 };
 
@@ -33,10 +36,7 @@ export function Sidebar(p: Props) {
   const tasks = ws.tasks ?? [];
   const objectives = progress.objectives ?? {};
   const lessons = ws.lessons ?? [];
-  const openKey = p.openTaskId;
-  const openLessonId = lessonOfKey(openKey);
-  const openObjective =
-    todoOfKey(openKey)?.objective ?? lessons.find((l) => l.id === openLessonId)?.objective ?? tasks.find((t) => t.id === openKey)?.objective;
+  const openObjective = describeItem(ws, p.openItem).objective?.id;
   const inPlan = new Set((curriculum?.modules ?? []).flatMap((m) => (m.objectives ?? []).map((o) => o.id)));
   const earlier = tasks.filter((t) => !inPlan.has(t.objective));
 
@@ -98,14 +98,24 @@ export function Sidebar(p: Props) {
                       <button
                         className={objRow({ done: passed, planned: !written, expanded: open, next })}
                         aria-expanded={open}
-                        onClick={() => p.onOpenTask(entry(o.id, passed, lesson, oTasks, openKey))}
+                        onClick={() => p.onOpen(entryOf(ws, o.id, p.openItem))}
                         title={writing ? `${o.title} (being written)` : o.title}
                       >
                         <Mark>{passed ? "✓" : writing && !open ? <Spinner className="inline-block size-[11px]" /> : ""}</Mark>
                         <span className="min-w-0 truncate">{o.name || o.title}</span>
                         {next && <span className="text-xs text-muted-foreground">next</span>}
                       </button>
-                      {open && <Parts objective={o.id} lesson={lesson} tasks={oTasks} writing={writing} openKey={openKey} onOpen={p.onOpenTask} />}
+                      {open && (
+                        <Parts
+                          objective={o.id}
+                          lesson={lesson}
+                          lessonItem={lessonOf(ws, o.id)}
+                          tasks={oTasks}
+                          writing={writing}
+                          openItem={p.openItem}
+                          onOpen={p.onOpen}
+                        />
+                      )}
                     </li>
                   );
                 })}
@@ -121,7 +131,12 @@ export function Sidebar(p: Props) {
             <ul className={subtasks}>
               {earlier.map((t) => (
                 <li key={t.id}>
-                  <Row label={t.title} done={t.passed} current={t.id === openKey} onClick={() => p.onOpenTask(t.id)} />
+                  <Row
+                    label={t.title}
+                    done={t.passed}
+                    current={p.openItem?.kind === "task" && p.openItem.id === t.id}
+                    onClick={() => p.onOpen({ kind: "task", id: t.id })}
+                  />
                 </li>
               ))}
             </ul>
@@ -158,38 +173,28 @@ export function Sidebar(p: Props) {
   );
 }
 
-/**
- * What clicking an objective opens, following the suggested flow: its lesson
- * until the quiz is done, then its exercise; else whatever exists, else the
- * lesson page that asks the tutor to write it.
- */
-function entry(objective: string, passed: boolean, lesson: LessonStatus | undefined, tasks: TaskInfo[], openKey: string | null): string {
-  if (lesson && !passed && !lessonDone(lesson)) return lessonKey(lesson.id);
-  const open = tasks.find((t) => t.id === openKey);
-  if (open) return open.id;
-  return tasks.length ? exerciseTarget(objective, tasks) : lessonTarget(objective, lesson);
-}
-
 /** The open objective's Lesson and Exercise(s), written or not. */
 function Parts({
   objective,
   lesson,
+  lessonItem,
   tasks,
   writing,
-  openKey,
+  openItem,
   onOpen,
 }: {
   objective: string;
   lesson?: LessonStatus;
+  /** The lesson, or the page that has it written. */
+  lessonItem: OpenItem;
   tasks: TaskInfo[];
   writing: boolean;
-  openKey: string | null;
-  onOpen: (key: string) => void;
+  openItem: OpenItem | null;
+  onOpen: (item: OpenItem) => void;
 }) {
-  const lessonItem = lessonTarget(objective, lesson);
-  const exercises: { key: string; done: boolean; title?: string }[] = tasks.length
-    ? tasks.map((t) => ({ key: t.id, done: t.passed, title: t.title }))
-    : [{ key: todoKey(objective, "exercise"), done: false }];
+  const exercises: { item: OpenItem; done: boolean; title?: string }[] = tasks.length
+    ? tasks.map((t) => ({ item: { kind: "task", id: t.id }, done: t.passed, title: t.title }))
+    : [{ item: { kind: "todo", objective, part: "exercise" }, done: false }];
   return (
     <ul className={subtasks}>
       <li>
@@ -198,21 +203,21 @@ function Parts({
           done={!!lesson && lessonDone(lesson)}
           missing={!lesson}
           writing={writing && !lesson}
-          current={openKey === lessonItem}
+          current={sameItem(openItem, lessonItem)}
           title={lesson?.title}
           onClick={() => onOpen(lessonItem)}
         />
       </li>
       {exercises.map((x, i) => (
-        <li key={x.key}>
+        <li key={itemKey(x.item)}>
           <Row
             label={i === 0 ? "Exercise" : `Exercise ${i + 1}`}
             done={x.done}
             missing={!x.title}
             writing={writing && !x.title}
-            current={openKey === x.key}
+            current={sameItem(openItem, x.item)}
             title={x.title}
-            onClick={() => onOpen(x.key)}
+            onClick={() => onOpen(x.item)}
           />
         </li>
       ))}
