@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/LukasKH/tutortop/internal/events"
 	"github.com/LukasKH/tutortop/internal/sandbox"
 	"github.com/LukasKH/tutortop/internal/workspace"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -50,14 +51,14 @@ func (t *threadTools) createTask(ctx context.Context, _ *mcp.CallToolRequest, sp
 	}
 	out.Published, out.TaskID = true, info.ID
 	out.Report += "Task " + info.ID + " is now available to the learner."
-	emit(taskPublished, TaskEvent{Workspace: t.w.ID, Task: info})
+	events.Emit(events.TaskPublished, events.Task{Workspace: t.w.ID, Task: info})
 	return nil, out, nil
 }
 
 // qualityGate runs a task's quality gate, showing it on the objective's page
 // while it runs and after.
 func (t *threadTools) qualityGate(ctx context.Context, spec workspace.TaskSpec, tc sandbox.Toolchain) (sandbox.GateReport, error) {
-	status := SandboxCheck{Kind: CheckTask, Thread: t.thread.String(), Title: spec.Title, Running: true}
+	status := events.SandboxCheck{Kind: events.CheckTask, Thread: t.thread.String(), Title: spec.Title, Running: true}
 	t.agents.showCheck(t.w.ID, status)
 	rep, err := t.runner.Gate(ctx, sandbox.GateInput{
 		Toolchain: tc, Starter: spec.Starter, Reference: spec.Reference,
@@ -88,7 +89,7 @@ func (t *threadTools) createLesson(ctx context.Context, _ *mcp.CallToolRequest, 
 	if err != nil {
 		return nil, nil, err
 	}
-	emit(lessonPublished, LessonEvent{Workspace: t.w.ID, Lesson: info})
+	events.Emit(events.LessonPublished, events.Lesson{Workspace: t.w.ID, Lesson: info})
 	return textResult("The lesson " + info.ID + " is available to the learner. Now create the task for this objective, if it doesn't have one."), nil, nil
 }
 

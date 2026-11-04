@@ -1,7 +1,8 @@
 import { useEffect, useEffectEvent } from "react";
 import { Events } from "@wailsio/runtime";
 import * as Bindings from "@bindings/github.com/LukasKH/tutortop/internal/app";
-import type { Environment, ProviderStatus, SandboxCheck, Settings, WorkspaceSnapshot } from "@bindings/github.com/LukasKH/tutortop/internal/app";
+import type { Environment, ProviderStatus, Settings, WorkspaceSnapshot } from "@bindings/github.com/LukasKH/tutortop/internal/app";
+import type { SandboxCheck } from "@bindings/github.com/LukasKH/tutortop/internal/events";
 import type { Model } from "@bindings/github.com/LukasKH/tutortop/internal/agent";
 import type {
   Activity,
@@ -24,7 +25,7 @@ import type { Result, TestResult } from "@bindings/github.com/LukasKH/tutortop/i
 /** Who said a chat item: the learner, the tutor, a tool call worth showing, or the app; how a tool call went; and what an item is, for code that looks for it. */
 export { ChatMark, ChatRole, ChatStatus } from "@bindings/github.com/LukasKH/tutortop/internal/workspace";
 /** What a sandbox check is for: a writer's new task or a toolchain. */
-export { CheckKind } from "@bindings/github.com/LukasKH/tutortop/internal/app";
+export { CheckKind } from "@bindings/github.com/LukasKH/tutortop/internal/events";
 
 export type {
   Activity,
@@ -92,7 +93,7 @@ export function errorText(err: unknown): string {
 /** The names of the backend's events. Importing them also registers their data types with the runtime. */
 export * as AppEvents from "@bindings/events";
 
-/** Listens to one of the backend's events (internal/app/events.go) for the component's lifetime. */
+/** Listens to one of the backend's events (internal/events) for the component's lifetime. */
 export function useEvent<E extends keyof Events.CustomEvents>(name: E, handler: (data: Events.CustomEvents[E]) => void) {
   const onEvent = useEffectEvent(handler);
   useEffect(() => Events.On(name, (ev) => onEvent(ev.data)), [name]);

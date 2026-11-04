@@ -7,6 +7,7 @@ import (
 	"maps"
 	"strings"
 
+	"github.com/LukasKH/tutortop/internal/events"
 	"github.com/LukasKH/tutortop/internal/sandbox"
 	"github.com/LukasKH/tutortop/internal/text"
 	"github.com/LukasKH/tutortop/internal/workspace"
@@ -35,7 +36,7 @@ func (t *threadTools) askUser(_ context.Context, _ *mcp.CallToolRequest, in askU
 	if err := t.w.SetQuestions(&q); err != nil {
 		return nil, nil, err
 	}
-	emit(questionsAsked, QuestionsEvent{Workspace: t.w.ID, Questions: q})
+	events.Emit(events.QuestionsAsked, events.Questions{Workspace: t.w.ID, Questions: q})
 	return textResult("The learner can see the questions now. End your turn; the answers will arrive as the next message."), nil, nil
 }
 
@@ -53,7 +54,7 @@ func (t *threadTools) setIcon(_ context.Context, _ *mcp.CallToolRequest, in setI
 	if err := t.w.SetIcon(in.Icon); err != nil {
 		return nil, nil, err
 	}
-	emit(workspaceChanged, WorkspaceEvent{Workspace: t.w.ID})
+	events.Emit(events.WorkspaceChanged, events.Workspace{Workspace: t.w.ID})
 	return textResult("The workspace shows the " + in.Icon + " icon now."), nil, nil
 }
 
@@ -71,7 +72,7 @@ func (t *threadTools) proposeCurriculum(ctx context.Context, _ *mcp.CallToolRequ
 	if err := t.w.Propose(in); err != nil {
 		return nil, nil, fixAndRetry(proposeCurriculumTool, err)
 	}
-	emit(curriculumProposed, WorkspaceEvent{Workspace: t.w.ID})
+	events.Emit(events.CurriculumProposed, events.Workspace{Workspace: t.w.ID})
 	return textResult("The proposal is shown to the learner. End your turn now. If they approve, the app has writers prepare the first lessons and tasks; if they want changes, you'll get a message."), nil, nil
 }
 
@@ -103,7 +104,7 @@ func (t *threadTools) setToolchain(ctx context.Context, _ *mcp.CallToolRequest, 
 	if _, ok := sandbox.Builtin(tc.Language); ok {
 		return nil, nil, fmt.Errorf("%s is built in; use it directly", tc.Language)
 	}
-	check := SandboxCheck{Kind: CheckToolchain, Thread: t.thread.String(), Title: tc.Name, Running: true}
+	check := events.SandboxCheck{Kind: events.CheckToolchain, Thread: t.thread.String(), Title: tc.Name, Running: true}
 	t.agents.showCheck(t.w.ID, check)
 	report, err := t.checkToolchain(ctx, tc, in.Example)
 	var lspErr error
@@ -132,7 +133,7 @@ func (t *threadTools) setToolchain(ctx context.Context, _ *mcp.CallToolRequest, 
 	if err := t.w.SaveToolchain(in.Toolchain); err != nil {
 		return nil, nil, err
 	}
-	emit(workspaceChanged, WorkspaceEvent{Workspace: t.w.ID})
+	events.Emit(events.WorkspaceChanged, events.Workspace{Workspace: t.w.ID})
 	return textResult(fmt.Sprintf("%s is set up. Use language %q in the curriculum.%s", tc.Name, tc.Language, note)), nil, nil
 }
 

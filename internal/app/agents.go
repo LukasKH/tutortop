@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/LukasKH/tutortop/internal/agent"
+	"github.com/LukasKH/tutortop/internal/events"
 	"github.com/LukasKH/tutortop/internal/workspace"
 )
 
@@ -148,21 +149,21 @@ func (ag *threadAgents) stop(wsID, thread string) {
 // showCheck tells the UI how a sandbox check is going. A writer's is also
 // kept on its threadAgent, so the objective's page shows it even after the
 // learner looks away; it goes when the writer does.
-func (ag *threadAgents) showCheck(wsID string, c SandboxCheck) {
+func (ag *threadAgents) showCheck(wsID string, c events.SandboxCheck) {
 	ag.mu.Lock()
 	defer ag.mu.Unlock()
-	if ta := ag.agents[threadKey{wsID, c.Thread}]; ta != nil && c.Kind == CheckTask {
+	if ta := ag.agents[threadKey{wsID, c.Thread}]; ta != nil && c.Kind == events.CheckTask {
 		ta.check = &c
 	}
 	ag.seq++
-	emit(checkStatus, CheckEvent{Workspace: wsID, Check: c, Seq: ag.seq})
+	events.Emit(events.CheckStatus, events.Check{Workspace: wsID, Check: c, Seq: ag.seq})
 }
 
 // state returns what the workspace's agents are doing: which threads are
 // busy, and the writers' latest sandbox checks by objective. Its seq also
 // orders snapshots among themselves.
-func (ag *threadAgents) state(wsID string) (busy map[string]bool, checks map[string]SandboxCheck, seq uint64) {
-	busy, checks = map[string]bool{}, map[string]SandboxCheck{}
+func (ag *threadAgents) state(wsID string) (busy map[string]bool, checks map[string]events.SandboxCheck, seq uint64) {
+	busy, checks = map[string]bool{}, map[string]events.SandboxCheck{}
 	ag.mu.Lock()
 	defer ag.mu.Unlock()
 	ag.seq++
@@ -217,8 +218,8 @@ type threadAgent struct {
 	cli   agent.Session // set before ready is closed; nil if it didn't open
 
 	// Guarded by threadAgents.mu.
-	pending int           // messages queued or being answered; the thread is busy while it's above 0
-	check   *SandboxCheck // a writer's latest sandbox check of its task
+	pending int                  // messages queued or being answered; the thread is busy while it's above 0
+	check   *events.SandboxCheck // a writer's latest sandbox check of its task
 }
 
 // opened reports whether the CLI is open, without blocking.
@@ -371,7 +372,7 @@ func (ag *threadAgents) setPending(ta *threadAgent, n int) {
 	ta.pending = n
 	if busy := n > 0; busy != was {
 		ag.seq++
-		emit(threadBusy, BusyEvent{Workspace: ta.key.ws, Thread: ta.key.name, Busy: busy, Seq: ag.seq})
+		events.Emit(events.ThreadBusy, events.Busy{Workspace: ta.key.ws, Thread: ta.key.name, Busy: busy, Seq: ag.seq})
 	}
 }
 

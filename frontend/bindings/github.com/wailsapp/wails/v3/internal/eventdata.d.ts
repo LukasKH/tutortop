@@ -7,20 +7,20 @@ import type { Events } from "@wailsio/runtime";
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import type * as app$0 from "../../../../LukasKH/tutortop/internal/app/models.js";
+import type * as events$0 from "../../../../LukasKH/tutortop/internal/events/models.js";
 
 declare module "@wailsio/runtime" {
     namespace Events {
         interface CustomEvents {
-            "chat:message": app$0.ChatEvent;
-            "check:status": app$0.CheckEvent;
-            "curriculum:proposed": app$0.WorkspaceEvent;
-            "lesson:published": app$0.LessonEvent;
-            "lsp:message": app$0.LSPEvent;
-            "questions:asked": app$0.QuestionsEvent;
-            "task:published": app$0.TaskEvent;
-            "thread:busy": app$0.BusyEvent;
-            "workspace:changed": app$0.WorkspaceEvent;
+            "chat:message": events$0.Chat;
+            "check:status": events$0.Check;
+            "curriculum:proposed": events$0.Workspace;
+            "lesson:published": events$0.Lesson;
+            "lsp:message": events$0.LSP;
+            "questions:asked": events$0.Questions;
+            "task:published": events$0.Task;
+            "thread:busy": events$0.Busy;
+            "workspace:changed": events$0.Workspace;
         }
     }
 }

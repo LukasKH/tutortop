@@ -57,28 +57,28 @@ The bindings are generated, and committed. After changing an exported method or 
 
 Some things start on the Go side. The agent streams a reply, a writer publishes a task, a sandbox check finishes, a language server answers. Go emits an event for each one, and the frontend listens.
 
-All events live in `internal/app/events.go`, apart from the services: a service, a thread agent or an MCP tool may send any of them. Each has a payload struct, a name constant in `namespace:name` form whose type names the payload (`chatMessage event[ChatEvent] = "chat:message"`), and an `application.RegisterEvent[Payload](string(name))` call in `init()`. Registering does two things. The binding generator writes the names to `frontend/bindings/events` and types each event's data in TypeScript, and Wails drops an event whose data has the wrong type. It only logs that, and release builds discard the log, so a mistake fails silently: `TestEventsRegistered` checks that every name constant is registered with its payload type.
+All events live in `internal/events`, apart from the services: a service, a thread agent or an MCP tool may send any of them. Each has a payload struct, a name constant in `namespace:name` form whose type names the payload (`ChatMessage Name[Chat] = "chat:message"`), and an `application.RegisterEvent[Payload](string(name))` call in `init()`. Registering does two things. The binding generator writes the names to `frontend/bindings/events` and types each event's data in TypeScript, and Wails drops an event whose data has the wrong type. It only logs that, and release builds discard the log, so a mistake fails silently: `TestEventsRegistered` checks that every name constant is registered with its payload type.
 
 | Event | Payload | Sent when |
 | --- | --- | --- |
-| `chat:message` | `ChatEvent` | a chat message is added or updated, including each streamed piece of a reply |
-| `thread:busy` | `BusyEvent` | a thread's tutor or writer starts or stops working |
-| `check:status` | `CheckEvent` | a sandbox check (`SandboxCheck`) started or finished: a writer's new task in the quality gate, or a language a chat sets up |
-| `task:published` | `TaskEvent` | a writer published a task |
-| `lesson:published` | `LessonEvent` | a writer published a lesson |
-| `questions:asked` | `QuestionsEvent` | the tutor called `ask_user` |
-| `workspace:changed` | `WorkspaceEvent` | anything else in the workspace changed; the frontend reloads it |
-| `curriculum:proposed` | `WorkspaceEvent` | the tutor proposed a curriculum |
-| `lsp:message` | `LSPEvent` | a language server sent a message, or stopped |
+| `chat:message` | `events.Chat` | a chat message is added or updated, including each streamed piece of a reply |
+| `thread:busy` | `events.Busy` | a thread's tutor or writer starts or stops working |
+| `check:status` | `events.Check` | a sandbox check (`events.SandboxCheck`) started or finished: a writer's new task in the quality gate, or a language a chat sets up |
+| `task:published` | `events.Task` | a writer published a task |
+| `lesson:published` | `events.Lesson` | a writer published a lesson |
+| `questions:asked` | `events.Questions` | the tutor called `ask_user` |
+| `workspace:changed` | `events.Workspace` | anything else in the workspace changed; the frontend reloads it |
+| `curriculum:proposed` | `events.Workspace` | the tutor proposed a curriculum |
+| `lsp:message` | `events.LSP` | a language server sent a message, or stopped |
 
-Go code sends with `emit(name, payload)`. Because the name's type carries the payload type, `emit(chatMessage, BusyEvent{...})` doesn't compile. The compiler can't link the `RegisterEvent` calls to the names, because the binding generator needs them written out literally, so `TestEventsRegistered` checks those. `emit` looks up the running Wails app with `application.Get()`. Tests run without one, and there `emit` does nothing, so tests check what changed through the services' methods.
+Go code sends with `events.Emit(name, payload)`. Because the name's type carries the payload type, `events.Emit(events.ChatMessage, events.Busy{...})` doesn't compile. The compiler can't link the `RegisterEvent` calls to the names, because the binding generator needs them written out literally, so `TestEventsRegistered` checks those. `events.Emit` looks up the running Wails app with `application.Get()`. Tests run without one, and there it does nothing, so tests check what changed through the services' methods.
 
 In the frontend, `useEvent(AppEvents.ChatMessage, (ev) => ...)` listens for as long as the component is mounted. Most payloads carry the workspace id, and views ignore events for other workspaces.
 
 To add an event:
 
-1. `internal/app/events.go`: the payload struct, the name constant (`event[Payload]`) and its `application.RegisterEvent` line in `init`. `TestEventsRegistered` fails until the last two match.
-2. Call `emit(name, payload)` where it happens. If the snapshot also carries the state it changes, number it from `threadAgents.seq` under `threadAgents.mu`, as `setPending` does.
+1. `internal/events/events.go`: the payload struct, the name constant (`Name[Payload]`) and its `application.RegisterEvent` line in `init`. `TestEventsRegistered` fails until the last two match.
+2. Call `events.Emit(events.<Name>, payload)` where it happens. If the snapshot also carries the state it changes, number it from `threadAgents.seq` under `threadAgents.mu`, as `setPending` does.
 3. Add it to the table above.
 4. Run `wails3 generate bindings -clean=true -ts -i`, then listen in the frontend ([Frontend](#frontend), "An event").
 
@@ -152,7 +152,7 @@ The open item is an `OpenItem`: a task, a lesson, or an objective's lesson or ex
 5. `workspace-view.tsx: CenterPane`: render it. The compiler points at the missing `case`. Take busy threads and checks from `live`, the snapshot's part from the `Center`.
 6. `use-open-item.test.ts`: add a `centerOf` case.
 
-**An event** (after adding it to Go's `events.go` and regenerating the bindings)
+**An event** (after adding it to Go's `internal/events` and regenerating the bindings)
 
 1. Listen with `useEvent(AppEvents.<Name>, ...)` in the hook that owns the state it changes, and ignore other workspaces' events (`workspace !== id`).
 2. If it only means the snapshot changed: `use-workspace.ts: useWorkspace` calls `refresh` on it, as for `workspace:changed`. Done.

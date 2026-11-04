@@ -16,24 +16,11 @@ export {
     WorkspaceService
 };
 
-export {
-    CheckKind
-} from "./models.js";
-
 export type {
-    BusyEvent,
-    ChatEvent,
-    CheckEvent,
     Environment,
-    LSPEvent,
     LanguageServerInfo,
-    LessonEvent,
     ModelChoice,
     ProviderStatus,
-    QuestionsEvent,
-    SandboxCheck,
     Settings,
-    TaskEvent,
-    WorkspaceEvent,
     WorkspaceSnapshot
 } from "./models.js";

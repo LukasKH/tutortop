@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/LukasKH/tutortop/internal/events"
 	"github.com/LukasKH/tutortop/internal/sandbox"
 	"github.com/LukasKH/tutortop/internal/workspace"
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -128,7 +129,7 @@ type WorkspaceSnapshot struct {
 	Questions  *workspace.Questions     `json:"questions"`
 	Busy       map[string]bool          `json:"busy"` // thread -> its tutor or writer is working
 	// Checks are writers' latest sandbox checks of new tasks, by objective.
-	Checks map[string]SandboxCheck `json:"checks"`
+	Checks map[string]events.SandboxCheck `json:"checks"`
 	// Seq is when Busy and Checks were read, in the sequence that numbers
 	// busy and check events: one with a higher Seq happened after.
 	Seq uint64 `json:"seq"`
@@ -160,7 +161,7 @@ func (s *WorkspaceService) ApproveProposal(wsID string) error {
 	if err != nil {
 		return err
 	}
-	emit(workspaceChanged, WorkspaceEvent{Workspace: wsID})
+	events.Emit(events.WorkspaceChanged, events.Workspace{Workspace: wsID})
 	s.prepareImage(w, c.Language)
 	post(w, workspace.ChatItem{
 		Thread: workspace.PlanThread.String(), Role: workspace.RoleNotice, Mark: workspace.MarkPlanApproved,
@@ -191,7 +192,7 @@ func (s *WorkspaceService) SaveMission(wsID, mission string) error {
 	if err != nil || !changed {
 		return err
 	}
-	emit(workspaceChanged, WorkspaceEvent{Workspace: wsID})
+	events.Emit(events.WorkspaceChanged, events.Workspace{Workspace: wsID})
 	s.agents.send(w, workspace.PlanThread, message{
 		Role:  workspace.RoleNotice,
 		Shown: "You edited your mission.",
@@ -209,7 +210,7 @@ func (s *WorkspaceService) RejectProposal(wsID, feedback string) error {
 	if err := w.DiscardProposal(); err != nil {
 		return err
 	}
-	emit(workspaceChanged, WorkspaceEvent{Workspace: wsID})
+	events.Emit(events.WorkspaceChanged, events.Workspace{Workspace: wsID})
 	text := "I'd like changes to the proposed curriculum: " + feedback
 	s.agents.send(w, workspace.PlanThread, message{Role: workspace.RoleUser, Shown: text, Agent: text})
 	return nil

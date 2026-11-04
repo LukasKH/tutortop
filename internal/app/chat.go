@@ -13,6 +13,7 @@ import (
 	"uuid"
 
 	"github.com/LukasKH/tutortop/internal/agent"
+	"github.com/LukasKH/tutortop/internal/events"
 	"github.com/LukasKH/tutortop/internal/workspace"
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
@@ -136,7 +137,7 @@ func (s *ChatService) StopAgent(wsID, thread string) { s.agents.stop(wsID, threa
 func post(w *workspace.Workspace, item workspace.ChatItem) {
 	item.ID, item.At = uuid.New().String(), time.Now()
 	_ = w.AppendChat(item)
-	emit(chatMessage, ChatEvent{Workspace: w.ID, Item: item})
+	events.Emit(events.ChatMessage, events.Chat{Workspace: w.ID, Item: item})
 }
 
 // postFailure shows a problem in a thread as a red notice.
@@ -171,7 +172,7 @@ func (t *transcript) handle(ev agent.Event) {
 			t.current = &workspace.ChatItem{ID: uuid.New().String(), Thread: t.thread, Role: workspace.RoleAssistant, At: time.Now()}
 		}
 		t.current.Text += ev.Text
-		emit(chatMessage, ChatEvent{Workspace: w.ID, Item: *t.current})
+		events.Emit(events.ChatMessage, events.Chat{Workspace: w.ID, Item: *t.current})
 	case agent.EventTool:
 		t.endText()
 		tool := ev.Tool
@@ -191,7 +192,7 @@ func (t *transcript) handle(ev agent.Event) {
 			return
 		}
 		item.Status = chatStatus[tool.Status]
-		emit(chatMessage, ChatEvent{Workspace: w.ID, Item: *item})
+		events.Emit(events.ChatMessage, events.Chat{Workspace: w.ID, Item: *item})
 		if tool.Status != agent.ToolRunning {
 			_ = w.AppendChat(*item)
 		}
@@ -225,7 +226,7 @@ func (t *transcript) endTurn() {
 		}
 	}
 	clear(t.tools)
-	emit(workspaceChanged, WorkspaceEvent{Workspace: t.ws.ID})
+	events.Emit(events.WorkspaceChanged, events.Workspace{Workspace: t.ws.ID})
 }
 
 // mcpName is the name the tutor knows Tutortop's MCP server by.

@@ -1,6 +1,9 @@
 package app
 
-import "github.com/LukasKH/tutortop/internal/workspace"
+import (
+	"github.com/LukasKH/tutortop/internal/events"
+	"github.com/LukasKH/tutortop/internal/workspace"
+)
 
 // LessonService serves the lessons: a lesson and its quiz.
 type LessonService struct {
@@ -28,7 +31,7 @@ func (s *LessonService) AnswerQuiz(wsID, lessonID string, question, choice int) 
 	}
 	r, err := w.AnswerQuiz(lessonID, question, choice)
 	if err == nil {
-		emit(workspaceChanged, WorkspaceEvent{Workspace: wsID})
+		events.Emit(events.WorkspaceChanged, events.Workspace{Workspace: wsID})
 	}
 	return r, err
 }

@@ -1,4 +1,4 @@
-package app
+package events
 
 import (
 	"go/ast"
@@ -24,13 +24,13 @@ func TestEventsRegistered(t *testing.T) {
 	registered := map[string]string{} // same, from the RegisterEvent calls
 	ast.Inspect(f, func(n ast.Node) bool {
 		switch n := n.(type) {
-		case *ast.ValueSpec: // chatMessage event[ChatEvent] = "chat:message"
-			if typ, ok := n.Type.(*ast.IndexExpr); ok && types.ExprString(typ.X) == "event" {
+		case *ast.ValueSpec: // ChatMessage Name[Chat] = "chat:message"
+			if typ, ok := n.Type.(*ast.IndexExpr); ok && types.ExprString(typ.X) == "Name" {
 				for _, name := range n.Names {
 					declared[name.Name] = types.ExprString(typ.Index)
 				}
 			}
-		case *ast.CallExpr: // application.RegisterEvent[ChatEvent](string(chatMessage))
+		case *ast.CallExpr: // application.RegisterEvent[Chat](string(ChatMessage))
 			if fn, ok := n.Fun.(*ast.IndexExpr); ok && types.ExprString(fn.X) == "application.RegisterEvent" {
 				name := strings.TrimSuffix(strings.TrimPrefix(types.ExprString(n.Args[0]), "string("), ")")
 				registered[name] = types.ExprString(fn.Index)

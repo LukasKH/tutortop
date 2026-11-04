@@ -3,62 +3,10 @@
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as events$0 from "../events/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as workspace$0 from "../workspace/models.js";
-
-/**
- * BusyEvent tells when a thread's tutor or writer starts or stops working.
- */
-export interface BusyEvent {
-    "workspace": string;
-    "thread": string;
-    "busy": boolean;
-
-    /**
-     * orders it among snapshots (WorkspaceSnapshot.Seq)
-     */
-    "seq": number;
-}
-
-/**
- * ChatEvent is a new or updated chat message.
- */
-export interface ChatEvent {
-    "workspace": string;
-    "item": workspace$0.ChatItem;
-}
-
-/**
- * CheckEvent tells how a sandbox check is going.
- */
-export interface CheckEvent {
-    "workspace": string;
-    "check": SandboxCheck;
-
-    /**
-     * orders it among snapshots (WorkspaceSnapshot.Seq)
-     */
-    "seq": number;
-}
-
-/**
- * CheckKind is what a SandboxCheck checks.
- */
-export enum CheckKind {
-    /**
-     * The Go zero value for the underlying type of the enum.
-     */
-    $zero = "",
-
-    /**
-     * a writer's new task, in the quality gate
-     */
-    CheckTask = "task",
-
-    /**
-     * a language a chat sets up with set_toolchain
-     */
-    CheckToolchain = "toolchain",
-};
 
 /**
  * Environment is what's installed: the agents' CLIs and a working sandbox,
@@ -79,16 +27,6 @@ export interface Environment {
 }
 
 /**
- * LSPEvent carries one message from a language server to the editor, or
- * tells it the server has stopped.
- */
-export interface LSPEvent {
-    "id": string;
-    "message": string;
-    "closed": boolean;
-}
-
-/**
  * LanguageServerInfo tells the editor how to talk to a started server.
  */
 export interface LanguageServerInfo {
@@ -98,14 +36,6 @@ export interface LanguageServerInfo {
      * RootURI is the task folder as the server sees it, e.g. file:///work.
      */
     "rootUri": string;
-}
-
-/**
- * LessonEvent announces a newly published lesson.
- */
-export interface LessonEvent {
-    "workspace": string;
-    "lesson": workspace$0.LessonInfo;
 }
 
 /**
@@ -122,33 +52,6 @@ export interface ProviderStatus {
     "name": string;
     "installed": boolean;
     "path"?: string;
-}
-
-/**
- * QuestionsEvent carries the tutor's questions for the learner.
- */
-export interface QuestionsEvent {
-    "workspace": string;
-    "questions": workspace$0.Questions;
-}
-
-/**
- * SandboxCheck is a check in the sandbox that an agent waits for and the
- * learner watches: a writer's new task in the quality gate, or a language a
- * chat sets up with set_toolchain. WorkspaceSnapshot.Checks keeps writers'
- * latest ones.
- */
-export interface SandboxCheck {
-    "kind": CheckKind;
-
-    /**
-     * Thread is the thread whose agent waits for it: an objective's writer
-     * for a task, the chat that called set_toolchain for a toolchain.
-     */
-    "thread": string;
-    "title": string;
-    "running": boolean;
-    "passed": boolean;
 }
 
 /**
@@ -178,18 +81,6 @@ export interface Settings {
 }
 
 /**
- * TaskEvent announces a newly published task.
- */
-export interface TaskEvent {
-    "workspace": string;
-    "task": workspace$0.TaskInfo;
-}
-
-export interface WorkspaceEvent {
-    "workspace": string;
-}
-
-/**
  * WorkspaceSnapshot is everything the workspace screen shows, read at one
  * moment. The frontend keeps it current with events until the next one.
  */
@@ -213,7 +104,7 @@ export interface WorkspaceSnapshot {
     /**
      * Checks are writers' latest sandbox checks of new tasks, by objective.
      */
-    "checks": { [_ in string]?: SandboxCheck } | null;
+    "checks": { [_ in string]?: events$0.SandboxCheck } | null;
 
     /**
      * Seq is when Busy and Checks were read, in the sequence that numbers

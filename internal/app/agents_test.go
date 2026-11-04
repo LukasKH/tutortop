@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/LukasKH/tutortop/internal/agent"
+	"github.com/LukasKH/tutortop/internal/events"
 	"github.com/LukasKH/tutortop/internal/workspace"
 )
 
@@ -52,7 +53,7 @@ func TestWriterEndsAfterItsTurn(t *testing.T) {
 		t.Fatalf("writer resumed %q", turn.s.opts.ResumeID)
 	}
 	queue(t, ag, w, writer, "write again")
-	ag.showCheck(w.ID, SandboxCheck{Kind: CheckTask, Thread: writer.String(), Title: "Wrap errors", Running: true})
+	ag.showCheck(w.ID, events.SandboxCheck{Kind: events.CheckTask, Thread: writer.String(), Title: "Wrap errors", Running: true})
 	if busy, checks, _ := ag.state(w.ID); !busy[writer.String()] || !checks["go.errors"].Running {
 		t.Fatalf("busy %v, checks %v", busy, checks)
 	}

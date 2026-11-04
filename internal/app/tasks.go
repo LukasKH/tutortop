@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/LukasKH/tutortop/internal/events"
 	"github.com/LukasKH/tutortop/internal/sandbox"
 	"github.com/LukasKH/tutortop/internal/workspace"
 )
@@ -72,7 +73,7 @@ func (s *TaskService) RunTests(wsID, taskID string, files sandbox.Files, submit 
 	p, t := res.Counts()
 	firstPass := submit && res.Status == sandbox.StatusPassed && !w.TaskPassed(taskID)
 	_ = w.RecordAttempt(workspace.Attempt{TaskID: taskID, Kind: kind, Status: res.Status, Passed: p, Total: t})
-	emit(workspaceChanged, WorkspaceEvent{Workspace: wsID})
+	events.Emit(events.WorkspaceChanged, events.Workspace{Workspace: wsID})
 	if firstPass {
 		w.Commit("Pass " + taskID)
 		d, _ := w.Task(taskID)

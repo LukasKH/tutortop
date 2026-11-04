@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/LukasKH/tutortop/internal/decode"
+	"github.com/LukasKH/tutortop/internal/events"
 	"github.com/LukasKH/tutortop/internal/sandbox"
 	"github.com/LukasKH/tutortop/internal/workspace"
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -209,13 +210,13 @@ func (r *languageServers) relay(ls *languageServer) {
 		if err != nil {
 			break
 		}
-		emit(lspMessage, LSPEvent{ID: ls.id, Message: string(msg)})
+		events.Emit(events.LSPMessage, events.LSP{ID: ls.id, Message: string(msg)})
 	}
 	r.mu.Lock()
 	delete(r.servers, ls.id)
 	r.mu.Unlock()
 	ls.srv.Close()
-	emit(lspMessage, LSPEvent{ID: ls.id, Closed: true})
+	events.Emit(events.LSPMessage, events.LSP{ID: ls.id, Closed: true})
 }
 
 // ---- LSP framing: a Content-Length header, a blank line, then JSON ----
