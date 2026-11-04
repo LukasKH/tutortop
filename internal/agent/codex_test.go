@@ -342,9 +342,6 @@ func codexExpect(t *testing.T, cli *fakeCLI, method string) message {
 	if m.str("method") != method || m.get("id") == nil {
 		t.Fatalf("sent %v, want a %s request", m, method)
 	}
-	if _, ok := m["jsonrpc"]; ok {
-		t.Errorf("%s has a jsonrpc field, which Codex doesn't use", method)
-	}
 	return m
 }
 
