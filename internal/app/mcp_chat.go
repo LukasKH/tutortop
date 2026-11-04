@@ -104,7 +104,7 @@ func (t *threadTools) setToolchain(ctx context.Context, _ *mcp.CallToolRequest, 
 		return nil, nil, fmt.Errorf("%s is built in; use it directly", tc.Language)
 	}
 	check := SandboxCheck{Kind: CheckToolchain, Thread: t.thread.String(), Title: tc.Name, Running: true}
-	t.app.showCheck(t.w.ID, check)
+	t.app.agents.showCheck(t.w.ID, check)
 	report, err := t.app.checkToolchain(ctx, tc, in.Example)
 	var lspErr error
 	if err == nil && report == "" && len(tc.LanguageServer) > 0 {
@@ -113,7 +113,7 @@ func (t *threadTools) setToolchain(ctx context.Context, _ *mcp.CallToolRequest, 
 		lspErr = t.app.probeLanguageServer(ctx, tc, files)
 	}
 	check.Running, check.Passed = false, err == nil && report == ""
-	t.app.showCheck(t.w.ID, check)
+	t.app.agents.showCheck(t.w.ID, check)
 	if err != nil {
 		return nil, nil, sandboxProblem(err)
 	}

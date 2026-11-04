@@ -118,17 +118,31 @@ Writers have no chat window. They prepare an objective's lesson and exercise in 
 
 ### Thread agents
 
-A thread's agent runs as a `threadAgent` (`internal/app/agents.go`): the CLI's `agent.Session` and a queue of the thread's messages, answered one turn at a time, in order. When the learner sends a message, `SendMessage` adds a `[context]` block about the open task or lesson (`prompts.go`), posts the message to the chat and queues it with `enqueue`. That starts the thread's agent if it has none. Its loop hands each message to the CLI, and its `transcript` streams the reply into the chat as `chat:message` events.
+`threadAgents` (`internal/app/agents.go`) runs every thread's agent, with its own lock. The rest of `App` uses it only through a few methods:
 
-- A thread's agent starts with the first message for its thread, in the background. Chats resume their saved conversation (`Meta.ResumeIDs`); a writer starts fresh.
-- The thread is busy (`thread:busy`) from the moment a message is queued until every queued message is answered, including while the process starts. The thread agent's count of pending messages is the only source of this state.
+| Method | What it does |
+| --- | --- |
+| `queue(w, thread, msg)` | queues a message for the thread's agent, starting the agent if it has none |
+| `stop(ws, thread)` | interrupts the thread's current turn |
+| `showCheck(ws, check)` | sends `check:status`, and keeps a writer's check while the writer lives |
+| `state(ws)` | which threads are busy, the writers' checks, and the `seq` they were read at |
+| `endWorkspace(ws)`, `endAll()` | end a deleted workspace's agents, or all of them as the app quits |
+
+What it needs from the app is passed in when `New` builds it: `agent.Start` to open a CLI session (tests pass a fake), the settings' agent, model and effort, and a thread's folder, MCP URL and instructions (`App.agentOptions`). It posts to the chat with `post`, like the rest of the app.
+
+Each verb in it means one thing. A thread agent (`threadAgent`) **starts** and **ends**; its CLI session **opens** and **closes**; a message is **queued**, then **answered**; **stop** interrupts a turn. On top of it, `App.send` **posts** a message in the thread's chat and queues it. When the learner sends a message, `SendMessage` adds a `[context]` block about the open task or lesson (`prompts.go`) and sends it. The thread agent's loop hands each message to the CLI, and its `transcript` streams the reply into the chat as `chat:message` events.
+
+- A thread's agent starts with the first message queued for its thread, in the background. Chats resume their saved conversation (`Meta.ResumeIDs`); a writer starts fresh.
+- The thread is busy (`thread:busy`) from the moment a message is queued until every queued message is answered, including while the CLI opens. The thread agent's count of pending messages is the only source of this state.
 - When the settings change, an idle thread agent restarts with the next message. A busy one finishes its queue first.
-- A thread agent ends when its process exits, its workspace is deleted or the app quits. A writer also ends as soon as it's idle, and starting any thread but the plan ends the workspace's idle task and lesson agents.
+- A busy writer takes no second message: it's already writing its objective.
+- A thread agent ends when its CLI exits, its workspace is deleted or the app quits. A writer also ends as soon as it's idle, and starting any thread but the plan ends the workspace's idle task and lesson agents.
+- Busy and check events and snapshots take their numbers (`seq`) from one counter under `threadAgents.mu`, so the numbers order them exactly as they happened.
 
 The calls that message an agent (`SendMessage`, `AnswerQuestions`, `RequestHint`, `PrepareObjective`) return once the message is queued. They don't wait for the process to start. Their error means the message wasn't sent at all, for example because the thread name is invalid. Once a message is in the chat, anything that goes wrong with it is posted in that thread as a notice with status `failed`, and nowhere else:
 
-- If the agent doesn't start (the CLI is missing or not signed in), the thread agent posts why once, however many messages were waiting. It drops them and ends, so the thread turns idle and the next message tries a fresh start.
-- If a turn fails, its error is posted and the thread agent takes the next message. If the process exits, its error is posted, the queued messages are dropped and the next message starts a new process.
+- If the CLI doesn't open (it's missing or not signed in), the thread agent posts why once, however many messages were waiting. It drops them and ends, so the thread turns idle and the next message tries a fresh start.
+- If a turn fails, its error is posted and the thread agent takes the next message. If the CLI exits, its error is posted, the queued messages are dropped and the next message starts a new thread agent.
 - A writer has no chat, so the objective's page shows its failure.
 
 To add a kind of thread, add it and its name to `internal/workspace/thread.go`, give it a role in `prompts.go` (and `prompts/`), decide in `agents.go` whether it resumes and when it ends, and add the kind to the tools it gets in `mcp.go`'s `mcpTools`.

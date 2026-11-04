@@ -72,13 +72,9 @@ func (a *App) CreateWorkspace(title, icon string) (string, error) {
 // DeleteWorkspace stops the workspace's agents and language servers, then
 // deletes its files for good.
 func (a *App) DeleteWorkspace(id string) error {
+	a.agents.endWorkspace(id)
 	a.mu.Lock()
 	var servers []*languageServer
-	for key, ta := range a.agents {
-		if key.ws == id {
-			a.end(ta)
-		}
-	}
 	for key := range a.lastResults {
 		if key.ws == id {
 			delete(a.lastResults, key)
@@ -132,7 +128,7 @@ func (a *App) Workspace(id string) (WorkspaceSnapshot, error) {
 	st.Tasks, _ = w.TaskStatuses()
 	st.Lessons, _ = w.LessonStatuses()
 	st.Questions = w.PendingQuestions()
-	st.Busy, st.Checks, st.Seq = a.agentState(id)
+	st.Busy, st.Checks, st.Seq = a.agents.state(id)
 	return st, nil
 }
 
@@ -147,7 +143,7 @@ func (a *App) ApproveProposal(wsID string) error {
 	}
 	emit(workspaceChanged, WorkspaceEvent{Workspace: wsID})
 	a.prepare(w, c.Language)
-	a.post(w, workspace.ChatItem{
+	post(w, workspace.ChatItem{
 		Thread: workspace.PlanThread.String(), Role: workspace.RoleNotice, Mark: workspace.MarkPlanApproved,
 		Text: fmt.Sprintf("You approved the plan (revision %d).", c.Revision),
 	})

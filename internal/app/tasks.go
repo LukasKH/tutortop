@@ -66,7 +66,7 @@ func (a *App) RunChecks(wsID, taskID string, files runner.Files, submit bool) (r
 		w.Commit("Pass " + taskID)
 		d, _ := w.Task(taskID)
 		shown := fmt.Sprintf("You passed “%s” (%d/%d tests).", d.Title, p, t)
-		a.post(w, workspace.ChatItem{Thread: taskID, Role: workspace.RoleNotice, Text: shown})
+		post(w, workspace.ChatItem{Thread: taskID, Role: workspace.RoleNotice, Text: shown})
 		// Writers keep the next objectives ready, so the learner never waits;
 		// the planning tutor records what was learned.
 		a.keepReady(w, fmt.Sprintf("The learner just passed “%s”.", d.Title))

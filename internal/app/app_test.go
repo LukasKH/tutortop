@@ -135,7 +135,7 @@ func newTestApp(t *testing.T) *App {
 	a.settingsPath = filepath.Join(t.TempDir(), "settings.yaml")
 	a.linkCheck = func(context.Context, []string) []string { return nil }
 	// Never start a real agent from a test; tests that watch the agent replace this.
-	a.startAgent = func(context.Context, string, agent.Options, func(agent.Event)) (agent.Session, error) {
+	a.agents.openSession = func(context.Context, string, agent.Options, func(agent.Event)) (agent.Session, error) {
 		return &fakeSession{prompts: new([]string), mu: &sync.Mutex{}}, nil
 	}
 	return a
@@ -222,7 +222,7 @@ func TestThreadsGetOwnSessions(t *testing.T) {
 	}
 	var mu sync.Mutex
 	sessions := map[string]*started{} // by MCP URL
-	a.startAgent = func(_ context.Context, _ string, opts agent.Options, _ func(agent.Event)) (agent.Session, error) {
+	a.agents.openSession = func(_ context.Context, _ string, opts agent.Options, _ func(agent.Event)) (agent.Session, error) {
 		mu.Lock()
 		defer mu.Unlock()
 		s := &started{opts: opts}

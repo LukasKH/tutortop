@@ -17,9 +17,9 @@ import (
 )
 
 // The chat: what the learner sends to a thread's agent, and how its replies
-// show up. send posts a message to the thread's chat and queues it for the
-// thread's agent (agents.go), whose transcript streams the reply into the
-// chat as it arrives.
+// show up. send posts a message in the thread's chat and queues it for the
+// thread's agent (threadAgents, agents.go), whose transcript streams the
+// reply into the chat as it arrives.
 
 // Chat returns one thread's chat.
 func (a *App) Chat(wsID, thread string) ([]workspace.ChatItem, error) {
@@ -109,16 +109,7 @@ func (a *App) RequestHint(wsID, taskID string, level int) error {
 
 // StopAgent interrupts the current turn in a thread. Its agent posts a
 // notice once the cut-off reply is saved.
-func (a *App) StopAgent(wsID, thread string) {
-	a.mu.Lock()
-	ta := a.agents[threadKey{wsID, thread}]
-	a.mu.Unlock()
-	if ta == nil || !ta.started() {
-		return
-	}
-	ta.stop.Store(true)
-	ta.cli.Cancel()
-}
+func (a *App) StopAgent(wsID, thread string) { a.agents.stop(wsID, thread) }
 
 // message is one thing sent to the tutor. What the learner sees in the chat
 // (Shown) can differ from what the tutor receives (Agent): the app attaches
@@ -130,32 +121,31 @@ type message struct {
 	Agent string
 }
 
-// send records the message in a thread's chat and queues it for that
-// thread's agent, without waiting for the agent to start. Once the message
-// is in the chat, whatever goes wrong with it is posted there too.
+// send posts a message in a thread's chat and queues it for that thread's
+// agent, without waiting for the agent to start. Once the message is in the
+// chat, whatever goes wrong with it is posted there too.
 func (a *App) send(w *workspace.Workspace, t workspace.Thread, m message) {
-	a.post(w, workspace.ChatItem{Thread: t.String(), Role: m.Role, Text: m.Shown})
-	if err := a.enqueue(w, t, m.Agent, false); err != nil {
-		a.postFailure(w, t.String(), err.Error())
+	post(w, workspace.ChatItem{Thread: t.String(), Role: m.Role, Text: m.Shown})
+	if err := a.agents.queue(w, t, m.Agent); err != nil {
+		postFailure(w, t.String(), err.Error())
 	}
 }
 
 // post saves a chat item and shows it in the UI.
-func (a *App) post(w *workspace.Workspace, item workspace.ChatItem) {
+func post(w *workspace.Workspace, item workspace.ChatItem) {
 	item.ID, item.At = uuid.New().String(), time.Now()
 	_ = w.AppendChat(item)
 	emit(chatMessage, ChatEvent{Workspace: w.ID, Item: item})
 }
 
 // postFailure shows a problem in a thread as a red notice.
-func (a *App) postFailure(w *workspace.Workspace, thread, msg string) {
-	a.post(w, workspace.ChatItem{Thread: thread, Role: workspace.RoleNotice, Status: workspace.ChatFailed, Text: msg})
+func postFailure(w *workspace.Workspace, thread, msg string) {
+	post(w, workspace.ChatItem{Thread: thread, Role: workspace.RoleNotice, Status: workspace.ChatFailed, Text: msg})
 }
 
 // transcript turns one thread agent's events into chat items. Streaming
 // text is sent to the UI as it arrives and saved to the chat when complete.
 type transcript struct {
-	app    *App
 	ws     *workspace.Workspace
 	thread string
 
@@ -164,13 +154,17 @@ type transcript struct {
 	tools   map[string]*workspace.ChatItem // running tool calls by id; nil if hidden
 }
 
+func newTranscript(w *workspace.Workspace, thread string) *transcript {
+	return &transcript{ws: w, thread: thread, tools: map[string]*workspace.ChatItem{}}
+}
+
 func (t *transcript) handle(ev agent.Event) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	a, w := t.app, t.ws
+	w := t.ws
 	switch ev.Kind {
 	case agent.EventWarning:
-		a.postFailure(w, t.thread, ev.Text)
+		postFailure(w, t.thread, ev.Text)
 	case agent.EventText:
 		if t.current == nil {
 			t.current = &workspace.ChatItem{ID: uuid.New().String(), Thread: t.thread, Role: workspace.RoleAssistant, At: time.Now()}

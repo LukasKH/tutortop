@@ -22,17 +22,14 @@ type App struct {
 	store  *workspace.Store
 	runner *runner.Runner
 	mcp    *mcpHost
+	agents *threadAgents // each thread's running agent (agents.go)
 
-	// startAgent is agent.Start; tests replace it.
-	startAgent func(ctx context.Context, provider string, opts agent.Options, onEvent func(agent.Event)) (agent.Session, error)
 	// linkCheck is checkLinks; tests replace it so they don't need the network.
 	linkCheck func(ctx context.Context, urls []string) []string
 
 	mu          sync.Mutex
-	agents      map[threadKey]*threadAgent // each thread's running agent (agents.go)
 	lastResults map[taskKey]runner.Result  // latest check per task, for tutor context
 	servers     map[string]*languageServer // running language servers by id
-	seq         uint64                     // numbers busy and check changes and snapshots in order (agents.go)
 
 	settingsMu   sync.Mutex
 	settingsPath string
@@ -40,12 +37,10 @@ type App struct {
 }
 
 func New() (*App, error) {
-	a := &App{runner: runner.New(), agents: map[threadKey]*threadAgent{}, lastResults: map[taskKey]runner.Result{},
-		servers: map[string]*languageServer{}, startAgent: agent.Start, linkCheck: checkLinks,
-		settingsPath: filepath.Join(xdg.ConfigHome, "tutortop", "settings.yaml"), models: map[string]modelList{},
-		// Counting from the time in microseconds keeps the numbers rising
-		// across a restart, for a page that outlives one in server mode.
-		seq: uint64(time.Now().UnixMicro())}
+	a := &App{runner: runner.New(), lastResults: map[taskKey]runner.Result{},
+		servers: map[string]*languageServer{}, linkCheck: checkLinks,
+		settingsPath: filepath.Join(xdg.ConfigHome, "tutortop", "settings.yaml"), models: map[string]modelList{}}
+	a.agents = newThreadAgents(agent.Start, func() agentConfig { return a.Settings().agentConfig() }, a.agentOptions)
 	// The workspaces folder: TUTORTOP_HOME, else the one chosen in the
 	// settings, else ~/Tutortop. It's fixed for the run: running agents open
 	// their workspace by id.
@@ -56,6 +51,13 @@ func New() (*App, error) {
 	}
 	a.mcp = h
 	return a, nil
+}
+
+// agentOptions are what a thread's agent opens its CLI with, besides the
+// settings: the workspace's folder, the thread's MCP server and its
+// instructions.
+func (a *App) agentOptions(w *workspace.Workspace, t workspace.Thread) agent.Options {
+	return agent.Options{Cwd: w.Dir, MCPName: mcpName, MCPURL: a.mcp.URL(w, t), Instructions: instructions(w, t)}
 }
 
 // ServiceStartup is called by Wails as the app starts. It builds the sandbox
@@ -80,11 +82,9 @@ func (a *App) ServiceStartup(context.Context, application.ServiceOptions) error 
 // ServiceShutdown is called by Wails on exit and stops all agent processes
 // and language servers.
 func (a *App) ServiceShutdown() error {
+	a.agents.endAll()
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	for _, ta := range a.agents {
-		a.end(ta)
-	}
 	for _, ls := range a.servers {
 		ls.srv.Close()
 	}

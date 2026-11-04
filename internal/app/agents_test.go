@@ -13,27 +13,23 @@ import (
 	"github.com/LukasKH/tutortop/internal/workspace"
 )
 
-// Sending doesn't wait for the agent to start. A thread is busy from the
-// moment a message is sent, through its agent's start, until every queued
+// Queueing doesn't wait for the agent to start. A thread is busy from the
+// moment a message is queued, through its agent's start, until every queued
 // message is answered.
 func TestBusyFromStartUntilQueueIsDone(t *testing.T) {
-	a, agents, w := newHeldApp(t)
-	busy := func() bool { b, _, _ := a.agentState(w.ID); return b["plan"] }
+	ag, fake, w := newHeldAgents(t)
+	busy := func() bool { b, _, _ := ag.state(w.ID); return b["plan"] }
 
-	agents.holdStart = make(chan struct{})
-	if err := a.SendMessage(w.ID, "one", "plan"); err != nil {
-		t.Fatal(err)
-	}
+	fake.holdStart = make(chan struct{})
+	queue(t, ag, w, workspace.PlanThread, "one")
 	if !busy() {
 		t.Fatal("idle while starting")
 	}
-	close(agents.holdStart)
-	first := agents.next(t)
-	if err := a.SendMessage(w.ID, "two", "plan"); err != nil {
-		t.Fatal(err)
-	}
+	close(fake.holdStart)
+	first := fake.next(t)
+	queue(t, ag, w, workspace.PlanThread, "two")
 	first.end(nil)
-	second := agents.next(t)
+	second := fake.next(t)
 	if second.text != "two" || second.s != first.s {
 		t.Fatalf("second turn = %q on a new session: %v", second.text, second.s != first.s)
 	}
@@ -45,70 +41,54 @@ func TestBusyFromStartUntilQueueIsDone(t *testing.T) {
 }
 
 // A writer starts fresh, isn't queued twice, keeps its sandbox check while
-// it works and ends after its turn; the next request starts a new writer.
+// it works and ends after its turn; the next message starts a new writer.
 func TestWriterEndsAfterItsTurn(t *testing.T) {
-	a, agents, w := newHeldApp(t)
-	planned(t, w, "go.errors")
+	ag, fake, w := newHeldAgents(t)
+	writer := workspace.WriterThread("go.errors")
 
-	if err := a.PrepareObjective(w.ID, "go.errors"); err != nil {
-		t.Fatal(err)
+	queue(t, ag, w, writer, "write")
+	turn := fake.next(t)
+	if turn.s.opts.ResumeID != "" {
+		t.Fatalf("writer resumed %q", turn.s.opts.ResumeID)
 	}
-	turn := agents.next(t)
-	if !strings.Contains(turn.text, "go.errors") || turn.s.opts.ResumeID != "" {
-		t.Fatalf("writer got %q, resuming %q", turn.text, turn.s.opts.ResumeID)
-	}
-	if err := a.PrepareObjective(w.ID, "go.errors"); err != nil {
-		t.Fatal(err)
-	}
-	a.showCheck(w.ID, SandboxCheck{Kind: CheckTask, Thread: "write-go.errors", Title: "Wrap errors", Running: true})
-	if st, _ := a.Workspace(w.ID); !st.Busy["write-go.errors"] || !st.Checks["go.errors"].Running {
-		t.Fatalf("busy %v, checks %v", st.Busy, st.Checks)
+	queue(t, ag, w, writer, "write again")
+	ag.showCheck(w.ID, SandboxCheck{Kind: CheckTask, Thread: writer.String(), Title: "Wrap errors", Running: true})
+	if busy, checks, _ := ag.state(w.ID); !busy[writer.String()] || !checks["go.errors"].Running {
+		t.Fatalf("busy %v, checks %v", busy, checks)
 	}
 	turn.end(nil)
 	eventually(t, "writer gone", func() bool {
-		st, _ := a.Workspace(w.ID)
-		return len(st.Busy) == 0 && len(st.Checks) == 0 && turn.s.closed.Load()
+		busy, checks, _ := ag.state(w.ID)
+		return len(busy) == 0 && len(checks) == 0 && turn.s.closed.Load()
 	})
-	if w2, _ := a.store.Open(w.ID); len(w2.Meta.ResumeIDs) != 0 {
-		t.Fatalf("a writer's resume id was saved: %v", w2.Meta.ResumeIDs)
+	if saved, _ := w.UseProvider("claude"); len(saved) != 0 {
+		t.Fatalf("a writer's resume id was saved: %v", saved)
 	}
 
-	if err := a.PrepareObjective(w.ID, "go.errors"); err != nil {
-		t.Fatal(err)
-	}
-	if again := agents.next(t); again.s == turn.s {
-		t.Fatal("the second request was queued on the first writer")
+	queue(t, ag, w, writer, "write")
+	if again := fake.next(t); again.s == turn.s || again.text != "write" {
+		t.Fatalf("got %q on the first writer: %v", again.text, again.s == turn.s)
 	}
 }
 
 // New settings restart a thread's agent once it's idle, resuming its
 // conversation, but not while it works.
 func TestSettingsRestartIdleSession(t *testing.T) {
-	a, agents, w := newHeldApp(t)
-	if err := a.SendMessage(w.ID, "one", "plan"); err != nil {
-		t.Fatal(err)
-	}
-	first := agents.next(t)
-	s := a.Settings()
-	s.Models[s.Agent] = ModelChoice{Model: "other"}
-	if err := a.SaveSettings(s); err != nil {
-		t.Fatal(err)
-	}
-	if err := a.SendMessage(w.ID, "two", "plan"); err != nil {
-		t.Fatal(err)
-	}
+	ag, fake, w := newHeldAgents(t)
+	queue(t, ag, w, workspace.PlanThread, "one")
+	first := fake.next(t)
+	fake.cfg.Model = "other"
+	queue(t, ag, w, workspace.PlanThread, "two")
 	first.end(nil)
-	second := agents.next(t)
+	second := fake.next(t)
 	if second.s != first.s {
 		t.Fatal("restarted a busy session")
 	}
 	second.end(nil)
-	eventually(t, "idle", func() bool { b, _, _ := a.agentState(w.ID); return !b["plan"] })
+	eventually(t, "idle", func() bool { b, _, _ := ag.state(w.ID); return !b["plan"] })
 
-	if err := a.SendMessage(w.ID, "three", "plan"); err != nil {
-		t.Fatal(err)
-	}
-	third := agents.next(t)
+	queue(t, ag, w, workspace.PlanThread, "three")
+	third := fake.next(t)
 	if third.s == first.s || !first.s.closed.Load() {
 		t.Fatal("the idle session wasn't restarted")
 	}
@@ -119,47 +99,43 @@ func TestSettingsRestartIdleSession(t *testing.T) {
 
 // Opening a lesson closes the idle task tutors, but not a busy one or the plan.
 func TestIdleTutorsCloseWhenAnotherStarts(t *testing.T) {
-	a, agents, w := newHeldApp(t)
-	open := func(thread string) *heldSession {
+	ag, fake, w := newHeldAgents(t)
+	open := func(thread workspace.Thread) *heldSession {
 		t.Helper()
-		if err := a.SendMessage(w.ID, "hi", thread); err != nil {
-			t.Fatal(err)
-		}
-		return agents.next(t).s
+		queue(t, ag, w, thread, "hi")
+		return fake.next(t).s
 	}
-	answer := func(thread string, s *heldSession) {
+	answer := func(thread workspace.Thread, s *heldSession) {
 		t.Helper()
 		s.turn <- nil
-		eventually(t, thread+" idle", func() bool { b, _, _ := a.agentState(w.ID); return !b[thread] })
+		eventually(t, thread.String()+" idle", func() bool { b, _, _ := ag.state(w.ID); return !b[thread.String()] })
 	}
-	busyTask := open("0001-busy")
-	idleTask := open("0002-idle")
-	answer("0002-idle", idleTask)
-	plan := open("plan")
-	answer("plan", plan)
+	busyTask := open(workspace.TaskThread("0001-busy"))
+	idleTask := open(workspace.TaskThread("0002-idle"))
+	answer(workspace.TaskThread("0002-idle"), idleTask)
+	plan := open(workspace.PlanThread)
+	answer(workspace.PlanThread, plan)
 
-	open(workspace.LessonThread("0001-errors").String())
+	open(workspace.LessonThread("0001-errors"))
 	if !idleTask.closed.Load() || busyTask.closed.Load() || plan.closed.Load() {
 		t.Fatalf("closed: idle task %v, busy task %v, plan %v", idleTask.closed.Load(), busyTask.closed.Load(), plan.closed.Load())
 	}
 	// The closed tutor's thread starts a new one when it's used again.
-	if again := open("0002-idle"); again == idleTask {
+	if again := open(workspace.TaskThread("0002-idle")); again == idleTask {
 		t.Fatal("reused a closed session")
 	}
 }
 
 // Stop cuts the turn short; the notice comes after what was said so far.
 func TestStopPostsNoticeAfterReply(t *testing.T) {
-	a, agents, w := newHeldApp(t)
-	if err := a.SendMessage(w.ID, "explain", "plan"); err != nil {
-		t.Fatal(err)
-	}
-	turn := agents.next(t)
+	ag, fake, w := newHeldAgents(t)
+	queue(t, ag, w, workspace.PlanThread, "explain")
+	turn := fake.next(t)
 	turn.s.onEvent(agent.Event{Kind: agent.EventText, Text: "Well, "})
-	a.StopAgent(w.ID, "plan")
-	eventually(t, "stopped", func() bool { c, _ := a.Chat(w.ID, "plan"); return len(c) == 3 })
-	chat, _ := a.Chat(w.ID, "plan")
-	if chat[1].Text != "Well, " || !strings.HasPrefix(chat[2].Text, "Stopped.") {
+	ag.stop(w.ID, "plan")
+	eventually(t, "stopped", func() bool { c, _ := w.Chat("plan"); return len(c) == 2 })
+	chat, _ := w.Chat("plan")
+	if chat[0].Text != "Well, " || !strings.HasPrefix(chat[1].Text, "Stopped.") {
 		t.Fatalf("chat = %+v", chat)
 	}
 }
@@ -168,34 +144,27 @@ func TestStopPostsNoticeAfterReply(t *testing.T) {
 // error once in the chat and goes idle, and the next message starts a new
 // agent.
 func TestFailedAgentIsReplaced(t *testing.T) {
-	a, agents, w := newHeldApp(t)
-	idle := func() bool { b, _, _ := a.agentState(w.ID); return !b["plan"] }
-	agents.holdStart = make(chan struct{})
-	agents.startErr = errors.New("claude isn't installed")
-	for _, text := range []string{"one", "one again"} {
-		if err := a.SendMessage(w.ID, text, "plan"); err != nil {
-			t.Fatal(err)
-		}
-	}
-	close(agents.holdStart)
+	ag, fake, w := newHeldAgents(t)
+	idle := func() bool { b, _, _ := ag.state(w.ID); return !b["plan"] }
+	fake.holdStart = make(chan struct{})
+	fake.startErr = errors.New("claude isn't installed")
+	queue(t, ag, w, workspace.PlanThread, "one")
+	queue(t, ag, w, workspace.PlanThread, "one again")
+	close(fake.holdStart)
 	eventually(t, "idle after a failed start", idle)
-	agents.startErr = nil
-	if err := a.SendMessage(w.ID, "two", "plan"); err != nil {
-		t.Fatal(err)
-	}
-	crashed := agents.next(t)
+	fake.startErr = nil
+	queue(t, ag, w, workspace.PlanThread, "two")
+	crashed := fake.next(t)
 	crashed.end(fmt.Errorf("%w: out of memory", agent.ErrStopped))
 	eventually(t, "idle after the crash", idle)
-	if err := a.SendMessage(w.ID, "three", "plan"); err != nil {
-		t.Fatal(err)
-	}
-	if agents.next(t).s == crashed.s {
+	queue(t, ag, w, workspace.PlanThread, "three")
+	if fake.next(t).s == crashed.s {
 		t.Fatal("queued on a stopped agent")
 	}
 	// One for the failed start, though two messages waited for it, and one
 	// for the crash.
 	failures := func() (n int) {
-		chat, _ := a.Chat(w.ID, "plan")
+		chat, _ := w.Chat("plan")
 		for _, c := range chat {
 			if c.Status == workspace.ChatFailed {
 				n++
@@ -209,22 +178,33 @@ func TestFailedAgentIsReplaced(t *testing.T) {
 	}
 }
 
-// newHeldApp is a test app whose agents' turns last until the test ends them.
-func newHeldApp(t *testing.T) (*App, *heldAgents, *workspace.Workspace) {
+// newHeldAgents is a workspace's thread agents whose turns last until the
+// test ends them.
+func newHeldAgents(t *testing.T) (*threadAgents, *heldAgents, *workspace.Workspace) {
 	t.Helper()
-	a := newTestApp(t)
-	agents := &heldAgents{turns: make(chan heldTurn, 8)}
-	a.startAgent = agents.start
-	t.Cleanup(func() { _ = a.ServiceShutdown() })
-	w, err := a.store.Create("Go", "claude")
+	fake := &heldAgents{turns: make(chan heldTurn, 8), cfg: agentConfig{Agent: "claude"}}
+	ag := newThreadAgents(fake.start, func() agentConfig { return fake.cfg }, func(*workspace.Workspace, workspace.Thread) agent.Options { return agent.Options{} })
+	t.Cleanup(ag.endAll)
+	store := &workspace.Store{Root: t.TempDir(), PrivateRoot: t.TempDir()}
+	w, err := store.Create("Go", "claude")
 	if err != nil {
 		t.Fatal(err)
 	}
-	return a, agents, w
+	return ag, fake, w
 }
 
-// heldAgents fakes the agent processes the app starts.
+// queue queues a message for a thread's agent.
+func queue(t *testing.T, ag *threadAgents, w *workspace.Workspace, thread workspace.Thread, msg string) {
+	t.Helper()
+	if err := ag.queue(w, thread, msg); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// heldAgents fakes the agent processes the thread agents open, and the
+// settings they read.
 type heldAgents struct {
+	cfg       agentConfig   // the settings; change them only between queue calls
 	holdStart chan struct{} // if set, starts wait until it's closed
 	startErr  error         // if set, starts fail
 	started   atomic.Int32
