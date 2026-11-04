@@ -11,6 +11,10 @@
 //
 // Private files the learner and tutor shouldn't see (reference solutions,
 // hidden tests, mutants) live outside the workspace in the app data dir.
+//
+// Progress is never stored. The app alone appends to attempts.jsonl
+// (attempts.go), and progress and activity are derived from it, so nothing
+// the agent writes can change them.
 package workspace
 
 import (
@@ -267,104 +271,21 @@ func (w *Workspace) ReadDoc(name string) string {
 	return string(b)
 }
 
-// ---- curriculum ----
-
-// Curriculum returns the approved plan, or nil if there isn't one yet.
-func (w *Workspace) Curriculum() (*Curriculum, error) {
-	return readCurriculum(w.path("curriculum.yaml"))
-}
-
-// Proposal returns the plan waiting for the learner's approval, if any.
-func (w *Workspace) Proposal() (*Curriculum, error) {
-	return readCurriculum(w.path(".tutortop", "proposal.yaml"))
-}
-
-func readCurriculum(p string) (*Curriculum, error) {
-	c, err := readYAML[Curriculum](p)
-	if errors.Is(err, os.ErrNotExist) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, fmt.Errorf("%s: %w", filepath.Base(p), err)
-	}
-	return &c, nil
-}
-
-// Propose validates a plan and stores it until the learner approves it.
-func (w *Workspace) Propose(c Curriculum) error {
-	if err := c.Validate(w.languageCheck); err != nil {
-		return err
-	}
-	return writeYAML(w.path(".tutortop", "proposal.yaml"), c)
-}
-
-// ApproveProposal turns the pending proposal into the curriculum.
-func (w *Workspace) ApproveProposal() (*Curriculum, error) {
+// SaveMission stores the learner's own edit of their mission. The curriculum
+// isn't edited by hand: the tutor proposes changes to it, which the learner
+// reviews. It reports whether the mission changed.
+func (w *Workspace) SaveMission(mission string) (bool, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	p, err := w.Proposal()
-	if err != nil || p == nil {
-		return nil, errors.Join(err, errors.New("no proposal to approve"))
+	mission = strings.TrimSpace(mission)
+	if mission == strings.TrimSpace(w.ReadDoc("MISSION.md")) {
+		return false, nil
 	}
-	if cur, _ := w.Curriculum(); cur != nil {
-		p.Revision = cur.Revision + 1
-	} else {
-		p.Revision = 1
+	if err := WriteFileAtomic(w.path("MISSION.md"), []byte(mission+"\n")); err != nil {
+		return false, err
 	}
-	if err := writeYAML(w.path("curriculum.yaml"), p); err != nil {
-		return nil, err
-	}
-	_ = os.Remove(w.path(".tutortop", "proposal.yaml"))
-	w.commit(fmt.Sprintf("Curriculum revision %d", p.Revision))
-	return p, nil
-}
-
-func (w *Workspace) DiscardProposal() error {
-	return removeIfExists(w.path(".tutortop", "proposal.yaml"))
-}
-
-// ---- questions ----
-
-type Question struct {
-	ID          string   `json:"id" jsonschema:"short key for the answer"`
-	Question    string   `json:"question"`
-	Options     []string `json:"options,omitempty" jsonschema:"2-4 suggested answers; the learner can always write their own"`
-	MultiSelect bool     `json:"multiSelect,omitempty"`
-}
-
-// Questions is a form from the tutor that waits for the learner's answers.
-type Questions struct {
-	Thread    string     `json:"thread,omitempty" jsonschema:"set by the app; leave out"`
-	Intro     string     `json:"intro,omitempty" jsonschema:"one sentence shown above the questions"`
-	Questions []Question `json:"questions" jsonschema:"2-4 focused questions"`
-}
-
-func (w *Workspace) SetQuestions(q *Questions) error {
-	p := w.path(".tutortop", "questions.json")
-	if q == nil {
-		return removeIfExists(p)
-	}
-	return writeJSON(p, q)
-}
-
-// PendingQuestions returns the unanswered form, or nil.
-func (w *Workspace) PendingQuestions() *Questions {
-	q, err := readJSON[Questions](w.path(".tutortop", "questions.json"))
-	if err != nil {
-		return nil
-	}
-	return &q
-}
-
-// ---- git ----
-
-func (w *Workspace) git(args ...string) {
-	cmd := exec.Command("git", args...)
-	cmd.Dir = w.Dir
-	// The workspace is its own repo. Variables like GIT_DIR and GIT_INDEX_FILE,
-	// which git sets for hooks, would point the commands at another one.
-	cmd.Env = slices.DeleteFunc(os.Environ(), func(kv string) bool { return strings.HasPrefix(kv, "GIT_") })
-	_ = cmd.Run() // git is a convenience; the app works without it
+	w.commit("Edit mission by hand")
+	return true, nil
 }
 
 // Commit snapshots the workspace so every change to the plan has history.
@@ -380,49 +301,11 @@ func (w *Workspace) commit(msg string) {
 	w.git("-c", "user.name=Tutortop", "-c", "user.email=tutortop@localhost", "commit", "-q", "-m", msg)
 }
 
-// ---- chat transcript ----
-
-// ChatRole is who or what a chat item comes from.
-type ChatRole string
-
-const (
-	RoleUser      ChatRole = "user"      // the learner's words
-	RoleAssistant ChatRole = "assistant" // the tutor's reply
-	RoleTool      ChatRole = "tool"      // a tutor action worth showing, e.g. "Updated your mission"
-	RoleNotice    ChatRole = "notice"    // an app event, e.g. "Stopped" or "You passed …"
-)
-
-// ChatItem is one entry in the conversation shown in the UI.
-type ChatItem struct {
-	ID     string    `json:"id"`
-	Thread string    `json:"thread"`
-	Role   ChatRole  `json:"role"`
-	Text   string    `json:"text"`
-	Status string    `json:"status,omitempty"` // for tools: running | done | failed
-	At     time.Time `json:"at"`
-}
-
-func (w *Workspace) AppendChat(item ChatItem) error {
-	if !validName(item.Thread) {
-		return fmt.Errorf("invalid chat thread %q", item.Thread)
-	}
-	// A tutor still winding down after its workspace was deleted mustn't
-	// bring the folder back.
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	if _, err := os.Stat(w.path(".tutortop", "workspace.json")); err != nil {
-		return err
-	}
-	if err := os.MkdirAll(w.path(".tutortop", "chat"), 0o755); err != nil {
-		return err
-	}
-	return appendJSONL(w.path(".tutortop", "chat", item.Thread+".jsonl"), item)
-}
-
-// Chat returns one thread's transcript.
-func (w *Workspace) Chat(thread string) ([]ChatItem, error) {
-	if !validName(thread) {
-		return nil, fmt.Errorf("invalid chat thread %q", thread)
-	}
-	return readJSONL[ChatItem](w.path(".tutortop", "chat", thread+".jsonl"))
+func (w *Workspace) git(args ...string) {
+	cmd := exec.Command("git", args...)
+	cmd.Dir = w.Dir
+	// The workspace is its own repo. Variables like GIT_DIR and GIT_INDEX_FILE,
+	// which git sets for hooks, would point the commands at another one.
+	cmd.Env = slices.DeleteFunc(os.Environ(), func(kv string) bool { return strings.HasPrefix(kv, "GIT_") })
+	_ = cmd.Run() // git is a convenience; the app works without it
 }

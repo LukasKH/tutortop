@@ -1,0 +1,83 @@
+package workspace
+
+import (
+	"fmt"
+	"os"
+	"time"
+)
+
+// ChatRole is who or what a chat item comes from.
+type ChatRole string
+
+const (
+	RoleUser      ChatRole = "user"      // the learner's words
+	RoleAssistant ChatRole = "assistant" // the tutor's reply
+	RoleTool      ChatRole = "tool"      // a tutor action worth showing, e.g. "Updated your mission"
+	RoleNotice    ChatRole = "notice"    // an app event, e.g. "Stopped" or "You passed …"
+)
+
+// ChatItem is one entry in the conversation shown in the UI.
+type ChatItem struct {
+	ID     string    `json:"id"`
+	Thread string    `json:"thread"`
+	Role   ChatRole  `json:"role"`
+	Text   string    `json:"text"`
+	Status string    `json:"status,omitempty"` // for tools: running | done | failed
+	At     time.Time `json:"at"`
+}
+
+func (w *Workspace) AppendChat(item ChatItem) error {
+	if !validName(item.Thread) {
+		return fmt.Errorf("invalid chat thread %q", item.Thread)
+	}
+	// A tutor still winding down after its workspace was deleted mustn't
+	// bring the folder back.
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if _, err := os.Stat(w.path(".tutortop", "workspace.json")); err != nil {
+		return err
+	}
+	if err := os.MkdirAll(w.path(".tutortop", "chat"), 0o755); err != nil {
+		return err
+	}
+	return appendJSONL(w.path(".tutortop", "chat", item.Thread+".jsonl"), item)
+}
+
+// Chat returns one thread's transcript.
+func (w *Workspace) Chat(thread string) ([]ChatItem, error) {
+	if !validName(thread) {
+		return nil, fmt.Errorf("invalid chat thread %q", thread)
+	}
+	return readJSONL[ChatItem](w.path(".tutortop", "chat", thread+".jsonl"))
+}
+
+type Question struct {
+	ID          string   `json:"id" jsonschema:"short key for the answer"`
+	Question    string   `json:"question"`
+	Options     []string `json:"options,omitempty" jsonschema:"2-4 suggested answers; the learner can always write their own"`
+	MultiSelect bool     `json:"multiSelect,omitempty"`
+}
+
+// Questions is a form from the tutor that waits for the learner's answers.
+type Questions struct {
+	Thread    string     `json:"thread,omitempty" jsonschema:"set by the app; leave out"`
+	Intro     string     `json:"intro,omitempty" jsonschema:"one sentence shown above the questions"`
+	Questions []Question `json:"questions" jsonschema:"2-4 focused questions"`
+}
+
+func (w *Workspace) SetQuestions(q *Questions) error {
+	p := w.path(".tutortop", "questions.json")
+	if q == nil {
+		return removeIfExists(p)
+	}
+	return writeJSON(p, q)
+}
+
+// PendingQuestions returns the unanswered form, or nil.
+func (w *Workspace) PendingQuestions() *Questions {
+	q, err := readJSON[Questions](w.path(".tutortop", "questions.json"))
+	if err != nil {
+		return nil
+	}
+	return &q
+}

@@ -1,7 +1,11 @@
 package workspace
 
 import (
+	"errors"
+	"fmt"
 	"net/url"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 )
@@ -173,4 +177,58 @@ func (c *Curriculum) Objective(id string) (Objective, string, bool) {
 		}
 	}
 	return Objective{}, "", false
+}
+
+// Curriculum returns the approved plan, or nil if there isn't one yet.
+func (w *Workspace) Curriculum() (*Curriculum, error) {
+	return readCurriculum(w.path("curriculum.yaml"))
+}
+
+// Proposal returns the plan waiting for the learner's approval, if any.
+func (w *Workspace) Proposal() (*Curriculum, error) {
+	return readCurriculum(w.path(".tutortop", "proposal.yaml"))
+}
+
+func readCurriculum(p string) (*Curriculum, error) {
+	c, err := readYAML[Curriculum](p)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", filepath.Base(p), err)
+	}
+	return &c, nil
+}
+
+// Propose validates a plan and stores it until the learner approves it.
+func (w *Workspace) Propose(c Curriculum) error {
+	if err := c.Validate(w.languageCheck); err != nil {
+		return err
+	}
+	return writeYAML(w.path(".tutortop", "proposal.yaml"), c)
+}
+
+// ApproveProposal turns the pending proposal into the curriculum.
+func (w *Workspace) ApproveProposal() (*Curriculum, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	p, err := w.Proposal()
+	if err != nil || p == nil {
+		return nil, errors.Join(err, errors.New("no proposal to approve"))
+	}
+	if cur, _ := w.Curriculum(); cur != nil {
+		p.Revision = cur.Revision + 1
+	} else {
+		p.Revision = 1
+	}
+	if err := writeYAML(w.path("curriculum.yaml"), p); err != nil {
+		return nil, err
+	}
+	_ = os.Remove(w.path(".tutortop", "proposal.yaml"))
+	w.commit(fmt.Sprintf("Curriculum revision %d", p.Revision))
+	return p, nil
+}
+
+func (w *Workspace) DiscardProposal() error {
+	return removeIfExists(w.path(".tutortop", "proposal.yaml"))
 }
