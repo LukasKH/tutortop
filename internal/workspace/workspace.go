@@ -21,6 +21,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -360,6 +361,9 @@ func (w *Workspace) PendingQuestions() *Questions {
 func (w *Workspace) git(args ...string) {
 	cmd := exec.Command("git", args...)
 	cmd.Dir = w.Dir
+	// The workspace is its own repo. Variables like GIT_DIR and GIT_INDEX_FILE,
+	// which git sets for hooks, would point the commands at another one.
+	cmd.Env = slices.DeleteFunc(os.Environ(), func(kv string) bool { return strings.HasPrefix(kv, "GIT_") })
 	_ = cmd.Run() // git is a convenience; the app works without it
 }
 
