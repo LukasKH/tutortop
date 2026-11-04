@@ -13,11 +13,11 @@ import (
 )
 
 // ToolchainSpec is a language environment the tutor sets up for a workspace,
-// for anything the app doesn't ship (R, Rust, JavaScript, …). The test command
-// must write a JUnit XML report, which nearly every test framework can do, so
-// one parser covers them all.
+// for any language the app doesn't ship. The test command must write a JUnit
+// XML report, which nearly every test framework can do, so one parser covers
+// them all.
 type ToolchainSpec struct {
-	Language       string   `yaml:"language" json:"language" jsonschema:"short lowercase id used in the curriculum, e.g. r or rust; not go or python"`
+	Language       string   `yaml:"language" json:"language" jsonschema:"short lowercase id used in the curriculum, e.g. r; not a language the app ships"`
 	Name           string   `yaml:"name" json:"name" jsonschema:"shown to the learner, e.g. R"`
 	EditorLanguage string   `yaml:"editor_language" json:"editorLanguage" jsonschema:"Monaco editor language id for syntax highlighting, e.g. r, rust, javascript, typescript, java, cpp, csharp, ruby, sql; plaintext if none fits"`
 	Dockerfile     string   `yaml:"dockerfile" json:"dockerfile" jsonschema:"Dockerfile for the sandbox image, FROM an official image. Install the language, the test framework, any libraries tasks need and the language server, system-wide. The app appends lines that create /work and switch to user 1000 with HOME=/home/runner. Tests run there with no network."`
@@ -71,6 +71,7 @@ func (s ToolchainSpec) Toolchain() (Toolchain, error) {
 		ExtraFiles:     maps.Clone(s.ExtraFiles),
 		script:         func(repeat int) string { return junitScript(s.TestCommand, repeat) },
 		parse:          parseJUnitRuns,
+		readable:       stripJUnit,
 		LanguageServer: slices.Clone(s.LanguageServer),
 		testFiles:      s.TestFiles,
 	}, nil

@@ -38,7 +38,10 @@ type Toolchain struct {
 	script func(repeat int) string
 	// parse turns the script's output into per-test results, labelling
 	// those in hidden as hidden. ok is false when the code didn't build.
-	parse     func(stdout string, hidden map[string]bool) (tests []TestResult, ok bool)
+	parse func(stdout string, hidden map[string]bool) (tests []TestResult, ok bool)
+	// readable turns the script's output into text for the learner, without
+	// what only parse needs.
+	readable  func(stdout string) string
 	testFiles string // glob matching a test file's base name
 }
 
@@ -98,6 +101,7 @@ WORKDIR /work
 		return "CGO_ENABLED=0 GOFLAGS=-mod=mod GOTOOLCHAIN=local go test -json " + flags + " -timeout=20s ./... 2>&1"
 	},
 	parse:          parseGoTestJSON,
+	readable:       humanGoOutput,
 	LanguageServer: []string{"/home/runner/go/bin/gopls"},
 	testFiles:      "*_test.go",
 }
@@ -210,6 +214,7 @@ WORKDIR /work
 		return junitScript("python -m pytest -q -p no:cacheprovider --timeout=20"+count+" --junitxml=/tmp/junit.xml", 1)
 	},
 	parse:          parseJUnitRuns,
+	readable:       stripJUnit,
 	LanguageServer: []string{"basedpyright-langserver", "--stdio"},
 	testFiles:      "test_*.py",
 }
