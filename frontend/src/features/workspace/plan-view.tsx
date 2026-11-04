@@ -7,7 +7,7 @@ import { ErrorText } from "@/components/error-text";
 import { ReadingPage } from "@/components/page";
 import { Button } from "@/components/ui/button";
 import { usePending } from "@/hooks/use-pending";
-import { CurriculumTitle, Module, ModuleList, ModuleNote, Objective, ObjectiveName, ObjectiveNote } from "@/features/workspace/curriculum-list";
+import { CurriculumTitle, ModuleItem, ModuleList, ModuleNote, ObjectiveItem, ObjectiveName, ObjectiveNote } from "@/features/workspace/curriculum-list";
 
 type Props = {
   wsId: string;
@@ -71,7 +71,7 @@ export function PlanView({ wsId, ws, onClose, onAskTutor }: Props) {
             {modules.map((m) => {
               const objs = m.objectives ?? [];
               return (
-                <Module
+                <ModuleItem
                   key={m.id}
                   heading={
                     <>
@@ -83,12 +83,12 @@ export function PlanView({ wsId, ws, onClose, onAskTutor }: Props) {
                   }
                 >
                   {objs.map((o) => (
-                    <Objective key={o.id} done={passed(o.id)}>
+                    <ObjectiveItem key={o.id} done={passed(o.id)}>
                       <ObjectiveName>{o.name || o.title}</ObjectiveName>
                       {o.name && <ObjectiveNote>{o.title}</ObjectiveNote>}
-                    </Objective>
+                    </ObjectiveItem>
                   ))}
-                </Module>
+                </ModuleItem>
               );
             })}
           </ModuleList>
