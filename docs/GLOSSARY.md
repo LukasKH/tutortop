@@ -6,7 +6,7 @@ The words the code uses, what each means, and where it lives. Go identifiers are
 
 - **Workspace**: one topic the learner studies, kept as plain files and a git repo in `~/Tutortop/<id>`, plus private files outside it. Go: `workspace.Workspace`, opened through `workspace.Store`.
 - **Snapshot**: everything the workspace screen shows, read at one moment. Go: `app.WorkspaceState`, returned by `App.Workspace`. The frontend keeps it current between refetches as `LiveWorkspace` (`workspace-state.ts`); `useWorkspace` returns that plus its calls (`UseWorkspaceResult`).
-- **Agent**: the learner's own coding-agent CLI (Claude Code, Codex), which Tutortop drives. Go: `agent.Provider` for each kind, `agent.Session` for one running process; the workspace remembers which one it last used in `Meta.Provider`.
+- **Agent**: the learner's own coding-agent CLI (Claude Code, Codex), which Tutortop drives. Go: `agent.Provider` for each kind, `agent.Session` for one running process; the workspace remembers which one it last used in `Meta.Provider`. Every thread, tutor or writer, runs on the agent, model and effort chosen in Settings (`Settings.Agent` and `Settings.Models`, together an `agentConfig`), and its instructions start with the rules in `prompts/shared.md`.
 - **Thread**: one conversation with the agent in a workspace, named by a string that is also its chat's file name. Go: `workspace.Thread` with a `ThreadKind`; TS: `PLAN_THREAD`, `lessonThread`, `writerThread` (`lib/workspace.ts`). The kinds:
   - **plan** (`PlanKind`, `"plan"`): the interview, the mission and the curriculum.
   - **task** (`TaskKind`, the task id): help with one task.
@@ -16,7 +16,7 @@ The words the code uses, what each means, and where it lives. Go identifiers are
 - **Chat panel**: the column beside the centre pane that shows the chat of whatever is open. The UI labels it "Tutor". TS: `ChatPanel`, folded into `ChatRail` (`features/chat/`).
 - **Session**: one thread's running agent process in the app, which answers the thread's messages one turn at a time. Go: `app.session` (`session.go`). The agent's own session id is saved per thread in `Meta.Sessions`, so a chat resumes its conversation.
 - **Turn**: one message to the agent and everything it does until it answers. Go: one `agent.Session.Prompt` call. A thread is **busy** while it has turns queued or running (`thread:busy`).
-- **Tutor**: the agent answering in a chat (plan, task or lesson thread), as opposed to a writer. Its role prompts are `prompts/tutor.md` plus `plan.md`, `task.md` or `lesson.md`. TS: `tutorBusy` means some chat's tutor is working.
+- **Tutor**: the agent answering in a chat (plan, task or lesson thread), as opposed to a writer. Its role is `prompts/plan.md`, `task.md` or `lesson.md`, after the shared rules. TS: `tutorBusy` means some chat's tutor is working.
 - **Writer**: the agent in a writer thread. It publishes its objective's lesson and task with `create_lesson` and `create_task`, then ends. Go: `writer.go`, `prompts/writer.md`; the app keeps the next `readyAhead` objectives written.
 
 ## The plan

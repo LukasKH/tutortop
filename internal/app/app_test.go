@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -269,5 +270,24 @@ func TestThreadsGetOwnSessions(t *testing.T) {
 	task, _ := a.Chat(w.ID, "0001-some-task")
 	if len(plan) != 1 || len(task) != 2 {
 		t.Fatalf("plan chat %d items, task chat %d items", len(plan), len(task))
+	}
+}
+
+// Settings saved before the model choices were renamed keep them.
+func TestSettingsLoadTheOldTutorKey(t *testing.T) {
+	a := newTestApp(t)
+	old := "agent: codex\ntutor:\n  codex:\n    model: gpt-5\n    effort: high\n"
+	if err := os.WriteFile(a.settingsPath, []byte(old), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	want := ModelChoice{Model: "gpt-5", Effort: "high"}
+	if got := a.Settings().Models["codex"]; got != want {
+		t.Fatalf("got %+v, want %+v", got, want)
+	}
+	if err := a.SaveSettings(a.Settings()); err != nil {
+		t.Fatal(err)
+	}
+	if got := a.Settings().Models["codex"]; got != want {
+		t.Fatalf("after saving: got %+v, want %+v", got, want)
 	}
 }

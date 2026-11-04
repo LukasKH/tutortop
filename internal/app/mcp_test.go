@@ -87,7 +87,7 @@ func TestWriterKeepsToItsObjective(t *testing.T) {
 // Struct tags can't be computed and the prompts are prose, so they name the
 // built-in languages by hand. A tag or a prompt line that names two of them
 // is listing them, and must name them all, so a new built-in language fails
-// this until every list names it. The tutor's prompt also needs each one's
+// this until every list names it. The shared prompt also needs each one's
 // conventions.
 func TestWrittenOutLanguagesMatchTheBuiltins(t *testing.T) {
 	// Where -> text, from the packages whose types the agent reads as tool
@@ -127,8 +127,8 @@ func TestWrittenOutLanguagesMatchTheBuiltins(t *testing.T) {
 	for _, lang := range runner.BuiltinLanguages() {
 		tc, _ := runner.Builtin(lang)
 		builtins = append(builtins, builtin{lang, regexp.MustCompile(`\b(` + regexp.QuoteMeta(lang) + `|` + regexp.QuoteMeta(tc.Name) + `)\b`)})
-		if !strings.Contains(tutorPrompt, "\n- **"+tc.Name+"**: ") {
-			t.Errorf("tutor.md has no conventions for %s, as a line starting \"- **%s**: \"", lang, tc.Name)
+		if !strings.Contains(sharedPrompt, "\n- **"+tc.Name+"**: ") {
+			t.Errorf("shared.md has no conventions for %s, as a line starting \"- **%s**: \"", lang, tc.Name)
 		}
 	}
 	for where, text := range texts {

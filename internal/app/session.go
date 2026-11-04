@@ -30,7 +30,7 @@ import (
 type session struct {
 	key    threadKey
 	thread workspace.Thread
-	cfg    tutorConfig // the agent, model and effort it was started with
+	cfg    agentConfig // the agent, model and effort it was started with
 	queue  chan string
 	cancel context.CancelFunc
 	once   sync.Once   // close runs once
@@ -74,7 +74,7 @@ type threadKey struct{ ws, name string }
 // too many messages are already waiting.
 func (a *App) enqueue(w *workspace.Workspace, t workspace.Thread, msg string, ifIdle bool) error {
 	key := threadKey{w.ID, t.String()}
-	cfg := a.Settings().tutor()
+	cfg := a.Settings().agentConfig()
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	s := a.sessions[key]
@@ -102,7 +102,7 @@ func (a *App) enqueue(w *workspace.Workspace, t workspace.Thread, msg string, if
 }
 
 // start starts a thread's session. Call with a.mu held.
-func (a *App) start(w *workspace.Workspace, t workspace.Thread, cfg tutorConfig) *session {
+func (a *App) start(w *workspace.Workspace, t workspace.Thread, cfg agentConfig) *session {
 	ctx, cancel := context.WithCancel(context.Background())
 	s := &session{key: threadKey{w.ID, t.String()}, thread: t, cfg: cfg, queue: make(chan string, 32), cancel: cancel, ready: make(chan struct{})}
 	a.sessions[s.key] = s

@@ -94,6 +94,15 @@ export interface LessonEvent {
     "lesson": workspace$0.LessonInfo;
 }
 
+/**
+ * ModelChoice is an agent's model and reasoning effort. Empty fields use the
+ * agent's own defaults.
+ */
+export interface ModelChoice {
+    "model": string;
+    "effort": string;
+}
+
 export interface ProviderStatus {
     "id": string;
     "name": string;
@@ -134,15 +143,17 @@ export interface SandboxCheck {
  */
 export interface Settings {
     /**
-     * Agent is the coding agent that tutors, an agent.Provider ID.
+     * Agent is the coding agent every thread runs on, tutors and writers
+     * alike, an agent.Provider ID.
      */
     "agent": string;
 
     /**
-     * Tutor holds the model and reasoning effort chosen for each agent, so
-     * switching agents and back keeps both choices.
+     * Models holds the model and reasoning effort chosen for each agent, so
+     * switching agents and back keeps both choices. Files saved before it
+     * was renamed have it under "tutor" (loadSettings).
      */
-    "tutor": { [_ in string]?: TutorChoice } | null;
+    "models": { [_ in string]?: ModelChoice } | null;
 
     /**
      * WorkspacesFolder holds the workspaces; "" means workspace.DefaultRoot.
@@ -157,15 +168,6 @@ export interface Settings {
 export interface TaskEvent {
     "workspace": string;
     "task": workspace$0.TaskInfo;
-}
-
-/**
- * TutorChoice is an agent's model and reasoning effort. Empty fields use the
- * agent's own defaults.
- */
-export interface TutorChoice {
-    "model": string;
-    "effort": string;
 }
 
 export interface WorkspaceEvent {

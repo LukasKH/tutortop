@@ -90,7 +90,7 @@ func TestSettingsRestartIdleSession(t *testing.T) {
 	}
 	first := agents.next(t)
 	s := a.Settings()
-	s.Tutor[s.Agent] = TutorChoice{Model: "other"}
+	s.Models[s.Agent] = ModelChoice{Model: "other"}
 	if err := a.SaveSettings(s); err != nil {
 		t.Fatal(err)
 	}

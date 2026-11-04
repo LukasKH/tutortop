@@ -142,7 +142,7 @@ export function SaveMission(wsID: string, mission: string): $CancellablePromise<
 }
 
 /**
- * SaveSettings stores the settings. Tutor sessions pick up a new agent,
+ * SaveSettings stores the settings. Running agents pick up a new agent,
  * model or effort with the next message once they're idle.
  */
 export function SaveSettings(s: $models.Settings): $CancellablePromise<void> {
