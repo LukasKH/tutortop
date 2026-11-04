@@ -94,7 +94,8 @@ func TestWrittenOutLanguagesMatchTheBuiltins(t *testing.T) {
 	}
 }
 
-func TestAskUserTakesOneToFourQuestions(t *testing.T) {
+// ask_user takes 2-4 questions, as its description and the tutor's prompt say.
+func TestAskUserTakesTwoToFourQuestions(t *testing.T) {
 	a := newTestApp(t)
 	w, err := a.store.Create("Go", "claude")
 	if err != nil {
@@ -108,7 +109,7 @@ func TestAskUserTakesOneToFourQuestions(t *testing.T) {
 		}
 		return map[string]any{"questions": qs}
 	}
-	for _, n := range []int{0, 5} {
+	for _, n := range []int{0, 1, 5} {
 		if out, isErr := ask("ask_user", questions(n)); !isErr {
 			t.Fatalf("%d questions were shown: %s", n, out)
 		}

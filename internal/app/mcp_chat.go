@@ -28,8 +28,8 @@ type askUserInput struct {
 // askUser shows a form in this thread. The answers come back to this thread,
 // so the form remembers which one asked.
 func (t *threadTools) askUser(_ context.Context, _ *mcp.CallToolRequest, in askUserInput) (*mcp.CallToolResult, any, error) {
-	if len(in.Questions) == 0 || len(in.Questions) > 4 {
-		return nil, nil, errors.New("ask 1-4 questions")
+	if len(in.Questions) < 2 || len(in.Questions) > 4 {
+		return nil, nil, errors.New("ask 2-4 questions")
 	}
 	q := workspace.Questions{Thread: t.thread.String(), Intro: in.Intro, Questions: in.Questions}
 	if err := t.w.SetQuestions(&q); err != nil {
