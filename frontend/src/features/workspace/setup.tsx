@@ -6,7 +6,7 @@ import { ErrorText } from "@/components/error-text";
 import { PageIntro, ReadingPage } from "@/components/page";
 import { Button } from "@/components/ui/button";
 import { usePending } from "@/hooks/use-pending";
-import { WorkLog } from "@/features/tutor/work-log";
+import { WorkLog } from "@/features/workspace/work-log";
 
 type Props = {
   /** The planning conversation so far. */
