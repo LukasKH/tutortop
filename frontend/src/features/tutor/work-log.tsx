@@ -22,12 +22,8 @@ type Props = {
  * run (expand it to see each call).
  */
 export function WorkLog({ items, busy, gate, lang, onStop }: Props) {
-  const now = useNow(busy);
   // Before the first item arrives, the clock runs from when the work started.
-  const [since, setSince] = useState(now);
-  useEffect(() => {
-    if (busy) setSince(Date.now());
-  }, [busy]);
+  const { since, now } = useClock(busy);
   const start = items[0] ? Date.parse(items[0].at) : since;
   const end = busy ? now : items.length ? Date.parse(items.at(-1)!.at) : start;
   const elapsed = formatDuration(Math.max(0, end - start));
@@ -48,7 +44,7 @@ export function WorkLog({ items, busy, gate, lang, onStop }: Props) {
           </Button>
         )}
       </div>
-      {groups.map((g, i) =>
+      {groups.map((g) =>
         Array.isArray(g) ? (
           <ToolGroup key={g[0].id} tools={g} />
         ) : g.role === "assistant" ? (
@@ -149,14 +145,19 @@ function formatDuration(ms: number): string {
   return s % 60 ? `${m}m ${s % 60}s` : `${m}m`;
 }
 
-/** The current time, ticking every second while on. */
-function useNow(on: boolean): number {
-  const [now, setNow] = useState(Date.now);
+/** The time while on, ticking every second, and when it was last turned on. */
+function useClock(on: boolean): { since: number; now: number } {
+  const [clock, setClock] = useState(() => ({ since: Date.now(), now: Date.now() }));
   useEffect(() => {
     if (!on) return;
-    setNow(Date.now());
-    const t = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(t);
+    const since = Date.now();
+    const tick = () => setClock({ since, now: Date.now() });
+    const first = setTimeout(tick);
+    const every = setInterval(tick, 1000);
+    return () => {
+      clearTimeout(first);
+      clearInterval(every);
+    };
   }, [on]);
-  return now;
+  return clock;
 }

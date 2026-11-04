@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { App, errorText, type Result, type TaskDetail } from "@/lib/api";
 
 /** A check of the learner's code: the visible tests (run), or all of them (submit). */
@@ -23,20 +23,6 @@ export function useTaskWork(wsId: string, taskId: string) {
   const unsaved = useRef<Record<string, string> | null>(null);
   const saveTimer = useRef<number | undefined>(undefined);
   const runningRef = useRef(false);
-
-  useEffect(() => {
-    App.Task(wsId, taskId)
-      .then((d) => {
-        setDetail(d);
-        replaceFiles(workOf(d));
-      })
-      .catch((e) => setError(errorText(e)));
-    // Flush unsaved edits when leaving the task.
-    return () => {
-      window.clearTimeout(saveTimer.current);
-      save();
-    };
-  }, [wsId, taskId]);
 
   function replaceFiles(work: Record<string, string>) {
     filesRef.current = work;
@@ -102,6 +88,22 @@ export function useTaskWork(wsId: string, taskId: string) {
       setError(errorText(e));
     }
   }
+
+  // Load the task, and flush unsaved edits when leaving it.
+  const loaded = useEffectEvent((d: TaskDetail) => {
+    setDetail(d);
+    replaceFiles(workOf(d));
+  });
+  const leave = useEffectEvent(() => {
+    window.clearTimeout(saveTimer.current);
+    save();
+  });
+  useEffect(() => {
+    App.Task(wsId, taskId)
+      .then(loaded)
+      .catch((e) => setError(errorText(e)));
+    return () => leave();
+  }, [wsId, taskId]);
 
   return { detail, files, dirty, error, run, running, edit, check, reset };
 }

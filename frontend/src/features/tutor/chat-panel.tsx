@@ -39,7 +39,7 @@ type Props = {
   onSettings: () => void;
 };
 
-export function ChatPanel(p: Props) {
+export function ChatPanel({ inputRef, ...p }: Props) {
   const listRef = useRef<HTMLDivElement>(null);
   const stickToBottom = useRef(true);
 
@@ -102,7 +102,7 @@ export function ChatPanel(p: Props) {
       {p.status}
       <div className="mx-3 mb-1 flex flex-none items-end gap-2 rounded-xl border border-input py-2 pr-2 pl-3 transition-colors focus-within:border-foreground">
         <AutoTextarea
-          ref={p.inputRef}
+          ref={inputRef}
           className="flex-1 rounded-none border-0 bg-transparent px-0 py-1 text-[13px] leading-[1.5] focus-visible:border-0"
           maxHeight={180}
           value={p.draft}

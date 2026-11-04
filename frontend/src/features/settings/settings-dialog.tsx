@@ -3,6 +3,7 @@ import { cn } from "cn";
 import { Dialogs } from "@wailsio/runtime";
 import { App, errorText, type AgentModel, type Environment, type Settings } from "@/lib/api";
 import { providerName } from "@/lib/format";
+import { cachedModels, currentModel, effortLabel, loadModels } from "@/lib/models";
 import { ErrorText } from "@/components/error-text";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
@@ -18,8 +19,8 @@ type Props = {
 /** App settings in a modal: which agent tutors, with which model and reasoning effort. */
 export function SettingsDialog({ settings, onChange, onClose }: Props) {
   const [env, setEnv] = useState<Environment | null>(null);
-  const [models, setModels] = useState<AgentModel[] | null>(modelCache.get(settings.agent) ?? null);
-  const [modelsError, setModelsError] = useState("");
+  // The models as last loaded, for the agent they were loaded for.
+  const [loaded, setLoaded] = useState<{ agent: string; models: AgentModel[] | null; error: string } | null>(null);
   const [error, setError] = useState("");
 
   const agent = settings.agent;
@@ -33,15 +34,16 @@ export function SettingsDialog({ settings, onChange, onClose }: Props) {
 
   useEffect(() => {
     let live = true;
-    setModels(modelCache.get(agent) ?? null);
-    setModelsError("");
     loadModels(agent)
-      .then((list) => live && setModels(list))
-      .catch((e) => live && setModelsError(errorText(e)));
+      .then((list) => live && setLoaded({ agent, models: list, error: "" }))
+      .catch((e) => live && setLoaded({ agent, models: null, error: errorText(e) }));
     return () => {
       live = false;
     };
   }, [agent]);
+  const current = loaded?.agent === agent ? loaded : null;
+  const models = current?.models ?? cachedModels(agent);
+  const modelsError = current?.error ?? "";
 
   function save(next: Settings) {
     setError("");
@@ -164,26 +166,6 @@ export function SettingsDialog({ settings, onChange, onClose }: Props) {
   );
 }
 
-export function loadModels(agent: string): Promise<AgentModel[]> {
-  const cached = modelCache.get(agent);
-  if (cached) return Promise.resolve(cached);
-  return App.Models(agent).then((list) => {
-    modelCache.set(agent, list ?? []);
-    return list ?? [];
-  });
-}
-
-/** "Claude Code · Opus · High": the tutor as configured. */
-export function tutorLabel(s: Settings): string {
-  const choice = s.tutor?.[s.agent] ?? { model: "", effort: "" };
-  const model = currentModel(modelCache.get(s.agent) ?? null, choice.model);
-  const parts = [providerName(s.agent)];
-  if (model?.id || choice.model) parts.push(model?.name ?? choice.model);
-  const effort = choice.effort || model?.defaultEffort;
-  if (effort) parts.push(effortLabel(effort));
-  return parts.join(" · ");
-}
-
 /** The configured tutor with a way to change it. */
 export function TutorLine({ tutor, action = "Change", onSettings }: { tutor: string; action?: string; onSettings: () => void }) {
   return (
@@ -294,30 +276,3 @@ const FIELD_NOTE = "text-xs text-muted-foreground";
 const CHOICES = "flex flex-col gap-1.5";
 
 const CHOICE_NOTE = "text-sm text-muted-foreground";
-
-// Model lists per agent, kept for the session: Codex is asked live, which takes a moment.
-const modelCache = new Map<string, AgentModel[]>();
-
-/**
- * The chosen model. No choice means the agent's default: Claude Code lists
- * that as its own entry; for Codex it's the default model, listed first.
- */
-function currentModel(models: AgentModel[] | null, id: string): AgentModel | null {
-  if (!models) return null;
-  return models.find((m) => m.id === id) ?? (id === "" ? (models[0] ?? null) : null);
-}
-
-function effortLabel(id: string) {
-  return EFFORT_LABELS[id] ?? id.charAt(0).toUpperCase() + id.slice(1);
-}
-
-const EFFORT_LABELS: Record<string, string> = {
-  none: "None",
-  minimal: "Minimal",
-  low: "Low",
-  medium: "Medium",
-  high: "High",
-  xhigh: "Extra high",
-  max: "Max",
-  ultra: "Ultra",
-};

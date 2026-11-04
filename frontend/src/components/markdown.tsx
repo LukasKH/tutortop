@@ -100,18 +100,17 @@ const CODE_LIKE = /[()[\]{}"'`=<>+*/!&|]|\d/;
 
 /** Code coloured by Monaco's tokenizer with the editor's theme; "" until ready or when there's no language. */
 function useColorized(code: string, id: string | undefined): string {
-  const [html, setHtml] = useState("");
+  const [result, setResult] = useState({ code: "", id: "", html: "" });
   useEffect(() => {
-    setHtml("");
     if (!id) return;
     let live = true;
     // colorize escapes the source; the result is only spans with token classes.
-    monaco.editor.colorize(code, id, { tabSize: 4 }).then((h) => live && setHtml(h));
+    monaco.editor.colorize(code, id, { tabSize: 4 }).then((html) => live && setResult({ code, id, html }));
     return () => {
       live = false;
     };
   }, [code, id]);
-  return html;
+  return id && result.code === code && result.id === id ? result.html : "";
 }
 
 const monacoId = (lang?: string) => {
