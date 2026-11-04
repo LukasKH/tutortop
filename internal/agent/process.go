@@ -159,13 +159,3 @@ func (t *tailBuffer) String() string {
 	defer t.mu.Unlock()
 	return string(t.buf)
 }
-
-// decode unmarshals one JSON message, or a field of one, into a T. Like
-// json.Unmarshal, it keeps the fields that decoded when another one doesn't:
-// a tool call's file_path must survive an odd value elsewhere in its input,
-// or the permission check would see no path.
-func decode[T any](raw []byte) (T, error) {
-	var v T
-	err := json.Unmarshal(raw, &v)
-	return v, err
-}

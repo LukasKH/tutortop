@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/LukasKH/tutortop/internal/decode"
 	"github.com/LukasKH/tutortop/internal/text"
 )
 
@@ -121,9 +122,10 @@ func parseGoTestJSON(stdout string, hidden map[string]bool) ([]TestResult, bool)
 	failed := map[string]bool{}
 	sawEvents, packageFailed := false, false
 
+	var ev goTestEvent
 	for line := range strings.Lines(stdout) {
-		ev, err := decode[goTestEvent](json.Unmarshal, line)
-		if err != nil {
+		ev = goTestEvent{} // or the previous line's fields leak into this one
+		if json.Unmarshal([]byte(line), &ev) != nil {
 			continue
 		}
 		if ev.Test == "" {
@@ -177,8 +179,10 @@ func parseGoTestJSON(stdout string, hidden map[string]bool) ([]TestResult, bool)
 // humanGoOutput turns `go test -json` lines back into readable text.
 func humanGoOutput(s string) string {
 	var b bytes.Buffer
+	var ev goTestEvent
 	for line := range strings.Lines(s) {
-		if ev, err := decode[goTestEvent](json.Unmarshal, line); err == nil && ev.Action != "" {
+		ev = goTestEvent{} // or the previous line's fields leak into this one
+		if json.Unmarshal([]byte(line), &ev) == nil && ev.Action != "" {
 			if ev.Action == "output" || ev.Action == "build-output" {
 				b.WriteString(ev.Output)
 			}
@@ -278,7 +282,7 @@ func parseJUnitRuns(stdout string, hidden map[string]bool) ([]TestResult, bool) 
 		rest = after
 		runs++
 
-		doc, err := decode[junitNode](xml.Unmarshal, strings.TrimSpace(report))
+		doc, err := decode.XML[junitNode]([]byte(strings.TrimSpace(report)))
 		if err != nil {
 			return nil, false
 		}
@@ -335,12 +339,4 @@ func stripJUnit(s string) string {
 
 func trimMessage(s string) string {
 	return text.Truncate(strings.TrimSpace(s), 2000)
-}
-
-// decode reads one JSON or XML document into a T, with unmarshal as
-// json.Unmarshal or xml.Unmarshal.
-func decode[T any](unmarshal func([]byte, any) error, s string) (T, error) {
-	var v T
-	err := unmarshal([]byte(s), &v)
-	return v, err
 }

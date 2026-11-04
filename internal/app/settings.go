@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/LukasKH/tutortop/internal/agent"
+	"github.com/LukasKH/tutortop/internal/decode"
 	"github.com/LukasKH/tutortop/internal/workspace"
 	"gopkg.in/yaml.v3"
 )
@@ -109,9 +110,9 @@ func (s *settingsStore) Save(settings Settings) error {
 // file. Without a saved agent it picks the first one that's installed, or
 // the first one listed if none is.
 func loadSettings(b []byte) Settings {
-	s, _ := decodeYAML[Settings](b)
+	s, _ := decode.YAML[Settings](b)
 	if s.Models == nil {
-		old, _ := decodeYAML[settingsBeforeModels](b)
+		old, _ := decode.YAML[settingsBeforeModels](b)
 		s.Models = old.Tutor
 	}
 	if s.Models == nil {

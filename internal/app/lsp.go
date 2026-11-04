@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/LukasKH/tutortop/internal/decode"
 	"github.com/LukasKH/tutortop/internal/runner"
 )
 
@@ -247,7 +248,7 @@ func (a *App) probeLanguageServer(ctx context.Context, tc runner.Toolchain, file
 				done <- fmt.Errorf("the language server stopped before answering initialize: %w", err)
 				return
 			}
-			resp, err := decodeJSON[lspResponse](msg)
+			resp, err := decode.JSON[lspResponse](msg)
 			if err == nil && string(resp.ID) == "1" && (resp.Result != nil || resp.Error != nil) {
 				if resp.Error != nil {
 					done <- errors.New("initialize failed: " + resp.Error.Message)

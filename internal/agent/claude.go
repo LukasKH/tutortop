@@ -15,6 +15,7 @@ import (
 	"time"
 	"uuid"
 
+	"github.com/LukasKH/tutortop/internal/decode"
 	"github.com/LukasKH/tutortop/internal/text"
 )
 
@@ -253,7 +254,7 @@ func (s *claudeSession) readLoop() {
 	sc := bufio.NewScanner(s.stdout)
 	sc.Buffer(make([]byte, 1024*1024), 64*1024*1024)
 	for sc.Scan() {
-		if l, err := decode[claudeLine](sc.Bytes()); err == nil {
+		if l, err := decode.JSON[claudeLine](sc.Bytes()); err == nil {
 			s.handle(l)
 		}
 	}
@@ -285,7 +286,7 @@ func (s *claudeSession) handle(l claudeLine) {
 
 // streamText passes on a piece of the reply's text.
 func (s *claudeSession) streamText(l claudeLine) {
-	ev, err := decode[struct {
+	ev, err := decode.JSON[struct {
 		Type  string `json:"type"`
 		Delta struct {
 			Type string `json:"type"`
@@ -370,14 +371,14 @@ func (s *claudeSession) checkMCP(l claudeLine) {
 }
 
 func blocks(raw json.RawMessage) []claudeBlock {
-	bs, _ := decode[[]claudeBlock](raw) // content can also be a plain string; ignore that
+	bs, _ := decode.JSON[[]claudeBlock](raw) // content can also be a plain string; ignore that
 	return bs
 }
 
 // answerControl handles Claude Code's requests to us. Permission requests
 // (can_use_tool) get our policy; anything else is unsupported.
 func (s *claudeSession) answerControl(id string, raw json.RawMessage) {
-	req, _ := decode[struct {
+	req, _ := decode.JSON[struct {
 		Subtype  string          `json:"subtype"`
 		ToolName string          `json:"tool_name"`
 		Input    json.RawMessage `json:"input"`
@@ -429,7 +430,9 @@ var claudeAllowed = map[string]bool{
 
 // claudeTool describes a call to one of Claude Code's tools.
 func claudeTool(name string, input json.RawMessage) Tool {
-	in, _ := decode[struct {
+	// The fields that decode survive an odd value in another, so the
+	// permission check still sees the path.
+	in, _ := decode.JSON[struct {
 		FilePath    string `json:"file_path"`
 		Path        string `json:"path"`
 		Pattern     string `json:"pattern"`

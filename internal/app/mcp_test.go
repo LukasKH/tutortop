@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/LukasKH/tutortop/internal/agent"
+	"github.com/LukasKH/tutortop/internal/decode"
 	"github.com/LukasKH/tutortop/internal/runner"
 	"github.com/LukasKH/tutortop/internal/workspace"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -217,7 +218,7 @@ func TestCreateTaskWithholdsATaskThatFailsTheGate(t *testing.T) {
 		map[string]any{"name": "same-again", "description": "the reference again", "files": map[string]string{"solution.go": goReference}},
 	}
 	out, isErr := toolCaller(t, a, w, workspace.WriterThread("go.strings"))("create_task", spec)
-	res, err := decodeJSON[createTaskOutput]([]byte(out))
+	res, err := decode.JSON[createTaskOutput]([]byte(out))
 	if err != nil {
 		t.Fatalf("%v: %s", err, out)
 	}

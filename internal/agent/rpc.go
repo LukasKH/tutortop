@@ -9,6 +9,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/LukasKH/tutortop/internal/decode"
 	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
 )
 
@@ -66,7 +67,7 @@ func (c *rpcConn) Call[T any](ctx context.Context, method string, params any) (T
 		if m.Result == nil {
 			return zero, nil
 		}
-		return decode[T](m.Result)
+		return decode.JSON[T](m.Result)
 	case <-c.closed:
 		return zero, fmt.Errorf("%s: %w", method, ErrExited)
 	case <-ctx.Done():
@@ -87,7 +88,7 @@ func (c *rpcConn) readLoop(r io.Reader) {
 	sc := bufio.NewScanner(r)
 	sc.Buffer(make([]byte, 1024*1024), 64*1024*1024)
 	for sc.Scan() {
-		m, err := decode[rpcMessage](sc.Bytes())
+		m, err := decode.JSON[rpcMessage](sc.Bytes())
 		if err != nil {
 			continue
 		}
@@ -97,7 +98,7 @@ func (c *rpcConn) readLoop(r io.Reader) {
 		case m.Method != "": // notification
 			c.onNotify(m.Method, m.Params)
 		case m.ID != nil: // response
-			id, err := decode[int64](*m.ID)
+			id, err := decode.JSON[int64](*m.ID)
 			if err != nil {
 				continue
 			}

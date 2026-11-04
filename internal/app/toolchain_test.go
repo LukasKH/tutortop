@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/LukasKH/tutortop/internal/decode"
 	"github.com/LukasKH/tutortop/internal/runner"
 	"github.com/LukasKH/tutortop/internal/workspace"
 )
@@ -95,7 +96,7 @@ func TestSetToolchainEnablesALanguage(t *testing.T) {
 			map[string]any{"name": "abs", "description": "ignores signs", "files": map[string]string{"add.mjs": "export function add(a, b) { return Math.abs(a) + Math.abs(b); }\n"}},
 		},
 	})
-	created, _ := decodeJSON[createTaskOutput]([]byte(out))
+	created, _ := decode.JSON[createTaskOutput]([]byte(out))
 	if !created.Published {
 		t.Fatalf("task not published:\n%s", out)
 	}

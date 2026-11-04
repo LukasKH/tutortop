@@ -81,7 +81,7 @@ Build the policy with `newPolicy(opts)` when the session starts.
 
 | File | What it gives an adapter |
 | --- | --- |
-| `process.go` | `startProcess` finds and starts the CLI with piped stdio; `send` writes one line of JSON; `await` waits for a reply unless the process exits first; `abort` and `exitError` turn an exit into `ErrExited` with stderr. `decode[T]` decodes a message or a field of one. |
+| `process.go` | `startProcess` finds and starts the CLI with piped stdio; `send` writes one line of JSON; `await` waits for a reply unless the process exits first; `abort` and `exitError` turn an exit into `ErrExited` with stderr. Messages and fields decode with `decode.JSON[T]` (internal/decode). |
 | `rpc.go` | `rpcConn`, newline-delimited JSON-RPC: `Call[T]`, `Notify`, and handlers for the CLI's notifications and requests. |
 | `policy.go` | `policy.allow`, the one place that decides tool calls. |
 | `agent.go` | `optional`, for titles like `"Searched files" + optional(": ", pattern)`. |

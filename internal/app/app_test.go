@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/LukasKH/tutortop/internal/agent"
+	"github.com/LukasKH/tutortop/internal/decode"
 	"github.com/LukasKH/tutortop/internal/runner"
 	"github.com/LukasKH/tutortop/internal/workspace"
 )
@@ -65,7 +66,7 @@ func TestToolsEndToEnd(t *testing.T) {
 	if isErr {
 		t.Fatalf("create_task: %s", out)
 	}
-	created, _ := decodeJSON[createTaskOutput]([]byte(out))
+	created, _ := decode.JSON[createTaskOutput]([]byte(out))
 	if !created.Published {
 		t.Fatalf("task not published:\n%s", out)
 	}
