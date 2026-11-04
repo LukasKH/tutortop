@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/LukasKH/tutortop/internal/runner"
+	"github.com/LukasKH/tutortop/internal/sandbox"
 	"github.com/LukasKH/tutortop/internal/workspace"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -19,10 +19,10 @@ var createTaskTool = &mcp.Tool{
 }
 
 type createTaskOutput struct {
-	Published bool               `json:"published"`
-	TaskID    string             `json:"taskId,omitempty"`
-	Gate      *runner.GateReport `json:"gate,omitempty"`
-	Report    string             `json:"report"`
+	Published bool                `json:"published"`
+	TaskID    string              `json:"taskId,omitempty"`
+	Gate      *sandbox.GateReport `json:"gate,omitempty"`
+	Report    string              `json:"report"`
 }
 
 // createTask publishes a task only once it passes the quality gate.
@@ -56,10 +56,10 @@ func (t *threadTools) createTask(ctx context.Context, _ *mcp.CallToolRequest, sp
 
 // qualityGate runs a task's quality gate, showing it on the objective's page
 // while it runs and after.
-func (t *threadTools) qualityGate(ctx context.Context, spec workspace.TaskSpec, tc runner.Toolchain) (runner.GateReport, error) {
+func (t *threadTools) qualityGate(ctx context.Context, spec workspace.TaskSpec, tc sandbox.Toolchain) (sandbox.GateReport, error) {
 	status := SandboxCheck{Kind: CheckTask, Thread: t.thread.String(), Title: spec.Title, Running: true}
 	t.agents.showCheck(t.w.ID, status)
-	rep, err := t.runner.Gate(ctx, runner.GateInput{
+	rep, err := t.runner.Gate(ctx, sandbox.GateInput{
 		Toolchain: tc, Starter: spec.Starter, Reference: spec.Reference,
 		Tests: spec.Tests, HiddenTests: spec.HiddenTests, Mutants: spec.Mutants,
 	})

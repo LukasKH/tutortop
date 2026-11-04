@@ -1,4 +1,4 @@
-// Package app ties workspaces, the check runner, the MCP tools and the agent
+// Package app ties workspaces, the sandbox, the MCP tools and the agent
 // together, and exposes them to the frontend as Wails services, one per
 // area.
 package app
@@ -8,7 +8,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/LukasKH/tutortop/internal/runner"
+	"github.com/LukasKH/tutortop/internal/sandbox"
 	"github.com/LukasKH/tutortop/internal/workspace"
 	"github.com/adrg/xdg"
 )
@@ -31,14 +31,14 @@ func New() (*Services, error) {
 	// settings, else ~/Tutortop. It's fixed for the run: running agents open
 	// their workspace by id.
 	store := workspace.NewStore(cmp.Or(os.Getenv("TUTORTOP_HOME"), settings.Load().WorkspacesFolder, workspace.DefaultRoot()))
-	return newServices(store, settings, runner.New(), newLinkChecker(), installedCLI{})
+	return newServices(store, settings, sandbox.New(), newLinkChecker(), installedCLI{})
 }
 
 // newServices builds the pieces several services share once, and the
 // services on them: the workspaces in store, the settings, the sandbox, the
 // link checker and the agent CLI it starts. Tests pass their own.
-func newServices(store *workspace.Store, settings *settingsStore, sandbox *runner.Runner, links *linkChecker, cli agentCLI) (*Services, error) {
-	tools, err := startMCP(sandbox, links)
+func newServices(store *workspace.Store, settings *settingsStore, runner *sandbox.Runner, links *linkChecker, cli agentCLI) (*Services, error) {
+	tools, err := startMCP(runner, links)
 	if err != nil {
 		return nil, err
 	}
@@ -46,11 +46,11 @@ func newServices(store *workspace.Store, settings *settingsStore, sandbox *runne
 	writers := newWriters(agents)
 	servers := newLanguageServers()
 	return &Services{
-		Settings:   newSettingsService(settings, newModelCache(), sandbox, store.Root),
-		Workspaces: newWorkspaceService(store, settings, sandbox, agents, writers, servers),
-		Tasks:      newTaskService(store, sandbox, agents, writers),
+		Settings:   newSettingsService(settings, newModelCache(), runner, store.Root),
+		Workspaces: newWorkspaceService(store, settings, runner, agents, writers, servers),
+		Tasks:      newTaskService(store, runner, agents, writers),
 		Lessons:    newLessonService(store),
 		Chat:       newChatService(store, agents),
-		Editor:     newEditorService(store, sandbox, servers),
+		Editor:     newEditorService(store, runner, servers),
 	}, nil
 }

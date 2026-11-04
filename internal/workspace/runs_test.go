@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/LukasKH/tutortop/internal/runner"
+	"github.com/LukasKH/tutortop/internal/sandbox"
 	"github.com/LukasKH/tutortop/internal/workspace"
 )
 
@@ -19,7 +19,7 @@ func TestLastRunIsKeptPrivately(t *testing.T) {
 	if _, ok := w.LastRun("0001-wrap"); ok {
 		t.Fatal("a task that never ran has a last run")
 	}
-	res := runner.Result{Status: runner.StatusFailed, Tests: []runner.TestResult{
+	res := sandbox.Result{Status: sandbox.StatusFailed, Tests: []sandbox.TestResult{
 		{Name: "TestVisible", Passed: true},
 		{Name: "TestHiddenEdge", Hidden: true, Message: "secret expectation"},
 	}}

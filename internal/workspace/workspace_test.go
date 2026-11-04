@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/LukasKH/tutortop/internal/runner"
+	"github.com/LukasKH/tutortop/internal/sandbox"
 	"github.com/LukasKH/tutortop/internal/workspace"
 )
 
@@ -171,7 +171,7 @@ func TestOwnToolchainOutranksANewBuiltin(t *testing.T) {
 		t.Fatalf("built-in python = %+v, %v", tc, err)
 	}
 	// As if python weren't built in when the tutor set it up.
-	own := runner.ToolchainSpec{Language: "python", Name: "My Python", Dockerfile: "FROM python:3.12", TestCommand: "pytest --junitxml=/tmp/junit.xml", TestFiles: "test_*.py"}
+	own := sandbox.ToolchainSpec{Language: "python", Name: "My Python", Dockerfile: "FROM python:3.12", TestCommand: "pytest --junitxml=/tmp/junit.xml", TestFiles: "test_*.py"}
 	if err := w.SaveToolchain(own); err != nil {
 		t.Fatal(err)
 	}
@@ -218,7 +218,7 @@ func plan(objectives ...string) workspace.Curriculum {
 // addTask saves a task for an objective, as if it had passed the gate.
 func addTask(t *testing.T, w *workspace.Workspace, objective string) workspace.TaskInfo {
 	t.Helper()
-	info, err := w.SaveTask(taskSpec(objective), "go", runner.TestNames{Visible: []string{"TestSum"}, Hidden: []string{"TestSumHidden"}})
+	info, err := w.SaveTask(taskSpec(objective), "go", sandbox.TestNames{Visible: []string{"TestSum"}, Hidden: []string{"TestSumHidden"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -237,13 +237,13 @@ func taskSpec(objective string) workspace.TaskSpec {
 			Examples:     []workspace.Example{{Input: "Sum(1, 2)", Output: "3"}, {Input: "Sum(-1, 1)", Output: "0"}},
 			Context:      "Totals in your budget app.",
 		},
-		Starter:     runner.Files{"sum.go": "package task\n\nfunc Sum(a, b int) int { return 0 }\n"},
-		Reference:   runner.Files{"sum.go": "package task\n\nfunc Sum(a, b int) int { return a + b }\n"},
-		Tests:       runner.Files{"sum_test.go": "package task\n"},
-		HiddenTests: runner.Files{"sum_hidden_test.go": "package task\n"},
-		Mutants: []runner.Mutant{
-			{Name: "Off by one", Files: runner.Files{"sum.go": "package task\n\nfunc Sum(a, b int) int { return a + b + 1 }\n"}},
-			{Name: "Ignores b", Files: runner.Files{"sum.go": "package task\n\nfunc Sum(a, b int) int { return a }\n"}},
+		Starter:     sandbox.Files{"sum.go": "package task\n\nfunc Sum(a, b int) int { return 0 }\n"},
+		Reference:   sandbox.Files{"sum.go": "package task\n\nfunc Sum(a, b int) int { return a + b }\n"},
+		Tests:       sandbox.Files{"sum_test.go": "package task\n"},
+		HiddenTests: sandbox.Files{"sum_hidden_test.go": "package task\n"},
+		Mutants: []sandbox.Mutant{
+			{Name: "Off by one", Files: sandbox.Files{"sum.go": "package task\n\nfunc Sum(a, b int) int { return a + b + 1 }\n"}},
+			{Name: "Ignores b", Files: sandbox.Files{"sum.go": "package task\n\nfunc Sum(a, b int) int { return a }\n"}},
 		},
 	}
 }

@@ -2,7 +2,7 @@
 
 /**
  * A language id as people write it ("go" → "Go"). The backend's
- * runner.Toolchain.Name holds this, but only a toolchain check's title carries
+ * sandbox.Toolchain.Name holds this, but only a toolchain check's title carries
  * it to the frontend; the snapshot doesn't. So the built-in languages are
  * named here too.
  */

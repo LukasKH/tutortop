@@ -1,4 +1,4 @@
-package runner
+package sandbox
 
 import (
 	"crypto/sha256"
@@ -20,7 +20,7 @@ type ToolchainSpec struct {
 	Language       string   `yaml:"language" json:"language" jsonschema:"short lowercase id used in the curriculum, e.g. r; not a language the app ships"`
 	Name           string   `yaml:"name" json:"name" jsonschema:"shown to the learner, e.g. R"`
 	EditorLanguage string   `yaml:"editor_language" json:"editorLanguage" jsonschema:"Monaco editor language id for syntax highlighting, e.g. r, rust, javascript, typescript, java, cpp, csharp, ruby, sql; plaintext if none fits"`
-	Dockerfile     string   `yaml:"dockerfile" json:"dockerfile" jsonschema:"Dockerfile for the sandbox image, FROM an official image. Install the language, the test framework, any libraries tasks need and the language server, system-wide. The app appends lines that create /work and switch to user 1000 with HOME=/home/runner. Tests run there with no network."`
+	Dockerfile     string   `yaml:"dockerfile" json:"dockerfile" jsonschema:"Dockerfile for the sandbox image, FROM an official image. Install the language, the test framework, any libraries tasks need and the language server, system-wide. The app appends lines that create /work and switch to user 1000 with HOME=/home/sandbox. Tests run there with no network."`
 	TestCommand    string   `yaml:"test_command" json:"testCommand" jsonschema:"shell command run in /work (the task files) that runs every test file and writes a JUnit XML report to /tmp/junit.xml. It must write the report even when tests fail. Build errors may leave it out. The app stops it after 20 seconds."`
 	TestFiles      string   `yaml:"test_files" json:"testFiles" jsonschema:"glob matching the base name of test files, e.g. test-*.R or *.test.js; the test framework must find files named this way"`
 	LanguageServer []string `yaml:"language_server,omitempty" json:"languageServer,omitempty" jsonschema:"optional command (argv) that runs a language server over stdio in /work, installed in the image, for completions and errors in the editor, e.g. [\"R\", \"--slave\", \"-e\", \"languageserver::run()\"]. If it doesn't answer, the language is saved without it."`

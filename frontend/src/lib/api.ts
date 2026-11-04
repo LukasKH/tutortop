@@ -19,7 +19,7 @@ import type {
   TaskDetail,
   TaskStatus,
 } from "@bindings/github.com/LukasKH/tutortop/internal/workspace";
-import type { Result, TestResult } from "@bindings/github.com/LukasKH/tutortop/internal/runner";
+import type { Result, TestResult } from "@bindings/github.com/LukasKH/tutortop/internal/sandbox";
 
 /** Who said a chat item: the learner, the tutor, a tool call worth showing, or the app; how a tool call went; and what an item is, for code that looks for it. */
 export { ChatMark, ChatRole, ChatStatus } from "@bindings/github.com/LukasKH/tutortop/internal/workspace";

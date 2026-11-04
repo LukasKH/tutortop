@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/LukasKH/tutortop/internal/runner"
+	"github.com/LukasKH/tutortop/internal/sandbox"
 	"github.com/LukasKH/tutortop/internal/workspace"
 )
 
@@ -12,13 +12,13 @@ import (
 // test runs.
 type TaskService struct {
 	store   *workspace.Store
-	runner  *runner.Runner
+	runner  *sandbox.Runner
 	agents  *threadAgents // tells the plan's tutor about a first pass
 	writers *writers      // keep the next objectives written after a pass
 }
 
-func newTaskService(store *workspace.Store, sandbox *runner.Runner, agents *threadAgents, writers *writers) *TaskService {
-	return &TaskService{store: store, runner: sandbox, agents: agents, writers: writers}
+func newTaskService(store *workspace.Store, runner *sandbox.Runner, agents *threadAgents, writers *writers) *TaskService {
+	return &TaskService{store: store, runner: runner, agents: agents, writers: writers}
 }
 
 func (s *TaskService) Task(wsID, taskID string) (workspace.TaskDetail, error) {
@@ -29,7 +29,7 @@ func (s *TaskService) Task(wsID, taskID string) (workspace.TaskDetail, error) {
 	return w.Task(taskID)
 }
 
-func (s *TaskService) SaveWork(wsID, taskID string, files runner.Files) error {
+func (s *TaskService) SaveWork(wsID, taskID string, files sandbox.Files) error {
 	w, err := s.store.Open(wsID)
 	if err != nil {
 		return err
@@ -48,17 +48,17 @@ func (s *TaskService) ResetWork(wsID, taskID string) error {
 // RunTests runs the visible tests, or all tests when submit is true.
 // A passing submission tells the planning tutor, and writers write what
 // comes next.
-func (s *TaskService) RunTests(wsID, taskID string, files runner.Files, submit bool) (runner.Result, error) {
+func (s *TaskService) RunTests(wsID, taskID string, files sandbox.Files, submit bool) (sandbox.Result, error) {
 	w, err := s.store.Open(wsID)
 	if err != nil {
-		return runner.Result{}, err
+		return sandbox.Result{}, err
 	}
 	if err := w.SaveWork(taskID, files); err != nil {
-		return runner.Result{}, err
+		return sandbox.Result{}, err
 	}
 	job, err := w.Job(taskID, submit)
 	if err != nil {
-		return runner.Result{}, err
+		return sandbox.Result{}, err
 	}
 	res, err := s.runner.Run(context.Background(), job)
 	if err != nil {
@@ -70,7 +70,7 @@ func (s *TaskService) RunTests(wsID, taskID string, files runner.Files, submit b
 		kind = workspace.AttemptSubmit
 	}
 	p, t := res.Counts()
-	firstPass := submit && res.Status == runner.StatusPassed && !w.TaskPassed(taskID)
+	firstPass := submit && res.Status == sandbox.StatusPassed && !w.TaskPassed(taskID)
 	_ = w.RecordAttempt(workspace.Attempt{TaskID: taskID, Kind: kind, Status: res.Status, Passed: p, Total: t})
 	emit(workspaceChanged, WorkspaceEvent{Workspace: wsID})
 	if firstPass {

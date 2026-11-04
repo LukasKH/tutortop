@@ -10,25 +10,25 @@ import (
 	"strings"
 	"time"
 
-	"github.com/LukasKH/tutortop/internal/runner"
+	"github.com/LukasKH/tutortop/internal/sandbox"
 )
 
 // TaskSpec is what the authoring agent submits through the create_task tool.
 type TaskSpec struct {
-	ObjectiveID string          `json:"objectiveId" jsonschema:"id of the curriculum objective this task proves"`
-	Title       string          `json:"title"`
-	Size        string          `json:"size,omitempty" jsonschema:"small, medium or large; defaults to the curriculum's task_defaults.size"`
-	Statement   Statement       `json:"statement" jsonschema:"the problem statement, in parts; the app renders it. It stands on its own: no feedback on earlier tasks or chat remarks."`
-	Starter     runner.Files    `json:"starter" jsonschema:"filename -> content. The files the learner edits. Must compile and fail some tests (e.g. return zero values)."`
-	Reference   runner.Files    `json:"reference" jsonschema:"filename -> content. A correct solution with the same filenames as starter. Never shown to the learner."`
-	Tests       runner.Files    `json:"tests" jsonschema:"filename -> content. Visible test files the learner can read (Go: *_test.go, Python: test_*.py, other languages: the toolchain's test_files glob). Every test, visible or hidden, needs its own name."`
-	HiddenTests runner.Files    `json:"hiddenTests" jsonschema:"filename -> content. Hidden test files with edge cases. Learner sees only names and failure messages."`
-	Mutants     []runner.Mutant `json:"mutants" jsonschema:"at least 2 plausible wrong solutions (same filenames as reference). Each must compile and be caught by the tests."`
+	ObjectiveID string           `json:"objectiveId" jsonschema:"id of the curriculum objective this task proves"`
+	Title       string           `json:"title"`
+	Size        string           `json:"size,omitempty" jsonschema:"small, medium or large; defaults to the curriculum's task_defaults.size"`
+	Statement   Statement        `json:"statement" jsonschema:"the problem statement, in parts; the app renders it. It stands on its own: no feedback on earlier tasks or chat remarks."`
+	Starter     sandbox.Files    `json:"starter" jsonschema:"filename -> content. The files the learner edits. Must compile and fail some tests (e.g. return zero values)."`
+	Reference   sandbox.Files    `json:"reference" jsonschema:"filename -> content. A correct solution with the same filenames as starter. Never shown to the learner."`
+	Tests       sandbox.Files    `json:"tests" jsonschema:"filename -> content. Visible test files the learner can read (Go: *_test.go, Python: test_*.py, other languages: the toolchain's test_files glob). Every test, visible or hidden, needs its own name."`
+	HiddenTests sandbox.Files    `json:"hiddenTests" jsonschema:"filename -> content. Hidden test files with edge cases. Learner sees only names and failure messages."`
+	Mutants     []sandbox.Mutant `json:"mutants" jsonschema:"at least 2 plausible wrong solutions (same filenames as reference). Each must compile and be caught by the tests."`
 }
 
 // check reports every problem with the spec's shape at once, for a task in
 // lang run by tc.
-func (spec *TaskSpec) check(tc runner.Toolchain, lang string) error {
+func (spec *TaskSpec) check(tc sandbox.Toolchain, lang string) error {
 	var p problems
 	if strings.TrimSpace(spec.Title) == "" {
 		p.addf("title is required")
@@ -42,7 +42,7 @@ func (spec *TaskSpec) check(tc runner.Toolchain, lang string) error {
 
 // checkStarter checks the starter has files, the reference has the same, and
 // none is a test.
-func (spec *TaskSpec) checkStarter(p *problems, tc runner.Toolchain) {
+func (spec *TaskSpec) checkStarter(p *problems, tc sandbox.Toolchain) {
 	if len(spec.Starter) == 0 {
 		p.addf("starter needs at least one file")
 	}
@@ -58,8 +58,8 @@ func (spec *TaskSpec) checkStarter(p *problems, tc runner.Toolchain) {
 
 // checkTests checks every test file is named like one and belongs to one set
 // only.
-func (spec *TaskSpec) checkTests(p *problems, tc runner.Toolchain, lang string) {
-	for _, set := range []runner.Files{spec.Tests, spec.HiddenTests} {
+func (spec *TaskSpec) checkTests(p *problems, tc sandbox.Toolchain, lang string) {
+	for _, set := range []sandbox.Files{spec.Tests, spec.HiddenTests} {
 		for name := range set {
 			if !tc.IsTestFile(name) {
 				p.addf("%s isn't named like a %s test file", name, lang)
@@ -101,12 +101,12 @@ type TaskInfo struct {
 // TaskDetail is everything the task screen needs.
 type TaskDetail struct {
 	TaskInfo
-	Statement   string       `json:"statement"`
-	Tests       runner.Files `json:"tests"`
-	Work        runner.Files `json:"work"`
-	HiddenCount int          `json:"hiddenCount"`
-	Passed      bool         `json:"passed"`
-	HintLevel   int          `json:"hintLevel"` // highest hint level used so far, 0 if none
+	Statement   string        `json:"statement"`
+	Tests       sandbox.Files `json:"tests"`
+	Work        sandbox.Files `json:"work"`
+	HiddenCount int           `json:"hiddenCount"`
+	Passed      bool          `json:"passed"`
+	HintLevel   int           `json:"hintLevel"` // highest hint level used so far, 0 if none
 	// EditorLanguage is the Monaco language id for the task's files.
 	EditorLanguage    string `json:"editorLanguage"`
 	HasLanguageServer bool   `json:"hasLanguageServer"`
@@ -114,8 +114,8 @@ type TaskDetail struct {
 
 // ValidateSpec checks the spec's shape against the curriculum and returns the
 // task's toolchain.
-func (w *Workspace) ValidateSpec(spec *TaskSpec) (runner.Toolchain, error) {
-	var tc runner.Toolchain
+func (w *Workspace) ValidateSpec(spec *TaskSpec) (sandbox.Toolchain, error) {
+	var tc sandbox.Toolchain
 	cur, err := w.Curriculum()
 	if err != nil {
 		return tc, err
@@ -138,7 +138,7 @@ func (w *Workspace) ValidateSpec(spec *TaskSpec) (runner.Toolchain, error) {
 
 // SaveTask writes a task that already passed the quality gate, with the
 // names of its tests as the gate saw them.
-func (w *Workspace) SaveTask(spec TaskSpec, lang string, names runner.TestNames) (TaskInfo, error) {
+func (w *Workspace) SaveTask(spec TaskSpec, lang string, names sandbox.TestNames) (TaskInfo, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
@@ -159,7 +159,7 @@ func (w *Workspace) SaveTask(spec TaskSpec, lang string, names runner.TestNames)
 	priv := w.private("tasks", info.ID)
 	type write struct {
 		dir   string
-		files runner.Files
+		files sandbox.Files
 	}
 	writes := []write{
 		{filepath.Join(pub, "starter"), spec.Starter},
@@ -238,18 +238,18 @@ func (w *Workspace) Task(id string) (TaskDetail, error) {
 
 // testNames are a task's tests by name, kept private since hidden test names
 // can give away edge cases. A missing file gives none.
-func (w *Workspace) testNames(id string) runner.TestNames {
-	names, _ := readYAML[runner.TestNames](w.private("tasks", id, "test_names.yaml"))
+func (w *Workspace) testNames(id string) sandbox.TestNames {
+	names, _ := readYAML[sandbox.TestNames](w.private("tasks", id, "test_names.yaml"))
 	return names
 }
 
 // Work returns the learner's current code.
-func (w *Workspace) Work(id string) (runner.Files, error) {
+func (w *Workspace) Work(id string) (sandbox.Files, error) {
 	return readFiles(w.path("tasks", id, "work"))
 }
 
 // SaveWork stores the learner's code. Only the task's editable files are accepted.
-func (w *Workspace) SaveWork(id string, files runner.Files) error {
+func (w *Workspace) SaveWork(id string, files sandbox.Files) error {
 	info, err := w.taskInfo(id)
 	if err != nil {
 		return err
@@ -280,12 +280,12 @@ func (w *Workspace) ResetWork(id string) error {
 
 // Job builds a check run for the learner's current code. A submission also
 // runs the hidden tests.
-func (w *Workspace) Job(id string, submit bool) (runner.Job, error) {
+func (w *Workspace) Job(id string, submit bool) (sandbox.Job, error) {
 	info, err := w.taskInfo(id)
 	if err != nil {
-		return runner.Job{}, err
+		return sandbox.Job{}, err
 	}
-	job := runner.Job{Names: w.testNames(id)}
+	job := sandbox.Job{Names: w.testNames(id)}
 	if job.Toolchain, err = w.Toolchain(info.Language); err != nil {
 		return job, err
 	}
@@ -304,7 +304,7 @@ func (w *Workspace) Job(id string, submit bool) (runner.Job, error) {
 	return job, nil
 }
 
-func writeFiles(dir string, files runner.Files) error {
+func writeFiles(dir string, files sandbox.Files) error {
 	for name, content := range files {
 		if !filepath.IsLocal(name) {
 			return fmt.Errorf("file path %q must stay inside the task folder", name)
@@ -320,8 +320,8 @@ func writeFiles(dir string, files runner.Files) error {
 	return nil
 }
 
-func readFiles(dir string) (runner.Files, error) {
-	files := runner.Files{}
+func readFiles(dir string) (sandbox.Files, error) {
+	files := sandbox.Files{}
 	err := filepath.WalkDir(dir, func(p string, d os.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
 			return err

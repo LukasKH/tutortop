@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/LukasKH/tutortop/internal/runner"
+	"github.com/LukasKH/tutortop/internal/sandbox"
 	"github.com/LukasKH/tutortop/internal/workspace"
 )
 
@@ -31,7 +31,7 @@ func TestValidateSpec(t *testing.T) {
 		{"test is also a starter file", func(s *workspace.TaskSpec) { s.HiddenTests["sum.go"] = "" }, []string{"sum.go is both a test and a starter file"}},
 		{"test both visible and hidden", func(s *workspace.TaskSpec) { s.HiddenTests["sum_test.go"] = "" }, []string{"sum_test.go is both a visible and a hidden test file"}},
 		{"mutant changes a test", func(s *workspace.TaskSpec) {
-			s.Mutants[0].Files = runner.Files{"sum_test.go": ""}
+			s.Mutants[0].Files = sandbox.Files{"sum_test.go": ""}
 		}, []string{`mutant "Off by one" changes sum_test.go, which isn't a solution file`}},
 		{"statement without a task", func(s *workspace.TaskSpec) { s.Statement.Task = "" }, []string{"statement.task is required"}},
 		{"one example", func(s *workspace.TaskSpec) { s.Statement.Examples = s.Statement.Examples[:1] }, []string{"at least 2 examples"}},
@@ -93,7 +93,7 @@ func TestSaveTask(t *testing.T) {
 	spec := taskSpec("a")
 	spec.Title = "Sum, again!"
 	spec.Starter["util.go"], spec.Reference["util.go"] = "package task\n", "package task\n"
-	second, err := w.SaveTask(spec, "go", runner.TestNames{Visible: []string{"TestSum"}, Hidden: []string{"TestA", "TestB"}})
+	second, err := w.SaveTask(spec, "go", sandbox.TestNames{Visible: []string{"TestSum"}, Hidden: []string{"TestA", "TestB"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -152,8 +152,8 @@ func TestSaveTaskKeepsFilesInside(t *testing.T) {
 	w := newWorkspace(t)
 	approve(t, w, "a")
 	spec := taskSpec("a")
-	spec.Starter = runner.Files{"../../escape.go": "package task\n"}
-	if _, err := w.SaveTask(spec, "go", runner.TestNames{}); err == nil {
+	spec.Starter = sandbox.Files{"../../escape.go": "package task\n"}
+	if _, err := w.SaveTask(spec, "go", sandbox.TestNames{}); err == nil {
 		t.Fatal("saved a file outside the task folder")
 	}
 	if _, err := os.Stat(filepath.Join(w.Dir, "escape.go")); !os.IsNotExist(err) {
@@ -168,7 +168,7 @@ func TestSaveWork(t *testing.T) {
 	task := addTask(t, w, "a")
 	solved := "package task\n\nfunc Sum(a, b int) int { return a + b }\n"
 
-	for _, files := range []runner.Files{
+	for _, files := range []sandbox.Files{
 		{"sum_test.go": "package task\n"},
 		{"sum.go": solved, "new.go": "package task\n"},
 		{"../sum.go": solved},
@@ -177,13 +177,13 @@ func TestSaveWork(t *testing.T) {
 			t.Errorf("saved %v", slices.Sorted(maps.Keys(files)))
 		}
 	}
-	if err := w.SaveWork(task.ID, runner.Files{"sum.go": solved}); err != nil {
+	if err := w.SaveWork(task.ID, sandbox.Files{"sum.go": solved}); err != nil {
 		t.Fatal(err)
 	}
 	if work, _ := w.Work(task.ID); work["sum.go"] != solved || len(work) != 1 {
 		t.Errorf("work %v", work)
 	}
-	if err := w.SaveWork("0009-missing", runner.Files{"sum.go": solved}); err == nil {
+	if err := w.SaveWork("0009-missing", sandbox.Files{"sum.go": solved}); err == nil {
 		t.Error("saved work for a task that doesn't exist")
 	}
 

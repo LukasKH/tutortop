@@ -16,7 +16,7 @@ import (
 	"time"
 
 	"github.com/LukasKH/tutortop/internal/decode"
-	"github.com/LukasKH/tutortop/internal/runner"
+	"github.com/LukasKH/tutortop/internal/sandbox"
 	"github.com/LukasKH/tutortop/internal/workspace"
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
@@ -27,14 +27,14 @@ import (
 // LSP, we frame it over stdio. It stops the servers as the app quits.
 type EditorService struct {
 	store   *workspace.Store
-	runner  *runner.Runner
+	runner  *sandbox.Runner
 	servers *languageServers
 }
 
 var _ application.ServiceShutdown = (*EditorService)(nil)
 
-func newEditorService(store *workspace.Store, sandbox *runner.Runner, servers *languageServers) *EditorService {
-	return &EditorService{store: store, runner: sandbox, servers: servers}
+func newEditorService(store *workspace.Store, runner *sandbox.Runner, servers *languageServers) *EditorService {
+	return &EditorService{store: store, runner: runner, servers: servers}
 }
 
 // ServiceShutdown is called by Wails on exit and stops the language servers.
@@ -105,7 +105,7 @@ type languageServers struct {
 type languageServer struct {
 	id      string
 	key     taskKey // the task whose code it serves
-	srv     *runner.Server
+	srv     *sandbox.Server
 	started time.Time
 
 	writeMu sync.Mutex
@@ -246,8 +246,8 @@ func writeMessage(w io.Writer, body []byte) error {
 
 // probeLanguageServer checks that a server answers the LSP initialize request,
 // so a broken language_server command is caught when the tutor sets it up.
-func probeLanguageServer(ctx context.Context, sandbox *runner.Runner, tc runner.Toolchain, files runner.Files) error {
-	srv, err := sandbox.StartLanguageServer(ctx, tc, files)
+func probeLanguageServer(ctx context.Context, runner *sandbox.Runner, tc sandbox.Toolchain, files sandbox.Files) error {
+	srv, err := runner.StartLanguageServer(ctx, tc, files)
 	if err != nil {
 		return err
 	}

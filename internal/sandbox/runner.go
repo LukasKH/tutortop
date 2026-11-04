@@ -1,5 +1,7 @@
-// Package runner executes task checks in a sandbox and reports per-test results.
-package runner
+// Package sandbox runs task checks in a Docker or Podman container and
+// reports per-test results. It also runs the quality gate for new tasks and
+// the editor's language servers.
+package sandbox
 
 import (
 	"archive/tar"

@@ -3,7 +3,7 @@
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import * as runner$0 from "../runner/models.js";
+import * as sandbox$0 from "../sandbox/models.js";
 
 /**
  * Activity is what the learner finished, day by day, across workspaces.
@@ -328,8 +328,8 @@ export interface TaskDetail {
     "files": string[] | null;
     "createdAt": string;
     "statement": string;
-    "tests": runner$0.Files;
-    "work": runner$0.Files;
+    "tests": sandbox$0.Files;
+    "work": sandbox$0.Files;
     "hiddenCount": number;
     "passed": boolean;
 

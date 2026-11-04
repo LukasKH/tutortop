@@ -10,7 +10,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/LukasKH/tutortop/internal/runner"
+	"github.com/LukasKH/tutortop/internal/sandbox"
 	"github.com/LukasKH/tutortop/internal/workspace"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -33,8 +33,8 @@ import (
 // localhost. Each gets a random token in its URL, so an agent can only reach
 // its own workspace, and tools like ask_user know which thread called them.
 type mcpHost struct {
-	runner  *runner.Runner // sandbox checks: toolchains and the quality gate
-	links   *linkChecker   // the references a plan or lesson cites
+	runner  *sandbox.Runner // sandbox checks: toolchains and the quality gate
+	links   *linkChecker    // the references a plan or lesson cites
 	baseURL string
 
 	mu      sync.Mutex
@@ -42,12 +42,12 @@ type mcpHost struct {
 	tokens  map[threadKey]string
 }
 
-func startMCP(sandbox *runner.Runner, links *linkChecker) (*mcpHost, error) {
+func startMCP(runner *sandbox.Runner, links *linkChecker) (*mcpHost, error) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		return nil, err
 	}
-	h := &mcpHost{runner: sandbox, links: links, baseURL: "http://" + ln.Addr().String(), servers: map[string]*mcp.Server{}, tokens: map[threadKey]string{}}
+	h := &mcpHost{runner: runner, links: links, baseURL: "http://" + ln.Addr().String(), servers: map[string]*mcp.Server{}, tokens: map[threadKey]string{}}
 	handler := mcp.NewStreamableHTTPHandler(func(r *http.Request) *mcp.Server {
 		token := strings.TrimPrefix(r.URL.Path, "/mcp/")
 		h.mu.Lock()
@@ -167,7 +167,7 @@ type threadTools struct {
 	w      *workspace.Workspace
 	thread workspace.Thread
 	agents *threadAgents // show the thread's sandbox checks
-	runner *runner.Runner
+	runner *sandbox.Runner
 	links  *linkChecker
 }
 
@@ -186,7 +186,7 @@ type stateOutput struct {
 	Tasks      []workspace.TaskStatus   `json:"tasks"`
 	Lessons    []workspace.LessonStatus `json:"lessons" jsonschema:"lessons with the learner's quiz results: answered and correct (first tries)"`
 	Recent     []workspace.Attempt      `json:"recentAttempts"`
-	Toolchains []runner.ToolchainSpec   `json:"toolchains" jsonschema:"languages set up with set_toolchain, besides the built-in go and python"`
+	Toolchains []sandbox.ToolchainSpec  `json:"toolchains" jsonschema:"languages set up with set_toolchain, besides the built-in go and python"`
 }
 
 func (t *threadTools) getState(context.Context, *mcp.CallToolRequest, struct{}) (*mcp.CallToolResult, stateOutput, error) {

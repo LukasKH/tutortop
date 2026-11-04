@@ -3,7 +3,7 @@ package workspace
 import (
 	"time"
 
-	"github.com/LukasKH/tutortop/internal/runner"
+	"github.com/LukasKH/tutortop/internal/sandbox"
 )
 
 // AttemptKind is what the learner did.
@@ -18,16 +18,16 @@ const (
 
 // Attempt is one learner action on a task or lesson, written by the app only.
 type Attempt struct {
-	TaskID    string        `json:"taskId,omitempty"`
-	Kind      AttemptKind   `json:"kind"`
-	LessonID  string        `json:"lessonId,omitempty"`
-	Question  int           `json:"question,omitempty"` // quiz: question index
-	Choice    int           `json:"choice,omitempty"`   // quiz: option picked
-	Status    runner.Status `json:"status,omitempty"`   // run and submit: how the check ended
-	Passed    int           `json:"passed,omitempty"`   // tests passed; quiz: 1 if correct
-	Total     int           `json:"total,omitempty"`
-	HintLevel int           `json:"hintLevel,omitempty"`
-	At        time.Time     `json:"at"`
+	TaskID    string         `json:"taskId,omitempty"`
+	Kind      AttemptKind    `json:"kind"`
+	LessonID  string         `json:"lessonId,omitempty"`
+	Question  int            `json:"question,omitempty"` // quiz: question index
+	Choice    int            `json:"choice,omitempty"`   // quiz: option picked
+	Status    sandbox.Status `json:"status,omitempty"`   // run and submit: how the check ended
+	Passed    int            `json:"passed,omitempty"`   // tests passed; quiz: 1 if correct
+	Total     int            `json:"total,omitempty"`
+	HintLevel int            `json:"hintLevel,omitempty"`
+	At        time.Time      `json:"at"`
 }
 
 func (w *Workspace) RecordAttempt(a Attempt) error {
@@ -43,7 +43,9 @@ func (w *Workspace) Attempts() ([]Attempt, error) {
 
 // passedTask reports whether the attempt passed a task: a submission that
 // passed every test, the only thing that counts as progress.
-func (a Attempt) passedTask() bool { return a.Kind == AttemptSubmit && a.Status == runner.StatusPassed }
+func (a Attempt) passedTask() bool {
+	return a.Kind == AttemptSubmit && a.Status == sandbox.StatusPassed
+}
 
 // history is what the attempt log says about each task and lesson.
 type history struct {

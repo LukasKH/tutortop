@@ -11,7 +11,7 @@ import (
 
 	"github.com/LukasKH/tutortop/internal/agent"
 	"github.com/LukasKH/tutortop/internal/decode"
-	"github.com/LukasKH/tutortop/internal/runner"
+	"github.com/LukasKH/tutortop/internal/sandbox"
 	"github.com/LukasKH/tutortop/internal/workspace"
 	"gopkg.in/yaml.v3"
 )
@@ -21,12 +21,12 @@ import (
 type SettingsService struct {
 	settings *settingsStore
 	models   *modelCache
-	runner   *runner.Runner
+	runner   *sandbox.Runner
 	root     string // the workspaces folder in use
 }
 
-func newSettingsService(settings *settingsStore, models *modelCache, sandbox *runner.Runner, root string) *SettingsService {
-	return &SettingsService{settings: settings, models: models, runner: sandbox, root: root}
+func newSettingsService(settings *settingsStore, models *modelCache, runner *sandbox.Runner, root string) *SettingsService {
+	return &SettingsService{settings: settings, models: models, runner: runner, root: root}
 }
 
 // Settings returns the saved settings. Without a saved agent it picks the

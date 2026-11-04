@@ -7,7 +7,7 @@ import (
 	"maps"
 	"strings"
 
-	"github.com/LukasKH/tutortop/internal/runner"
+	"github.com/LukasKH/tutortop/internal/sandbox"
 	"github.com/LukasKH/tutortop/internal/text"
 	"github.com/LukasKH/tutortop/internal/workspace"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -77,20 +77,20 @@ func (t *threadTools) proposeCurriculum(ctx context.Context, _ *mcp.CallToolRequ
 
 var setToolchainTool = &mcp.Tool{
 	Name: "set_toolchain",
-	Description: "Set up a programming language the app doesn't ship (it ships " + text.List(runner.BuiltinLanguages()) + "), or change one you set up before, so the curriculum and tasks can use it. " +
+	Description: "Set up a programming language the app doesn't ship (it ships " + text.List(sandbox.BuiltinLanguages()) + "), or change one you set up before, so the curriculum and tasks can use it. " +
 		"The app builds the sandbox image (this can take several minutes) and runs the example's tests, which must all pass. Only then is the language saved. " +
 		"If something fails, fix the toolchain using the report and call set_toolchain again. A language server that doesn't answer isn't a failure: the language is saved without it. " +
 		"Changing a language affects its existing tasks, so keep the test command compatible.",
 }
 
 type setToolchainInput struct {
-	Toolchain runner.ToolchainSpec `json:"toolchain"`
-	Example   toolchainExample     `json:"example" jsonschema:"a tiny solution and test file that must pass, to prove the setup works end to end"`
+	Toolchain sandbox.ToolchainSpec `json:"toolchain"`
+	Example   toolchainExample      `json:"example" jsonschema:"a tiny solution and test file that must pass, to prove the setup works end to end"`
 }
 
 type toolchainExample struct {
-	Solution runner.Files `json:"solution" jsonschema:"filename -> content"`
-	Tests    runner.Files `json:"tests" jsonschema:"filename -> content; at least one file matching test_files"`
+	Solution sandbox.Files `json:"solution" jsonschema:"filename -> content"`
+	Tests    sandbox.Files `json:"tests" jsonschema:"filename -> content; at least one file matching test_files"`
 }
 
 // setToolchain saves a language only once its example passes in the sandbox.
@@ -100,7 +100,7 @@ func (t *threadTools) setToolchain(ctx context.Context, _ *mcp.CallToolRequest, 
 	if err != nil {
 		return nil, nil, err
 	}
-	if _, ok := runner.Builtin(tc.Language); ok {
+	if _, ok := sandbox.Builtin(tc.Language); ok {
 		return nil, nil, fmt.Errorf("%s is built in; use it directly", tc.Language)
 	}
 	check := SandboxCheck{Kind: CheckToolchain, Thread: t.thread.String(), Title: tc.Name, Running: true}
@@ -139,7 +139,7 @@ func (t *threadTools) setToolchain(ctx context.Context, _ *mcp.CallToolRequest, 
 // checkToolchain builds a new language's image and proves it works. It
 // returns a report for the tutor when the setup is wrong, or an error when
 // the sandbox itself is broken.
-func (t *threadTools) checkToolchain(ctx context.Context, tc runner.Toolchain, ex toolchainExample) (string, error) {
+func (t *threadTools) checkToolchain(ctx context.Context, tc sandbox.Toolchain, ex toolchainExample) (string, error) {
 	var problems []string
 	if len(ex.Solution) == 0 || len(ex.Tests) == 0 {
 		problems = append(problems, "the example needs a solution file and a test file")
@@ -164,14 +164,14 @@ func (t *threadTools) checkToolchain(ctx context.Context, tc runner.Toolchain, e
 		}
 		return "Toolchain check FAILED: the image didn't build.\n" + err.Error(), nil
 	}
-	res, err := t.runner.Run(ctx, runner.Job{Toolchain: tc, Solution: ex.Solution, Tests: ex.Tests})
+	res, err := t.runner.Run(ctx, sandbox.Job{Toolchain: tc, Solution: ex.Solution, Tests: ex.Tests})
 	if err != nil {
 		return "", err
 	}
-	if res.Status != runner.StatusPassed {
+	if res.Status != sandbox.StatusPassed {
 		var b strings.Builder
 		fmt.Fprintf(&b, "Toolchain check FAILED: the example's tests should all pass, but the run ended with status %q", res.Status)
-		if res.Status == runner.StatusError {
+		if res.Status == sandbox.StatusError {
 			b.WriteString(" (no readable JUnit report at /tmp/junit.xml, or the code didn't build)")
 		}
 		for _, tr := range res.Tests {

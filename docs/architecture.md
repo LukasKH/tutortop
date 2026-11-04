@@ -9,7 +9,7 @@ Tutortop is a Go program with a React frontend, shipped as one desktop app by [W
  internal/app  Wails services: Workspace, Task, Lesson, Chat, Settings, Editor
    |-- internal/workspace   files on disk, one git repo per topic
    |-- internal/agent       the learner's Claude Code or Codex CLI
-   |-- internal/runner      Docker/Podman sandbox: checks, quality gate
+   |-- internal/sandbox      Docker/Podman sandbox: checks, quality gate
    '-- MCP server on 127.0.0.1, the tools the agent works through
 ```
 
@@ -19,7 +19,7 @@ Tutortop is a Go program with a React frontend, shipped as one desktop app by [W
 - `internal/app` holds the Wails services, one per area (see [Calls from the frontend](#calls-from-the-frontend)). Every exported method on them is callable from the frontend. It also runs each thread's agent (the chats' tutors and the background writers), the MCP server and the language servers, which the services share.
 - `internal/workspace` stores one topic as plain files in `~/Tutortop/<id>`, plus private files (hidden tests, reference solutions) under the XDG data dir. It knows nothing about agents or Wails.
 - `internal/agent` starts the Claude Code or Codex CLI, streams its output as text and tool events, and decides which tool calls to allow. The agent may change files in the workspace, except under `tasks/`, and may not run commands. [Adding an agent](agents.md) describes its contract.
-- `internal/runner` runs tests in a Docker or Podman container built for the task's toolchain. It also runs the quality gate for new tasks.
+- `internal/sandbox` runs tests in a Docker or Podman container built for the task's toolchain. It also runs the quality gate for new tasks.
 - `internal/decode` turns JSON, YAML and XML into typed values (`decode.JSON[T]`, ...), for every package.
 - `frontend/src/lib/api.ts` wraps the generated bindings and events; components import from it. A few modules use the Wails runtime directly: links open in the browser, the settings pick a folder, the window zooms, and the language client listens to its event outside React. The frontend's own layout is described under [Frontend](#frontend).
 
@@ -246,13 +246,13 @@ The editor's completions and errors come from a language server running in the t
 
 ### Languages
 
-A toolchain says how one language's tests run in the sandbox and how their results are read (`runner.Toolchain`). The built-in ones are in `internal/runner/toolchain.go`. Any other language is set up by the tutor with `set_toolchain` and saved in the workspace as `.tutortop/toolchains/<language>.yaml` (`runner.ToolchainSpec`, `internal/workspace/toolchains.go`); its tests must write a JUnit report.
+A toolchain says how one language's tests run in the sandbox and how their results are read (`sandbox.Toolchain`). The built-in ones are in `internal/sandbox/toolchain.go`. Any other language is set up by the tutor with `set_toolchain` and saved in the workspace as `.tutortop/toolchains/<language>.yaml` (`sandbox.ToolchainSpec`, `internal/workspace/toolchains.go`); its tests must write a JUnit report.
 
 To add a built-in language:
 
-1. `internal/runner/toolchain.go`: a `Toolchain` and its entry in `builtins`. Its Dockerfile installs the language, the test framework and a language server, and runs as user 1000 (`runner`) in `/work` with no network, like the others. Tag the image `tutortop-<language>:1`, and bump the tag whenever the Dockerfile changes. `script` runs the tests `repeat` times, shuffled if the framework can.
-2. The same `Toolchain`'s `parse`, which reads the results, and `readable`, which turns the output into text for the learner. A framework that writes JUnit can use `junitScript`, `parseJUnitRuns` and `stripJUnit`, as Python does. One with its own format needs its own, tested on recorded output in `internal/runner` (see `TestRunGo` and `TestParseJUnit`).
-3. `internal/app/prompts/shared.md`, under "Language conventions": a line `- **<Name> <version>**: …` saying how its tasks are laid out. The prompts' lists of built-in languages (`{{builtins}}`) and `set_toolchain`'s description fill themselves in from `runner.BuiltinLanguages`.
+1. `internal/sandbox/toolchain.go`: a `Toolchain` and its entry in `builtins`. Its Dockerfile installs the language, the test framework and a language server, and runs as user 1000 (`runner`) in `/work` with no network, like the others. Tag the image `tutortop-<language>:1`, and bump the tag whenever the Dockerfile changes. `script` runs the tests `repeat` times, shuffled if the framework can.
+2. The same `Toolchain`'s `parse`, which reads the results, and `readable`, which turns the output into text for the learner. A framework that writes JUnit can use `junitScript`, `parseJUnitRuns` and `stripJUnit`, as Python does. One with its own format needs its own, tested on recorded output in `internal/sandbox` (see `TestRunGo` and `TestParseJUnit`).
+3. `internal/app/prompts/shared.md`, under "Language conventions": a line `- **<Name> <version>**: …` saying how its tasks are laid out. The prompts' lists of built-in languages (`{{builtins}}`) and `set_toolchain`'s description fill themselves in from `sandbox.BuiltinLanguages`.
 4. Run `go test ./internal/app -run TestWrittenOutLanguagesMatchTheBuiltins`. It checks step 3, and lists every `jsonschema` struct tag that names the other built-ins but not the new one (such as `stateOutput.Toolchains` in `mcp.go`); tags can't be filled in, so add the name by hand.
 5. Search the prompts for its name: `set_toolchain`'s line in `shared.md` gives R, Rust and JavaScript as examples of languages the app doesn't ship.
 6. `internal/workspace/icons.go`: a picture in `Icons`, if there's none for it.

@@ -11,7 +11,7 @@ import (
 
 	"github.com/LukasKH/tutortop/internal/agent"
 	"github.com/LukasKH/tutortop/internal/decode"
-	"github.com/LukasKH/tutortop/internal/runner"
+	"github.com/LukasKH/tutortop/internal/sandbox"
 	"github.com/LukasKH/tutortop/internal/workspace"
 )
 
@@ -74,12 +74,12 @@ func TestToolsEndToEnd(t *testing.T) {
 	}
 
 	// The learner's starter code fails; the reference passes and counts.
-	res, err := a.Tasks.RunTests(w.ID, created.TaskID, runner.Files{"solution.go": goStarter}, true)
-	if err != nil || res.Status != runner.StatusFailed {
+	res, err := a.Tasks.RunTests(w.ID, created.TaskID, sandbox.Files{"solution.go": goStarter}, true)
+	if err != nil || res.Status != sandbox.StatusFailed {
 		t.Fatalf("starter submit = %v %+v", err, res)
 	}
-	res, err = a.Tasks.RunTests(w.ID, created.TaskID, runner.Files{"solution.go": goReference}, true)
-	if err != nil || res.Status != runner.StatusPassed {
+	res, err = a.Tasks.RunTests(w.ID, created.TaskID, sandbox.Files{"solution.go": goReference}, true)
+	if err != nil || res.Status != sandbox.StatusPassed {
 		t.Fatalf("reference submit = %v %+v", err, res)
 	}
 	st, _ = a.Workspaces.Workspace(w.ID)
@@ -126,7 +126,7 @@ type testApp struct {
 	*Services
 	store    *workspace.Store
 	settings *settingsStore
-	runner   *runner.Runner
+	runner   *sandbox.Runner
 	agents   *threadAgents
 	mcp      *mcpHost
 }
@@ -153,12 +153,12 @@ func newTestAppWith(t *testing.T, cli agentCLI, links *linkChecker) *testApp {
 	t.Helper()
 	store := &workspace.Store{Root: t.TempDir(), PrivateRoot: t.TempDir()}
 	settings := newSettingsStore(filepath.Join(t.TempDir(), "settings.yaml"))
-	sandbox := runner.New()
-	s, err := newServices(store, settings, sandbox, links, cli)
+	runner := sandbox.New()
+	s, err := newServices(store, settings, runner, links, cli)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &testApp{Services: s, store: store, settings: settings, runner: sandbox, agents: s.Chat.agents, mcp: s.Chat.agents.mcp}
+	return &testApp{Services: s, store: store, settings: settings, runner: runner, agents: s.Chat.agents, mcp: s.Chat.agents.mcp}
 }
 
 // startFunc is an agentCLI that starts sessions by calling itself.

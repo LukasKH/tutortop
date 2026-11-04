@@ -8,7 +8,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/LukasKH/tutortop/internal/runner"
+	"github.com/LukasKH/tutortop/internal/sandbox"
 	"github.com/LukasKH/tutortop/internal/text"
 	"github.com/LukasKH/tutortop/internal/workspace"
 )
@@ -34,7 +34,7 @@ var (
 // instructions are the shared rules plus the agent's role in the thread.
 // The prompts' placeholders are filled from the code, so they can't drift
 // from it: {{tools}} lists the MCP tools the thread gets (mcpTools),
-// {{builtins}} the languages the app ships (runner.BuiltinLanguages), and
+// {{builtins}} the languages the app ships (sandbox.BuiltinLanguages), and
 // {{id}} and {{title}} name the thread's task, lesson or objective. A title
 // that can't be read falls back to the id.
 func instructions(w *workspace.Workspace, t workspace.Thread) string {
@@ -70,8 +70,8 @@ func instructions(w *workspace.Workspace, t workspace.Thread) string {
 // builtinNames lists the languages the app ships by name: "Go and Python".
 func builtinNames() string {
 	var names []string
-	for _, lang := range runner.BuiltinLanguages() {
-		tc, _ := runner.Builtin(lang)
+	for _, lang := range sandbox.BuiltinLanguages() {
+		tc, _ := sandbox.Builtin(lang)
 		names = append(names, tc.Name)
 	}
 	return text.List(names)
@@ -97,7 +97,7 @@ func contextFor(w *workspace.Workspace, t workspace.Thread) string {
 
 // taskContext tells a task's tutor the learner's current code and, if they
 // ran it, the last check.
-func taskContext(w *workspace.Workspace, id string, last *runner.Result) string {
+func taskContext(w *workspace.Workspace, id string, last *sandbox.Result) string {
 	d, err := w.Task(id)
 	if err != nil {
 		return ""
@@ -119,7 +119,7 @@ func taskContext(w *workspace.Workspace, id string, last *runner.Result) string 
 				fmt.Fprintf(&b, "- %s (%s) failed: %s\n", tr.Name, kind, text.Truncate(tr.Message, 400))
 			}
 		}
-		if last.Status == runner.StatusError {
+		if last.Status == sandbox.StatusError {
 			fmt.Fprintf(&b, "Output:\n%s\n", text.Truncate(last.Output, 1500))
 		}
 	}

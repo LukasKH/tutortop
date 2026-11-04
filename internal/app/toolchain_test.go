@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/LukasKH/tutortop/internal/decode"
-	"github.com/LukasKH/tutortop/internal/runner"
+	"github.com/LukasKH/tutortop/internal/sandbox"
 	"github.com/LukasKH/tutortop/internal/workspace"
 )
 
@@ -105,8 +105,8 @@ func TestSetToolchainEnablesALanguage(t *testing.T) {
 	if err != nil || d.EditorLanguage != "javascript" || d.HiddenCount != 1 {
 		t.Fatalf("task detail = %+v, %v", d, err)
 	}
-	res, err := a.Tasks.RunTests(w.ID, created.TaskID, runner.Files{"add.mjs": reference["add.mjs"]}, true)
-	if err != nil || res.Status != runner.StatusPassed || len(res.Tests) != 2 || !res.Tests[0].Hidden && !res.Tests[1].Hidden {
+	res, err := a.Tasks.RunTests(w.ID, created.TaskID, sandbox.Files{"add.mjs": reference["add.mjs"]}, true)
+	if err != nil || res.Status != sandbox.StatusPassed || len(res.Tests) != 2 || !res.Tests[0].Hidden && !res.Tests[1].Hidden {
 		t.Fatalf("submit = %v %+v", err, res)
 	}
 }

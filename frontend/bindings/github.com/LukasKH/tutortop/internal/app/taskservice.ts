@@ -13,7 +13,7 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import * as runner$0 from "../runner/models.js";
+import * as sandbox$0 from "../sandbox/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import * as workspace$0 from "../workspace/models.js";
@@ -27,11 +27,11 @@ export function ResetWork(wsID: string, taskID: string): $CancellablePromise<voi
  * A passing submission tells the planning tutor, and writers write what
  * comes next.
  */
-export function RunTests(wsID: string, taskID: string, files: runner$0.Files, submit: boolean): $CancellablePromise<runner$0.Result> {
+export function RunTests(wsID: string, taskID: string, files: sandbox$0.Files, submit: boolean): $CancellablePromise<sandbox$0.Result> {
     return $Call.ByID(3474153471, wsID, taskID, files, submit);
 }
 
-export function SaveWork(wsID: string, taskID: string, files: runner$0.Files): $CancellablePromise<void> {
+export function SaveWork(wsID: string, taskID: string, files: sandbox$0.Files): $CancellablePromise<void> {
     return $Call.ByID(1779376385, wsID, taskID, files);
 }
 

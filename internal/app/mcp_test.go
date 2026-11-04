@@ -12,7 +12,7 @@ import (
 
 	"github.com/LukasKH/tutortop/internal/agent"
 	"github.com/LukasKH/tutortop/internal/decode"
-	"github.com/LukasKH/tutortop/internal/runner"
+	"github.com/LukasKH/tutortop/internal/sandbox"
 	"github.com/LukasKH/tutortop/internal/workspace"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -95,7 +95,7 @@ func TestWrittenOutLanguagesMatchTheBuiltins(t *testing.T) {
 	tags := map[string]string{}
 	tag := regexp.MustCompile(`jsonschema:"((?:[^"\\]|\\.)*)"`)
 	sources, _ := filepath.Glob("*.go")
-	for _, dir := range []string{"../workspace", "../runner"} {
+	for _, dir := range []string{"../workspace", "../sandbox"} {
 		more, _ := filepath.Glob(filepath.Join(dir, "*.go"))
 		sources = append(sources, more...)
 	}
@@ -119,8 +119,8 @@ func TestWrittenOutLanguagesMatchTheBuiltins(t *testing.T) {
 		name *regexp.Regexp // its id or its name as a word
 	}
 	var builtins []builtin
-	for _, lang := range runner.BuiltinLanguages() {
-		tc, _ := runner.Builtin(lang)
+	for _, lang := range sandbox.BuiltinLanguages() {
+		tc, _ := sandbox.Builtin(lang)
 		builtins = append(builtins, builtin{lang, regexp.MustCompile(`\b(` + regexp.QuoteMeta(lang) + `|` + regexp.QuoteMeta(tc.Name) + `)\b`)})
 		if !strings.Contains(sharedPrompt, "\n- **"+tc.Name+" ") {
 			t.Errorf("shared.md has no conventions for %s, as a line starting \"- **%s <version>**: \"", lang, tc.Name)

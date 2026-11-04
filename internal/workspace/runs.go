@@ -5,7 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/LukasKH/tutortop/internal/runner"
+	"github.com/LukasKH/tutortop/internal/sandbox"
 )
 
 // A task's latest test run is kept so its tutor knows how the learner's
@@ -15,7 +15,7 @@ import (
 // repo, where the tutor can read it. It goes when the workspace is deleted.
 
 // SaveLastRun keeps a task's latest test run, replacing the one before.
-func (w *Workspace) SaveLastRun(taskID string, res runner.Result) error {
+func (w *Workspace) SaveLastRun(taskID string, res sandbox.Result) error {
 	if !validName(taskID) {
 		return fmt.Errorf("invalid task id %q", taskID)
 	}
@@ -27,11 +27,11 @@ func (w *Workspace) SaveLastRun(taskID string, res runner.Result) error {
 }
 
 // LastRun returns a task's latest test run, if it was run.
-func (w *Workspace) LastRun(taskID string) (runner.Result, bool) {
+func (w *Workspace) LastRun(taskID string) (sandbox.Result, bool) {
 	if !validName(taskID) {
-		return runner.Result{}, false
+		return sandbox.Result{}, false
 	}
-	res, err := readJSON[runner.Result](w.lastRunPath(taskID))
+	res, err := readJSON[sandbox.Result](w.lastRunPath(taskID))
 	return res, err == nil
 }
 
