@@ -64,7 +64,7 @@ func TestParseJUnit(t *testing.T) {
 	tc := customToolchain(t)
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			tests, ok := tc.Parse(c.stdout, map[string]bool{"test_edge": true})
+			tests, ok := tc.parse(c.stdout, map[string]bool{"test_edge": true})
 			if ok != c.ok || len(tests) != len(c.want) {
 				t.Fatalf("got %+v, %v; want %+v, %v", tests, ok, c.want, c.ok)
 			}
@@ -137,7 +137,7 @@ func TestToolchainFromSpec(t *testing.T) {
 			t.Errorf("IsTestFile(%q) = %v, want %v", name, !want, want)
 		}
 	}
-	if script := tc.Script(3); strings.Count(script, "Rscript") != 3 {
+	if script := tc.script(3); strings.Count(script, "Rscript") != 3 {
 		t.Errorf("three repetitions don't run the command three times:\n%s", script)
 	}
 

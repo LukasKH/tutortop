@@ -227,7 +227,7 @@ func (r *Runner) Run(ctx context.Context, job Job) (Result, error) {
 	out := &cappedBuffer{max: maxOutput, stop: func() { stop(errTooMuchOutput) }}
 
 	start := time.Now()
-	runErr := r.exec(runCtx, tc, tc.Script(max(job.Repeat, 1)), files, out)
+	runErr := r.exec(runCtx, tc, tc.script(max(job.Repeat, 1)), files, out)
 	res := Result{DurationMs: time.Since(start).Milliseconds()}
 	stdout := out.String()
 
@@ -245,7 +245,7 @@ func (r *Runner) Run(ctx context.Context, job Job) (Result, error) {
 		return Result{}, runErr
 	}
 
-	tests, ok := tc.Parse(stdout, hidden)
+	tests, ok := tc.parse(stdout, hidden)
 	res.Output = readable(tc, stdout)
 	if !ok || len(tests) == 0 {
 		res.Status = StatusError

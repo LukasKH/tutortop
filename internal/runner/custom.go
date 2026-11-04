@@ -72,8 +72,8 @@ func (s ToolchainSpec) Toolchain() (Toolchain, error) {
 		Image:          "tutortop-" + strings.NewReplacer("+", "p", "#", "s").Replace(s.Language) + ":" + hex.EncodeToString(sum[:6]),
 		Dockerfile:     dockerfile,
 		ExtraFiles:     maps.Clone(s.ExtraFiles),
-		Script:         func(repeat int) string { return junitScript(s.TestCommand, repeat) },
-		Parse:          parseJUnitRuns,
+		script:         func(repeat int) string { return junitScript(s.TestCommand, repeat) },
+		parse:          parseJUnitRuns,
 		LanguageServer: slices.Clone(s.LanguageServer),
 		testFiles:      s.TestFiles,
 	}, nil
