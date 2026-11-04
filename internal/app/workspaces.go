@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/LukasKH/tutortop/internal/editor"
 	"github.com/LukasKH/tutortop/internal/events"
 	"github.com/LukasKH/tutortop/internal/sandbox"
 	"github.com/LukasKH/tutortop/internal/settings"
@@ -24,12 +25,12 @@ type WorkspaceService struct {
 	runner   *sandbox.Runner
 	agents   *threadAgents // a new workspace's interview, the plan's notices, and ending a deleted workspace's agents
 	writers  *writers      // write objectives once the plan is approved or opened ahead
-	servers  *languageServers
+	servers  *editor.Servers
 }
 
 var _ application.ServiceStartup = (*WorkspaceService)(nil)
 
-func newWorkspaceService(store *workspace.Store, settingsStore *settings.Store, runner *sandbox.Runner, agents *threadAgents, writers *writers, servers *languageServers) *WorkspaceService {
+func newWorkspaceService(store *workspace.Store, settingsStore *settings.Store, runner *sandbox.Runner, agents *threadAgents, writers *writers, servers *editor.Servers) *WorkspaceService {
 	return &WorkspaceService{store: store, settings: settingsStore, runner: runner, agents: agents, writers: writers, servers: servers}
 }
 
@@ -111,7 +112,7 @@ func (s *WorkspaceService) CreateWorkspace(title, icon string) (string, error) {
 // deletes its files for good.
 func (s *WorkspaceService) DeleteWorkspace(id string) error {
 	s.agents.endWorkspace(id)
-	s.servers.stopWorkspace(id)
+	s.servers.StopWorkspace(id)
 	return s.store.Delete(id)
 }
 

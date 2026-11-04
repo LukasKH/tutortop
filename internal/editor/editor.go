@@ -1,45 +1,45 @@
-package app
+// Package editor serves the code editor's language servers (Service): each
+// open task gets one, running in the task's sandbox image, and the app
+// relays its protocol messages to and from the frontend.
+package editor
 
 import (
 	"bufio"
 	"context"
 	"crypto/rand"
-	"encoding/json"
 	"errors"
-	"fmt"
-	"io"
 	"maps"
-	"net/textproto"
 	"slices"
-	"strconv"
 	"sync"
 	"time"
 
-	"github.com/LukasKH/tutortop/internal/decode"
 	"github.com/LukasKH/tutortop/internal/events"
 	"github.com/LukasKH/tutortop/internal/sandbox"
 	"github.com/LukasKH/tutortop/internal/workspace"
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
-// EditorService serves the code editor: language servers give it completions,
+// Service serves the code editor: language servers give it completions,
 // hover docs and errors. Each open task gets one, running in the task's
 // sandbox image. The app only relays protocol messages: the frontend speaks
-// LSP, we frame it over stdio. It stops the servers as the app quits.
-type EditorService struct {
+// LSP, we frame it over stdio. It stops the servers as the app quits. Wails
+// and the frontend know it as EditorService.
+type Service struct {
 	store   *workspace.Store
 	runner  *sandbox.Runner
-	servers *languageServers
+	servers *Servers
 }
 
-var _ application.ServiceShutdown = (*EditorService)(nil)
+var _ application.ServiceShutdown = (*Service)(nil)
 
-func newEditorService(store *workspace.Store, runner *sandbox.Runner, servers *languageServers) *EditorService {
-	return &EditorService{store: store, runner: runner, servers: servers}
+// NewService serves the editor the workspaces in store, starting language
+// servers on runner and keeping them in servers.
+func NewService(store *workspace.Store, runner *sandbox.Runner, servers *Servers) *Service {
+	return &Service{store: store, runner: runner, servers: servers}
 }
 
 // ServiceShutdown is called by Wails on exit and stops the language servers.
-func (s *EditorService) ServiceShutdown() error {
+func (s *Service) ServiceShutdown() error {
 	s.servers.stopAll()
 	return nil
 }
@@ -54,7 +54,7 @@ type LanguageServerInfo struct {
 // StartLanguageServer starts a language server for a task with the learner's
 // current code and the visible tests. It returns an empty ID if the task's
 // language has none. The first start may build the sandbox image.
-func (s *EditorService) StartLanguageServer(wsID, taskID string) (LanguageServerInfo, error) {
+func (s *Service) StartLanguageServer(wsID, taskID string) (LanguageServerInfo, error) {
 	w, err := s.store.Open(wsID)
 	if err != nil {
 		return LanguageServerInfo{}, err
@@ -84,23 +84,45 @@ func (s *EditorService) StartLanguageServer(wsID, taskID string) (LanguageServer
 }
 
 // SendLanguageServer sends one JSON-RPC message from the editor to a server.
-func (s *EditorService) SendLanguageServer(id, message string) error {
+func (s *Service) SendLanguageServer(id, message string) error {
 	ls := s.servers.get(id)
 	if ls == nil {
 		return errors.New("the language server has stopped")
 	}
 	ls.writeMu.Lock()
 	defer ls.writeMu.Unlock()
-	return writeMessage(ls.srv.Stdin, []byte(message))
+	return sandbox.WriteMessage(ls.srv.Stdin, []byte(message))
 }
 
 // StopLanguageServer stops a server the editor no longer needs.
-func (s *EditorService) StopLanguageServer(id string) { s.servers.stop(id) }
+func (s *Service) StopLanguageServer(id string) { s.servers.stop(id) }
 
-// languageServers are the running language servers, by id.
-type languageServers struct {
+// Servers are the running language servers, by id. The editor's Service
+// starts them; a workspace's are stopped before it's deleted.
+type Servers struct {
 	mu      sync.Mutex
 	servers map[string]*languageServer
+}
+
+// NewServers keeps no servers yet.
+func NewServers() *Servers {
+	return &Servers{servers: map[string]*languageServer{}}
+}
+
+// StopWorkspace stops a workspace's servers, before it's deleted.
+func (r *Servers) StopWorkspace(wsID string) {
+	r.mu.Lock()
+	var servers []*languageServer
+	for id, ls := range r.servers {
+		if ls.key.ws == wsID {
+			delete(r.servers, id)
+			servers = append(servers, ls)
+		}
+	}
+	r.mu.Unlock()
+	for _, ls := range servers {
+		ls.srv.Close()
+	}
 }
 
 type languageServer struct {
@@ -115,10 +137,6 @@ type languageServer struct {
 // taskKey names one task of one workspace.
 type taskKey struct{ ws, task string }
 
-func newLanguageServers() *languageServers {
-	return &languageServers{servers: map[string]*languageServer{}}
-}
-
 // maxLanguageServers bounds how many run at once; starting another stops the
 // oldest. The UI shows one task at a time, so this only matters when a
 // reloaded window leaves its old server behind.
@@ -126,7 +144,7 @@ const maxLanguageServers = 2
 
 // add keeps a started server. It stops the task's other servers, and the
 // oldest ones beyond maxLanguageServers.
-func (r *languageServers) add(ls *languageServer) {
+func (r *Servers) add(ls *languageServer) {
 	r.mu.Lock()
 	var stale []*languageServer
 	for _, other := range r.servers {
@@ -149,7 +167,7 @@ func (r *languageServers) add(ls *languageServer) {
 
 // oldest returns the longest-running server not already in skip. Call with
 // r.mu held.
-func (r *languageServers) oldest(skip []*languageServer) *languageServer {
+func (r *Servers) oldest(skip []*languageServer) *languageServer {
 	var oldest *languageServer
 	for _, s := range r.servers {
 		if !slices.Contains(skip, s) && (oldest == nil || s.started.Before(oldest.started)) {
@@ -160,14 +178,14 @@ func (r *languageServers) oldest(skip []*languageServer) *languageServer {
 }
 
 // get returns a running server, or nil if it has stopped.
-func (r *languageServers) get(id string) *languageServer {
+func (r *Servers) get(id string) *languageServer {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return r.servers[id]
 }
 
 // stop stops a server, if it's still running.
-func (r *languageServers) stop(id string) {
+func (r *Servers) stop(id string) {
 	r.mu.Lock()
 	ls := r.servers[id]
 	delete(r.servers, id)
@@ -177,24 +195,8 @@ func (r *languageServers) stop(id string) {
 	}
 }
 
-// stopWorkspace stops a workspace's servers, before it's deleted.
-func (r *languageServers) stopWorkspace(wsID string) {
-	r.mu.Lock()
-	var servers []*languageServer
-	for id, ls := range r.servers {
-		if ls.key.ws == wsID {
-			delete(r.servers, id)
-			servers = append(servers, ls)
-		}
-	}
-	r.mu.Unlock()
-	for _, ls := range servers {
-		ls.srv.Close()
-	}
-}
-
 // stopAll stops every server, as the app quits.
-func (r *languageServers) stopAll() {
+func (r *Servers) stopAll() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	for _, ls := range r.servers {
@@ -203,10 +205,10 @@ func (r *languageServers) stopAll() {
 }
 
 // relay forwards every message from the server to the editor until it stops.
-func (r *languageServers) relay(ls *languageServer) {
+func (r *Servers) relay(ls *languageServer) {
 	br := bufio.NewReader(ls.srv.Stdout)
 	for {
-		msg, err := readMessage(br)
+		msg, err := sandbox.ReadMessage(br)
 		if err != nil {
 			break
 		}
@@ -217,84 +219,4 @@ func (r *languageServers) relay(ls *languageServer) {
 	r.mu.Unlock()
 	ls.srv.Close()
 	events.Emit(events.LSPMessage, events.LSP{ID: ls.id, Closed: true})
-}
-
-// ---- LSP framing: a Content-Length header, a blank line, then JSON ----
-
-const maxMessage = 64 << 20
-
-func readMessage(r *bufio.Reader) ([]byte, error) {
-	header, err := textproto.NewReader(r).ReadMIMEHeader()
-	if err != nil {
-		return nil, err
-	}
-	n, err := strconv.Atoi(header.Get("Content-Length"))
-	if err != nil || n < 0 || n > maxMessage {
-		return nil, fmt.Errorf("bad Content-Length %q", header.Get("Content-Length"))
-	}
-	body := make([]byte, n)
-	_, err = io.ReadFull(r, body)
-	return body, err
-}
-
-func writeMessage(w io.Writer, body []byte) error {
-	if _, err := fmt.Fprintf(w, "Content-Length: %d\r\n\r\n", len(body)); err != nil {
-		return err
-	}
-	_, err := w.Write(body)
-	return err
-}
-
-// probeLanguageServer checks that a server answers the LSP initialize request,
-// so a broken language_server command is caught when the tutor sets it up.
-func probeLanguageServer(ctx context.Context, runner *sandbox.Runner, tc sandbox.Toolchain, files sandbox.Files) error {
-	srv, err := runner.StartLanguageServer(ctx, tc, files)
-	if err != nil {
-		return err
-	}
-	defer srv.Close()
-	init, _ := json.Marshal(map[string]any{
-		"jsonrpc": "2.0", "id": 1, "method": "initialize",
-		"params": map[string]any{"processId": nil, "rootUri": "file://" + srv.Root, "capabilities": map[string]any{}},
-	})
-	if err := writeMessage(srv.Stdin, init); err != nil {
-		return err
-	}
-	done := make(chan error, 1)
-	go func() {
-		r := bufio.NewReader(srv.Stdout)
-		for {
-			msg, err := readMessage(r)
-			if err != nil {
-				done <- fmt.Errorf("the language server stopped before answering initialize: %w", err)
-				return
-			}
-			resp, err := decode.JSON[lspResponse](msg)
-			if err == nil && string(resp.ID) == "1" && (resp.Result != nil || resp.Error != nil) {
-				if resp.Error != nil {
-					done <- errors.New("initialize failed: " + resp.Error.Message)
-				} else {
-					done <- nil
-				}
-				return
-			}
-		}
-	}()
-	ctx, cancel := context.WithTimeoutCause(ctx, 90*time.Second, errors.New("the language server didn't answer initialize within 90 seconds"))
-	defer cancel()
-	select {
-	case err := <-done:
-		return err
-	case <-ctx.Done():
-		return context.Cause(ctx)
-	}
-}
-
-// lspResponse is the part of a JSON-RPC response probeLanguageServer reads.
-type lspResponse struct {
-	ID    json.RawMessage `json:"id"`
-	Error *struct {
-		Message string `json:"message"`
-	} `json:"error"`
-	Result json.RawMessage `json:"result"`
 }

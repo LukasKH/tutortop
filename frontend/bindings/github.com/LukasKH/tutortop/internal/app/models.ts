@@ -9,18 +9,6 @@ import * as events$0 from "../events/models.js";
 import * as workspace$0 from "../workspace/models.js";
 
 /**
- * LanguageServerInfo tells the editor how to talk to a started server.
- */
-export interface LanguageServerInfo {
-    "id": string;
-
-    /**
-     * RootURI is the task folder as the server sees it, e.g. file:///work.
-     */
-    "rootUri": string;
-}
-
-/**
  * WorkspaceSnapshot is everything the workspace screen shows, read at one
  * moment. The frontend keeps it current with events until the next one.
  */

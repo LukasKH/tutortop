@@ -83,7 +83,7 @@ export const SettingsService = {
   Environment: patiently(SettingsBindings.Service.Environment),
 };
 
-export { EditorService } from "@bindings/github.com/LukasKH/tutortop/internal/app";
+export { Service as EditorService } from "@bindings/github.com/LukasKH/tutortop/internal/editor";
 
 export function errorText(err: unknown): string {
   if (isOffline(err)) return "Can't reach Tutortop. Reload the page once it's running again.";

@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/LukasKH/tutortop/internal/editor"
 	"github.com/LukasKH/tutortop/internal/sandbox"
 	"github.com/LukasKH/tutortop/internal/settings"
 	"github.com/LukasKH/tutortop/internal/workspace"
@@ -22,7 +23,7 @@ type Services struct {
 	Tasks      *TaskService
 	Lessons    *LessonService
 	Chat       *ChatService
-	Editor     *EditorService
+	Editor     *editor.Service
 }
 
 // New builds the services on the user's workspaces and settings.
@@ -45,13 +46,13 @@ func newServices(store *workspace.Store, settingsStore *settings.Store, runner *
 	}
 	agents := newThreadAgents(settingsStore, tools, cli)
 	writers := newWriters(agents)
-	servers := newLanguageServers()
+	servers := editor.NewServers()
 	return &Services{
 		Settings:   settings.NewService(settingsStore, runner, store.Root),
 		Workspaces: newWorkspaceService(store, settingsStore, runner, agents, writers, servers),
 		Tasks:      newTaskService(store, runner, agents, writers),
 		Lessons:    newLessonService(store),
 		Chat:       newChatService(store, agents),
-		Editor:     newEditorService(store, runner, servers),
+		Editor:     editor.NewService(store, runner, servers),
 	}, nil
 }

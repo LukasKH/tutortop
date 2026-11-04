@@ -111,7 +111,7 @@ func (t *threadTools) setToolchain(ctx context.Context, _ *mcp.CallToolRequest, 
 	if err == nil && report == "" && len(tc.LanguageServer) > 0 {
 		files := maps.Clone(in.Example.Solution)
 		maps.Copy(files, in.Example.Tests)
-		lspErr = probeLanguageServer(ctx, t.runner, tc, files)
+		lspErr = t.runner.ProbeLanguageServer(ctx, tc, files)
 	}
 	check.Running, check.Passed = false, err == nil && report == ""
 	t.agents.showCheck(t.w.ID, check)
