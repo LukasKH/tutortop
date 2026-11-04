@@ -244,24 +244,35 @@ func toolLabel(t agent.Tool) (string, bool) {
 	case agent.ToolRead, agent.ToolSearch, agent.ToolThink:
 		return "", false
 	case agent.ToolEdit:
-		if len(t.Paths) != 1 {
-			break
+		if label := editLabel(t.Paths); label != "" {
+			return label, true
 		}
-		file := t.Paths[0]
-		switch base := filepath.Base(file); {
-		case base == "MISSION.md":
-			return "Updated your mission", true
-		case base == "NOTES.md":
-			return "Noted your preferences", true
-		case base == "RESOURCES.md":
-			return "Updated your resources", true
-		case base == "GLOSSARY.md":
-			return "Updated your glossary", true
-		case strings.Contains(file, "learning-records") || learningRecord.MatchString(base):
-			return "Recorded what you learned", true
-		}
+	case agent.ToolExecute, agent.ToolFetch, agent.ToolOther:
+		// They show as the agent titles them, below.
 	}
 	return t.Title, t.Title != ""
+}
+
+// editLabel is the line for an edit of one of the learner's own documents,
+// or "" for any other edit.
+func editLabel(paths []string) string {
+	if len(paths) != 1 {
+		return ""
+	}
+	file := paths[0]
+	switch base := filepath.Base(file); {
+	case base == "MISSION.md":
+		return "Updated your mission"
+	case base == "NOTES.md":
+		return "Noted your preferences"
+	case base == "RESOURCES.md":
+		return "Updated your resources"
+	case base == "GLOSSARY.md":
+		return "Updated your glossary"
+	case strings.Contains(file, "learning-records") || learningRecord.MatchString(base):
+		return "Recorded what you learned"
+	}
+	return ""
 }
 
 var learningRecord = regexp.MustCompile(`^\d{4}-.*\.md$`)
