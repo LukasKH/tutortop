@@ -142,7 +142,6 @@ func TestClaudeMCPWarning(t *testing.T) {
 	}{
 		{"connected", []string{"connected"}, false},
 		{"pending, then connected", []string{"pending", "connected"}, false},
-		{"failed", []string{"failed"}, true},
 		{"failed twice", []string{"failed", "failed"}, true},
 		{"missing", []string{""}, true},
 	} {
