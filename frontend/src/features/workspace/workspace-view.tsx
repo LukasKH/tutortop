@@ -1,9 +1,9 @@
 import type { CSSProperties } from "react";
 import { cn } from "cn";
 import { afterSetup } from "@/lib/chat";
-import { App, type ChatItem, type WorkspaceSnapshot } from "@/lib/api";
-import { PLAN_THREAD, writerThread } from "@/lib/workspace";
-import { describeItem, exerciseOf, itemKey, lessonOf, viaLesson } from "@/features/workspace/open-item";
+import { App, type ChatItem } from "@/lib/api";
+import { PLAN_THREAD } from "@/lib/workspace";
+import { describeItem, type OpenItem } from "@/features/workspace/open-item";
 import { useChatPanel } from "@/features/workspace/use-chat-panel";
 import { useChatThreads } from "@/features/workspace/use-chat-threads";
 import { centerOf, placeQuestions, useOpenItem, type Center } from "@/features/workspace/use-open-item";
@@ -44,7 +44,7 @@ export function WorkspaceView({ id, tutor, onSettings, onBack }: Props) {
   // Conversations by thread, loaded for the shown thread and streamed in by event.
   const { threads, unread } = useChatThreads(id, nav.thread, { ready: live.ws !== null, visible: chat.open, onError: live.fail });
 
-  const { ws, busy, questions, fail } = live;
+  const { ws, questions, fail } = live;
   if (!ws) {
     return (
       <Placeholder error={live.error} loading="Opening workspace…">
@@ -56,15 +56,18 @@ export function WorkspaceView({ id, tutor, onSettings, onBack }: Props) {
   }
 
   const { item, view, thread } = nav;
-  // The open item's task or lesson, module and language.
+  // The shown chat's tutor is working: its "Thinking…", Stop and hint button follow this.
+  const threadBusy = live.isBusy(thread);
+  // The open item's task or lesson, module and language, for the centre and the chat.
   const details = describeItem(ws, item);
   // Until the first plan is approved, everything happens in the centre. No chat beside it.
   const setup = !ws.curriculum;
 
   // The tutor's questions: in the centre, or in the chat of the thread that asked.
   const place = placeQuestions(ws, view, item, thread, questions);
+  const center = centerOf(ws, view, details, place.center ? questions : null);
   const planAttention: Attention = {
-    attention: thread !== PLAN_THREAD && (!!unread[PLAN_THREAD] || !!busy[PLAN_THREAD] || place.planBadge > 0),
+    attention: thread !== PLAN_THREAD && (!!unread[PLAN_THREAD] || live.isBusy(PLAN_THREAD) || place.planBadge > 0),
     questions: place.planBadge,
   };
 
@@ -110,11 +113,11 @@ export function WorkspaceView({ id, tutor, onSettings, onBack }: Props) {
         )}
         <CenterPane
           id={id}
-          center={centerOf(ws, view, item, place.center ? questions : null)}
-          ws={ws}
+          center={center}
           live={live}
-          nav={nav}
           planItems={threads[PLAN_THREAD] ?? []}
+          onOpen={nav.open}
+          onBack={() => nav.setView("item")}
           onAskTutor={askTutorAboutPlan}
         />
       </main>
@@ -131,7 +134,7 @@ export function WorkspaceView({ id, tutor, onSettings, onBack }: Props) {
           }
           // The setup interview stays out of the chat panel.
           items={thread === PLAN_THREAD ? afterSetup(threads[PLAN_THREAD] ?? []) : (threads[thread] ?? [])}
-          busy={!!busy[thread]}
+          busy={threadBusy}
           questions={
             questions && place.chat === thread ? (
               <QuestionsForm key={JSON.stringify(questions)} layout="chat" form={questions} onAnswer={live.answerQuestions} onDismiss={live.dismissQuestions} />
@@ -145,7 +148,7 @@ export function WorkspaceView({ id, tutor, onSettings, onBack }: Props) {
             <StatusLine
               check={live.toolchainCheck}
               newItem={nav.newItem}
-              busy={!!busy[thread]}
+              busy={threadBusy}
               onStop={() => App.StopAgent(id, thread).catch(fail)}
               onOpen={nav.open}
             />
@@ -177,31 +180,29 @@ export function WorkspaceView({ id, tutor, onSettings, onBack }: Props) {
 
 type CenterProps = {
   id: string;
+  /** What to show, with what it shows from the snapshot (centerOf). */
   center: Center;
-  ws: WorkspaceSnapshot;
+  /** Who is working, writers' checks and failures, and the calls (useWorkspace). The snapshot's part comes in center. */
   live: UseWorkspaceResult;
-  nav: ReturnType<typeof useOpenItem>;
   /** The planning conversation, which setup shows in the centre. */
   planItems: ChatItem[];
+  onOpen: (item: OpenItem) => void;
+  /** Leaves a plan page for the open item. */
+  onBack: () => void;
   onAskTutor: () => void;
 };
 
 /** The centre pane, as centerOf decided. */
-function CenterPane({ id, center, ws, live, nav, planItems, onAskTutor }: CenterProps) {
-  const { item } = nav;
-  const details = describeItem(ws, item);
-  const moduleTitle = details.module?.title ?? "";
-  const back = () => nav.setView("item");
-
+function CenterPane({ id, center, live, planItems, onOpen, onBack, onAskTutor }: CenterProps) {
   switch (center.kind) {
     case "setup":
       return (
         <Setup
           items={planItems}
-          busy={!!live.busy[PLAN_THREAD]}
+          busy={live.isBusy(PLAN_THREAD)}
           check={live.toolchainCheck}
-          questions={live.questions}
-          lang={details.lang}
+          questions={center.questions}
+          lang={center.lang}
           onAnswer={live.answerQuestions}
           onDismiss={live.dismissQuestions}
           onStop={() => App.StopAgent(id, PLAN_THREAD).catch(live.fail)}
@@ -210,15 +211,10 @@ function CenterPane({ id, center, ws, live, nav, planItems, onAskTutor }: Center
       );
 
     case "proposal":
-      return <ProposalView wsId={id} proposal={center.proposal} current={ws.curriculum} progress={ws.progress} mission={ws.mission} />;
+      return <ProposalView wsId={id} proposal={center.proposal} current={center.current} progress={center.progress} mission={center.mission} />;
 
     case "plan":
-      // Before the first plan there's no chat panel to ask; after it, "Back" needs something open.
-      return ws.curriculum ? (
-        <PlanView wsId={id} ws={ws} onClose={item ? back : undefined} onAskTutor={onAskTutor} />
-      ) : (
-        <PlanView wsId={id} ws={ws} onClose={back} />
-      );
+      return <PlanView wsId={id} ws={center.ws} onClose={center.canGoBack ? onBack : undefined} onAskTutor={center.canAskTutor ? onAskTutor : undefined} />;
 
     case "questions":
       return (
@@ -235,64 +231,60 @@ function CenterPane({ id, center, ws, live, nav, planItems, onAskTutor }: Center
       );
 
     case "not-written": {
-      const { objective, part } = center;
-      // A link to the other part, once it's written: the exercise from the lesson's page, or the lesson.
-      const other = part === "lesson" ? exerciseOf(ws, objective.id) : lessonOf(ws, objective.id);
+      const { objective, part, other } = center;
       return (
         <NotWritten
-          key={item && itemKey(item)}
+          key={`${part}:${objective.id}`}
           wsId={id}
           objective={objective}
           part={part}
-          moduleTitle={moduleTitle}
-          writing={!!live.busy[writerThread(objective.id)]}
+          moduleTitle={center.moduleTitle}
+          writing={live.writing.has(objective.id)}
           check={live.checks[objective.id] ?? null}
           failed={live.writeFailed[objective.id] ?? ""}
-          other={other.kind === "todo" ? null : { label: part === "lesson" ? "Exercise →" : "← Lesson", onOpen: () => nav.open(other) }}
+          other={other && { label: part === "lesson" ? "Exercise →" : "← Lesson", onOpen: () => onOpen(other) }}
         />
       );
     }
 
-    case "lesson": {
-      const { lesson } = center;
-      const exercise = exerciseOf(ws, lesson.objective);
+    case "lesson":
       return (
         <LessonPanel
-          key={lesson.id}
+          key={center.lesson.id}
           wsId={id}
-          lessonId={lesson.id}
-          moduleTitle={moduleTitle}
-          icon={ws.icon}
-          lang={details.lang}
-          onOpenExercise={() => nav.open(exercise)}
-          exerciseWritten={exercise.kind !== "todo"}
-          references={details.module?.references}
+          lessonId={center.lesson.id}
+          moduleTitle={center.moduleTitle}
+          icon={center.icon}
+          lang={center.lang}
+          onOpenExercise={() => onOpen(center.exercise)}
+          exerciseWritten={center.exercise.kind !== "todo"}
+          references={center.references}
         />
       );
-    }
 
-    case "task":
+    case "task": {
+      const { openNext } = center;
       return (
         <TaskPanel
           key={center.id}
           wsId={id}
           taskId={center.id}
-          passed={!!details.task?.passed}
-          moduleTitle={moduleTitle}
-          nextTask={details.nextTask}
-          moreComing={ws.progress.passed < ws.progress.total}
-          // "Next task" leads through the next objective's lesson if it isn't finished.
-          onOpenTask={(taskId) => nav.open(viaLesson(ws, taskId))}
+          passed={center.passed}
+          moduleTitle={center.moduleTitle}
+          nextTask={center.nextTask}
+          moreComing={center.moreComing}
+          onOpenNext={() => openNext && onOpen(openNext)}
         />
       );
+    }
 
     case "empty":
-      return <EmptyState ws={ws} writing={live.writing.size > 0} />;
+      return <EmptyState mission={center.mission} writing={live.writing.size > 0} />;
   }
 }
 
 /** After the plan is approved, before anything is open. */
-function EmptyState({ ws, writing }: { ws: WorkspaceSnapshot; writing: boolean }) {
+function EmptyState({ mission, writing }: { mission: string; writing: boolean }) {
   const title = writing ? "Writing your first lesson…" : "Nothing open";
   const body = writing
     ? "Your lessons and exercises are being written and checked in the sandbox. Each opens here when it's ready."
@@ -300,7 +292,7 @@ function EmptyState({ ws, writing }: { ws: WorkspaceSnapshot; writing: boolean }
   return (
     <ReadingPage>
       <PageIntro title={title}>{body}</PageIntro>
-      {ws.mission.trim() && <Markdown text={ws.mission} className="prose mt-7 border-t pt-[22px]" />}
+      {mission.trim() && <Markdown text={mission} className="prose mt-7 border-t pt-[22px]" />}
     </ReadingPage>
   );
 }

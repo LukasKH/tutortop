@@ -9,7 +9,12 @@ import { objectiveOfWriter } from "@/lib/workspace";
  */
 export type LiveWorkspace = {
   ws: WorkspaceSnapshot | null;
-  /** Which threads' tutor or writer is working, by thread name. */
+  /**
+   * Which threads' tutor or writer is working, by thread name: the one source
+   * of everything the screen draws as working. The snapshot's, overridden by
+   * newer thread:busy events. Read it through isBusy, tutorBusy and
+   * writingObjectives below.
+   */
   busy: Record<string, boolean | undefined>;
   /** Writers' sandbox checks of new exercises, by objective; they show on the objective. */
   checks: Record<string, SandboxCheck | undefined>;
@@ -110,13 +115,25 @@ export function reduceWorkspace(s: LiveWorkspace, a: Action): LiveWorkspace {
   }
 }
 
-/** Objectives whose lesson and exercise are being written in the background. */
-export function writingObjectives(busy: LiveWorkspace["busy"]): Set<string> {
-  return new Set(Object.keys(busy).flatMap((t) => (busy[t] ? (objectiveOfWriter(t) ?? []) : [])));
-}
+// Busy, as the screen draws it. useWorkspace binds these to its state.
 
-/** A tutor (not a writer) is working in some thread. */
-export const tutorBusy = (busy: LiveWorkspace["busy"]) => Object.keys(busy).some((t) => busy[t] && !objectiveOfWriter(t));
+/**
+ * One thread's tutor or writer is working. For the shown chat: "Thinking…",
+ * the Stop button and the disabled hint button; the setup page's work log;
+ * the dot on "Your plan".
+ */
+export const isBusy = (s: LiveWorkspace, thread: string) => !!s.busy[thread];
+
+/** A tutor (not a writer) is working in some chat: the spinner on the folded chat panel. */
+export const tutorBusy = (s: LiveWorkspace) => Object.keys(s.busy).some((t) => s.busy[t] && !objectiveOfWriter(t));
+
+/**
+ * Objectives whose lesson and exercise are being written in the background:
+ * the curriculum's spinners, a not-written page, and the empty page's title.
+ */
+export function writingObjectives(s: LiveWorkspace): Set<string> {
+  return new Set(Object.keys(s.busy).flatMap((t) => (s.busy[t] ? (objectiveOfWriter(t) ?? []) : [])));
+}
 
 /** The snapshot's values, except those events set after it was read. */
 function newer<T>(snapshot: Record<string, T>, current: Record<string, T>, changedSeq: Record<string, number>, snapshotSeq: number): Record<string, T> {

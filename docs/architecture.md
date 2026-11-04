@@ -85,24 +85,62 @@ A feature's state and its backend calls live in hooks next to its components. Th
 
 | Hook | State | Comes from |
 | --- | --- | --- |
-| `use-workspace.ts` | the snapshot (`App.Workspace`), busy threads, writers' checks and failures, a chat's toolchain check, open questions, the last error | refetched on `workspace:changed`, `task:published` and `lesson:published`; `thread:busy`, `check:status`, `chat:message` and `questions:asked` update it directly |
+| `use-workspace.ts` | the snapshot (`App.Workspace`), busy threads, writers' checks and failures, a chat's toolchain check, open questions, the last error | refetched on `workspace:changed`, `task:published` and `lesson:published`; `thread:busy`, `check:status`, writers' failures from `chat:message` and `questions:asked` update it directly |
 | `use-open-item.ts` | the open item, the centre's view (item, plan or proposal), the chat thread that goes with them, new work to point out | the learner, remembered per workspace; `task:published`, `lesson:published` and `curriculum:proposed` |
-| `use-chat-threads.ts` | conversations by thread, and which are unread | `App.Chat` for the shown thread; `chat:message` |
+| `use-chat-threads.ts` | conversations by thread, and which are unread | `App.Chat` for the shown thread; chats' messages from `chat:message` |
 | `use-chat-panel.ts`, `chat/use-composer.ts` | the chat panel's width and whether it's folded; the message draft | the learner |
 
-`use-workspace.ts` sends every change through one pure reducer, `workspace-state.ts`. Busy threads and writers' checks reach it both in snapshots and as events (`thread:busy`, `check:status`), which can arrive in either order. Go numbers those events and the snapshots in the order they happened (`seq`, counted under `App.mu`; see `agents.go`), and the reducer keeps whichever is newer: an event with a higher number than the snapshot wins over it, and a snapshot older than the one in use is dropped. A writer that finishes during a refetch then stops spinning.
+#### How data flows
 
-The open item is an `OpenItem`: a task, a lesson, or an objective's lesson or exercise that isn't written yet (`open-item.ts`). `centerOf` in `use-open-item.ts` decides what the centre shows, and `CenterPane` renders it. `placeQuestions` next to it decides where the tutor's questions show: the centre, the chat of the thread that asked, and the count on "Your plan". Thread names (`plan`, a task id, `lesson-<id>`, `write-<objective>`) are the backend's and live in `lib/workspace.ts`. Only the hooks and the chat pass them around.
+All files are in `features/workspace/` unless named otherwise.
 
-To add:
+1. **Snapshot.** `use-workspace.ts: useWorkspace` loads `App.Workspace` and loads it again on `workspace:changed`, `task:published` and `lesson:published`.
+2. **Events.** The same hook dispatches `thread:busy`, `check:status`, `questions:asked` and writers' failures from `chat:message` straight to the reducer, without a refetch.
+3. **Reducer.** `workspace-state.ts: reduceWorkspace` merges both into one `LiveWorkspace`. Busy threads and writers' checks reach it both ways, in either order. Go numbers the events and the snapshots in the order they happened (`seq`, counted under `App.mu`; see `agents.go`), and the reducer keeps whichever is newer, so a writer that finishes during a refetch stops spinning.
+4. **Selectors.** Pure functions turn that state, and what the learner has open (`use-open-item.ts: useOpenItem`), into what each part shows: `isBusy`, `tutorBusy` and `writingObjectives` in `workspace-state.ts`; `describeItem` in `open-item.ts`; `placeQuestions` and `centerOf` in `use-open-item.ts`.
+5. **Components.** `workspace-view.tsx: WorkspaceView` calls them and hands their results to `Sidebar`, `CenterPane` and `ChatPanel` (or `ChatRail` when folded). They render them and call `App` or the hooks' calls.
 
-- **A centre page:**
-  1. Get its data. `WorkspaceSnapshot` carries only the mission of the tutor's documents, so a page for `NOTES.md` or `GLOSSARY.md` needs a field on it in Go (`App.Workspace`) or its own `App` method that the page calls itself, like `LessonPanel`. Either needs the bindings regenerated.
-  2. If the learner chooses the page, as they choose "Your plan", add a value to `CenterView` in `use-open-item.ts` and a link in `Sidebar`, whose callback in `workspace-view.tsx` calls `nav.setView` (see `onShowPlan` and `planOpen`). The chat shows the plan thread for every view but `item`.
-  3. Add a kind to `Center` and decide in `centerOf` when it shows. Until the first plan is approved, `centerOf` returns early with `setup`, `proposal` or `plan`; add a case there if the page is needed then too.
-  4. Render it in `CenterPane`. The compiler points at the missing `case`. Add a `centerOf` case to `use-open-item.test.ts`.
-- **An event:** after adding it in Go and regenerating the bindings, listen with `useEvent(AppEvents.<Name>, ...)` in the hook that owns the state it changes, and ignore other workspaces' events. In the workspace screen, an event that changes the snapshot only calls `refresh`, like `workspace:changed`. One that updates state directly adds a field to `LiveWorkspace`, an `Action` and its case in `reduceWorkspace`, with a test in `workspace-state.test.ts`. If the snapshot also carries that state, have Go number the event from `App.seq` under `App.mu`, as `setPending` does, keep each key's number in the state (like `busySeq`) and merge the snapshot's value with `newer`, as `busy` does, so an older snapshot doesn't undo it.
-- **A backend call:** after adding the Go method and regenerating the bindings, `App.<Method>` exists with its types. Re-export any new Go type it takes or returns from `lib/api.ts`, under its Go name. Call it from the hook or component that owns the state. Add read-only methods to `SAFE_TO_REPEAT` in `lib/api.ts` so they wait out a restart. In the workspace screen, pass failures to `fail`, which shows them above the centre pane. If the call changes what the snapshot shows, have Go emit `workspace:changed` or call `refresh` after it, as the hint button does.
+Chat transcripts are kept apart from this: `use-chat-threads.ts: useChatThreads` loads `App.Chat` for the shown thread and adds each `chat:message` to it. It drops writers' messages, and `useWorkspace` keeps only writers' failures, so each message goes to one of the two.
+
+The open item is an `OpenItem`: a task, a lesson, or an objective's lesson or exercise that isn't written yet (`open-item.ts`). `centerOf` decides what the centre shows and returns a `Center` that carries everything that page shows from the snapshot. `CenterPane` renders it, taking only busy threads, checks and the calls from `useWorkspace`. `placeQuestions` decides where the tutor's questions show: the centre, the chat of the thread that asked, and the count on "Your plan". Thread names (`plan`, a task id, `lesson-<id>`, `write-<objective>`) are the backend's and live in `lib/workspace.ts`. Only the hooks and the chat pass them around.
+
+#### Busy
+
+`LiveWorkspace.busy` is the only source of what the screen draws as working: the snapshot's busy threads, updated by newer `thread:busy` events. Components read it only through the selectors in `workspace-state.ts`, which `useWorkspace` returns bound to its state:
+
+| Drawn as | Selector |
+| --- | --- |
+| "Thinking…", Stop in the status line, the hint button turned off | `isBusy(thread)` for the shown thread |
+| the setup page's work log, the dot on "Your plan" | `isBusy(PLAN_THREAD)` |
+| the spinner on the folded chat panel | `tutorBusy` |
+| spinners in the curriculum, a not-written page, the empty page's title | `writingObjectives`, returned as `writing` |
+
+#### Recipes
+
+**A centre page**
+
+1. Get its data. `WorkspaceSnapshot` carries only the mission of the tutor's documents, so a page for `NOTES.md` or `GLOSSARY.md` needs a field on it in Go (`App.Workspace`), or its own `App` method that the page calls itself, like `LessonPanel`. Either needs the bindings regenerated.
+2. If the learner chooses the page, as they choose "Your plan": add a value to `use-open-item.ts: CenterView`, and a link in `sidebar.tsx: Sidebar` whose callback in `workspace-view.tsx: WorkspaceView` calls `nav.setView` (see `onShowPlan` and `planOpen`). The chat shows the plan thread for every view but `item`.
+3. `use-open-item.ts: Center`: add a kind with everything the page shows from the snapshot.
+4. `use-open-item.ts: centerOf`: decide when it shows and fill it in. Until the first plan is approved, `centerOf` returns early with `setup`, `proposal` or `plan`; add a case there if the page is needed then too.
+5. `workspace-view.tsx: CenterPane`: render it. The compiler points at the missing `case`. Take busy threads and checks from `live`, the snapshot's part from the `Center`.
+6. `use-open-item.test.ts`: add a `centerOf` case.
+
+**An event** (after adding it to Go's `events.go` and regenerating the bindings)
+
+1. Listen with `useEvent(AppEvents.<Name>, ...)` in the hook that owns the state it changes, and ignore other workspaces' events (`workspace !== id`).
+2. If it only means the snapshot changed: `use-workspace.ts: useWorkspace` calls `refresh` on it, as for `workspace:changed`. Done.
+3. Otherwise, in `workspace-state.ts`: add a field to `LiveWorkspace` and `initialWorkspace`, an `Action`, and its case in `reduceWorkspace`. Dispatch the action from `useWorkspace`.
+4. If the snapshot also carries that state: have Go number the event from `App.seq` under `App.mu`, as `setPending` does; keep each key's number in the state (like `busySeq`); merge the snapshot's value with `newer`, as the `snapshot` case does for `busy`, so an older snapshot doesn't undo it.
+5. If components need it worked out (like busy), add a selector next to `isBusy` and return it from `useWorkspace`.
+6. `workspace-state.test.ts`: test the new case, and with step 4 an event arriving before an older snapshot.
+
+**A backend call** (after adding the Go method and regenerating the bindings, `App.<Method>` exists with its types)
+
+1. `lib/api.ts`: re-export any new Go type it takes or returns, under its Go name. Add a read-only method to `SAFE_TO_REPEAT`, so it waits out a restart.
+2. Call it from the hook or component that owns the state: `use-workspace.ts: useWorkspace` for the workspace's own state (like `answerQuestions`), else the page that shows the result (like `LessonPanel`).
+3. On the workspace screen, pass failures to `live.fail`, which shows them above the centre pane.
+4. If the call changes what the snapshot shows, have Go emit `workspace:changed`, or call `live.refresh` after it, as the hint button in `WorkspaceView` does.
 
 ### Tests
 

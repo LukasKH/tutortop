@@ -22,7 +22,7 @@ describe("snapshots and events", () => {
       { type: "snapshot", ws: workspace({ busy: { "write-a": true }, seq: 2 }) },
     );
     expect(s.busy["write-a"]).toBe(false);
-    expect(writingObjectives(s.busy).size).toBe(0);
+    expect(writingObjectives(s).size).toBe(0);
   });
 
   test("a snapshot read after an event is newer and wins", () => {

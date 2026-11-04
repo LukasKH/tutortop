@@ -11,7 +11,7 @@ type Props = {
   objective: { id: string; name?: string; title: string };
   part: Part;
   moduleTitle: string;
-  /** The objective's writer is at work on it. */
+  /** The objective's writer is at work on it (writingObjectives, workspace-state.ts). */
   writing: boolean;
   /** The writer's latest sandbox check of the exercise, if any. */
   check: SandboxCheck | null;

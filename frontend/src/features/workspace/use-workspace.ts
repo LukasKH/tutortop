@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useReducer } from "react";
 import { App, AppEvents, errorText, useEvent } from "@/lib/api";
-import { initialWorkspace, reduceWorkspace, tutorBusy, writingObjectives } from "@/features/workspace/workspace-state";
+import { initialWorkspace, isBusy, reduceWorkspace, tutorBusy, writingObjectives } from "@/features/workspace/workspace-state";
 
 /**
  * A workspace as the backend reports it (LiveWorkspace), kept current by its
@@ -38,6 +38,11 @@ export function useWorkspace(id: string) {
   useEvent(AppEvents.CheckStatus, ({ workspace, check, seq }) => {
     if (workspace === id) dispatch({ type: "check", check, seq });
   });
+  // chat:message carries every thread's messages, and two hooks split them by
+  // thread kind: use-chat-threads.ts keeps the chats' transcripts and drops
+  // writers'. A writer has no chat; all the screen shows of its messages is
+  // why it failed, kept here by objective because a writer starting again
+  // clears it (reduceWorkspace).
   useEvent(AppEvents.ChatMessage, ({ workspace, item }) => {
     if (workspace === id) dispatch({ type: "chat", item });
   });
@@ -57,10 +62,10 @@ export function useWorkspace(id: string) {
 
   return {
     ...state,
-    /** Objectives being written in the background. */
-    writing: writingObjectives(state.busy),
-    /** A tutor (not a writer) is working somewhere in the workspace. */
-    tutorBusy: tutorBusy(state.busy),
+    // Who is working: read busy only through these (workspace-state.ts).
+    isBusy: (thread: string) => isBusy(state, thread),
+    tutorBusy: tutorBusy(state),
+    writing: writingObjectives(state),
     fail,
     refresh,
     answerQuestions,

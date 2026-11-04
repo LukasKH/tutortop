@@ -2,8 +2,8 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { AppEvents, type Questions, type WorkspaceSnapshot } from "@/lib/api";
-import { centerOf, placeQuestions, useOpenItem } from "@/features/workspace/use-open-item";
-import type { OpenItem } from "@/features/workspace/open-item";
+import { centerOf, placeQuestions, useOpenItem, type CenterView } from "@/features/workspace/use-open-item";
+import { describeItem, type OpenItem } from "@/features/workspace/open-item";
 import { lesson, task, workspace } from "@/features/workspace/fixtures";
 
 // Events come from this fake instead of the Wails runtime: emit() calls what the hook listens with.
@@ -142,22 +142,35 @@ describe("placeQuestions", () => {
 describe("centerOf", () => {
   const questions: Questions = { thread: "plan", questions: [{ id: "q", question: "Why?" }] };
   const setup = workspace({ curriculum: null });
+  const center = (ws: WorkspaceSnapshot, view: CenterView, item: OpenItem | null, centred: Questions | null) =>
+    centerOf(ws, view, describeItem(ws, item), centred);
 
   test("before the first plan: the setup page, then the proposal, or the plan page if chosen", () => {
-    expect(centerOf(setup, "item", null, questions).kind).toBe("setup");
-    expect(centerOf({ ...setup, proposal: workspace().curriculum }, "item", null, null).kind).toBe("proposal");
-    expect(centerOf(setup, "plan", null, null).kind).toBe("plan");
+    expect(center(setup, "item", null, questions).kind).toBe("setup");
+    expect(center({ ...setup, proposal: workspace().curriculum }, "item", null, null).kind).toBe("proposal");
+    expect(center(setup, "plan", null, null)).toMatchObject({ kind: "plan", canGoBack: true, canAskTutor: false });
   });
 
   test("questions placed in the centre take it, unless a plan page is chosen", () => {
-    expect(centerOf(workspace(), "item", null, questions).kind).toBe("questions");
-    expect(centerOf(workspace(), "plan", null, questions).kind).toBe("plan");
+    expect(center(workspace(), "item", null, questions).kind).toBe("questions");
+    expect(center(workspace(), "plan", null, questions)).toMatchObject({ kind: "plan", canGoBack: false, canAskTutor: true });
   });
 
-  test("the open item, or the page that has it written", () => {
-    const ws = workspace({ lessons: [lesson("l1", "a")] });
-    expect(centerOf(ws, "item", { kind: "lesson", id: "l1" }, null).kind).toBe("lesson");
-    expect(centerOf(ws, "item", { kind: "todo", objective: "b", part: "exercise" }, null)).toMatchObject({ kind: "not-written", part: "exercise" });
-    expect(centerOf(ws, "item", null, null).kind).toBe("empty");
+  test("the open item, or the page that has it written, linking the other part once it's written", () => {
+    const ws = workspace({ lessons: [lesson("l1", "a")], tasks: [task("t1", "b")] });
+    expect(center(ws, "item", { kind: "lesson", id: "l1" }, null)).toMatchObject({ kind: "lesson", exercise: { kind: "todo", objective: "a" } });
+    expect(center(ws, "item", { kind: "todo", objective: "a", part: "exercise" }, null)).toMatchObject({
+      kind: "not-written",
+      part: "exercise",
+      other: { kind: "lesson", id: "l1" },
+    });
+    expect(center(ws, "item", { kind: "todo", objective: "b", part: "lesson" }, null)).toMatchObject({ other: { kind: "task", id: "t1" } });
+    expect(center(ws, "item", { kind: "todo", objective: "c", part: "lesson" }, null)).toMatchObject({ other: null });
+    expect(center(ws, "item", null, null).kind).toBe("empty");
+  });
+
+  test("Next task leads through its objective's unfinished lesson", () => {
+    const ws = workspace({ lessons: [lesson("l2", "b")], tasks: [task("t1", "a"), task("t2", "b")] });
+    expect(center(ws, "item", { kind: "task", id: "t1" }, null)).toMatchObject({ nextTask: { id: "t2" }, openNext: { kind: "lesson", id: "l2" } });
   });
 });

@@ -23,7 +23,7 @@ export type ResultsProps = {
   onReset: () => void;
   /** Run (visible tests) or submit (all tests). */
   onCheck: (submit: boolean) => void;
-  onOpenTask: (id: string) => void;
+  onOpenNext: () => void;
 };
 
 /** Under the editor: the check buttons, the last result with each test, and the output. */
@@ -75,7 +75,7 @@ export function Results(p: ResultsProps) {
         </Button>
         {solved &&
           (p.nextTask ? (
-            <Button onClick={() => p.onOpenTask(p.nextTask!.id)} title={p.nextTask.title}>
+            <Button onClick={p.onOpenNext} title={p.nextTask.title}>
               Next exercise →
             </Button>
           ) : p.moreComing ? (

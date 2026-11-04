@@ -30,6 +30,7 @@ export function useChatThreads(id: string, thread: string, { ready, visible, onE
   // What the learner can see counts as read.
   if (visible && unread[thread]) setUnread({ ...unread, [thread]: false });
 
+  // Writers' messages aren't a chat; use-workspace.ts keeps their failures.
   useEvent(AppEvents.ChatMessage, ({ workspace, item }) => {
     const t = item.thread;
     if (workspace !== id || objectiveOfWriter(t)) return;

@@ -11,6 +11,7 @@ import { WorkLog } from "@/features/workspace/work-log";
 type Props = {
   /** The planning conversation so far. */
   items: ChatItem[];
+  /** The planning tutor is working (isBusy, workspace-state.ts). */
   busy: boolean;
   /** The tutor's sandbox check of a language it sets up, if any. */
   check: SandboxCheck | null;
