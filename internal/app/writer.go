@@ -13,7 +13,7 @@ import (
 // learner. A writer isn't shown as a chat; the UI shows its objective as
 // being written while it's busy.
 //
-// A writer runs in a session like any thread (session.go), with three
+// A writer runs as a threadAgent like any thread (agents.go), with three
 // differences: it starts a fresh conversation, it ends once it has nothing
 // left to do, and its MCP tools publish lessons and tasks (mcp.go).
 
@@ -59,11 +59,11 @@ func (a *App) writeObjective(w *workspace.Workspace, o workspace.Objective, why 
 
 // writerCheck records and shows how a writer's sandbox check of its task is
 // going, so the objective's page shows it even after the learner looks away.
-// The check is kept on the writer's session, so it goes when the writer does.
+// It's kept on the writer's threadAgent, so it goes when the writer does.
 func (a *App) writerCheck(wsID string, c SandboxCheck) {
 	a.mu.Lock()
-	if s := a.sessions[threadKey{wsID, c.Thread}]; s != nil {
-		s.check = &c
+	if ta := a.agents[threadKey{wsID, c.Thread}]; ta != nil {
+		ta.check = &c
 	}
 	a.mu.Unlock()
 	emit(checkStatus, CheckEvent{Workspace: wsID, Check: c})

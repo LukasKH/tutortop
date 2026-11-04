@@ -25,5 +25,5 @@ export type {
     Settings,
     TaskEvent,
     WorkspaceEvent,
-    WorkspaceState
+    WorkspaceSnapshot
 } from "./models.js";

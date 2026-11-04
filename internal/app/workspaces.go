@@ -69,14 +69,14 @@ func (a *App) CreateWorkspace(title, icon string) (string, error) {
 	return w.ID, nil
 }
 
-// DeleteWorkspace stops the workspace's tutors and language servers, then
+// DeleteWorkspace stops the workspace's agents and language servers, then
 // deletes its files for good.
 func (a *App) DeleteWorkspace(id string) error {
 	a.mu.Lock()
 	var servers []*languageServer
-	for key, s := range a.sessions {
+	for key, ta := range a.agents {
 		if key.ws == id {
-			a.end(s)
+			a.end(ta)
 		}
 	}
 	for key := range a.lastResults {
@@ -98,8 +98,9 @@ func (a *App) DeleteWorkspace(id string) error {
 	return a.store.Delete(id)
 }
 
-// WorkspaceState is everything the workspace screen shows.
-type WorkspaceState struct {
+// WorkspaceSnapshot is everything the workspace screen shows, read at one
+// moment. The frontend keeps it current with events until the next one.
+type WorkspaceSnapshot struct {
 	ID         string                   `json:"id"`
 	Title      string                   `json:"title"`
 	Icon       string                   `json:"icon"`
@@ -115,12 +116,12 @@ type WorkspaceState struct {
 	Checks map[string]SandboxCheck `json:"checks"`
 }
 
-func (a *App) Workspace(id string) (WorkspaceState, error) {
+func (a *App) Workspace(id string) (WorkspaceSnapshot, error) {
 	w, err := a.store.Open(id)
 	if err != nil {
-		return WorkspaceState{}, err
+		return WorkspaceSnapshot{}, err
 	}
-	st := WorkspaceState{ID: w.ID, Title: w.Meta.Title, Icon: w.Meta.Icon, Mission: w.ReadDoc("MISSION.md"), Progress: w.Progress()}
+	st := WorkspaceSnapshot{ID: w.ID, Title: w.Meta.Title, Icon: w.Meta.Icon, Mission: w.ReadDoc("MISSION.md"), Progress: w.Progress()}
 	if st.Curriculum, err = w.Curriculum(); err != nil {
 		return st, err
 	}
@@ -128,7 +129,7 @@ func (a *App) Workspace(id string) (WorkspaceState, error) {
 	st.Tasks, _ = w.TaskStatuses()
 	st.Lessons, _ = w.LessonStatuses()
 	st.Questions = w.PendingQuestions()
-	st.Busy, st.Checks = a.sessionState(id)
+	st.Busy, st.Checks = a.agentState(id)
 	return st, nil
 }
 

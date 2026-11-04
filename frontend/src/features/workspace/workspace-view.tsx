@@ -1,7 +1,7 @@
 import type { CSSProperties } from "react";
 import { cn } from "cn";
 import { afterSetup } from "@/lib/chat";
-import { App, type ChatItem, type WorkspaceState } from "@/lib/api";
+import { App, type ChatItem, type WorkspaceSnapshot } from "@/lib/api";
 import { PLAN_THREAD, writerThread } from "@/lib/workspace";
 import { describeItem, exerciseOf, itemKey, lessonOf, viaLesson } from "@/features/workspace/open-item";
 import { useChatPanel } from "@/features/workspace/use-chat-panel";
@@ -178,7 +178,7 @@ export function WorkspaceView({ id, tutor, onSettings, onBack }: Props) {
 type CenterProps = {
   id: string;
   center: Center;
-  ws: WorkspaceState;
+  ws: WorkspaceSnapshot;
   live: UseWorkspaceResult;
   nav: ReturnType<typeof useOpenItem>;
   /** The planning conversation, which setup shows in the centre. */
@@ -292,7 +292,7 @@ function CenterPane({ id, center, ws, live, nav, planItems, onAskTutor }: Center
 }
 
 /** After the plan is approved, before anything is open. */
-function EmptyState({ ws, writing }: { ws: WorkspaceState; writing: boolean }) {
+function EmptyState({ ws, writing }: { ws: WorkspaceSnapshot; writing: boolean }) {
   const title = writing ? "Writing your first lesson…" : "Nothing open";
   const body = writing
     ? "Your lessons and exercises are being written and checked in the sandbox. Each opens here when it's ready."

@@ -1,4 +1,4 @@
-import type { WorkspaceState } from "@/lib/api";
+import type { WorkspaceSnapshot } from "@/lib/api";
 import { lessonDone, lessonThread } from "@/lib/workspace";
 
 /**
@@ -22,7 +22,7 @@ export function threadOf(item: OpenItem): string | null {
  * objective and module, the language to colour code in, and the next unsolved
  * task, preferring ones after the open task.
  */
-export function describeItem(ws: WorkspaceState, item: OpenItem | null) {
+export function describeItem(ws: WorkspaceSnapshot, item: OpenItem | null) {
   const tasks = ws.tasks ?? [];
   const task = item?.kind === "task" ? (tasks.find((t) => t.id === item.id) ?? null) : null;
   const lesson = item?.kind === "lesson" ? ((ws.lessons ?? []).find((l) => l.id === item.id) ?? null) : null;
@@ -42,7 +42,7 @@ export function describeItem(ws: WorkspaceState, item: OpenItem | null) {
 }
 
 /** What opens an objective's lesson: the lesson, else the page that has it written. */
-export function lessonOf(ws: WorkspaceState, objective: string): OpenItem {
+export function lessonOf(ws: WorkspaceSnapshot, objective: string): OpenItem {
   const lesson = (ws.lessons ?? []).find((l) => l.objective === objective);
   return lesson ? { kind: "lesson", id: lesson.id } : { kind: "todo", objective, part: "lesson" };
 }
@@ -52,14 +52,14 @@ export function lessonOf(ws: WorkspaceState, objective: string): OpenItem {
  * harder one replaces the one before it), else the last one, else the page
  * that has one written.
  */
-export function exerciseOf(ws: WorkspaceState, objective: string): OpenItem {
+export function exerciseOf(ws: WorkspaceSnapshot, objective: string): OpenItem {
   const tasks = (ws.tasks ?? []).filter((t) => t.objective === objective);
   const task = tasks.findLast((t) => !t.passed) ?? tasks.at(-1);
   return task ? { kind: "task", id: task.id } : { kind: "todo", objective, part: "exercise" };
 }
 
 /** A task, or first its objective's lesson if the learner hasn't finished it. */
-export function viaLesson(ws: WorkspaceState, taskId: string): OpenItem {
+export function viaLesson(ws: WorkspaceSnapshot, taskId: string): OpenItem {
   const objective = (ws.tasks ?? []).find((t) => t.id === taskId)?.objective;
   const lesson = (ws.lessons ?? []).find((l) => l.objective === objective && !lessonDone(l));
   return lesson ? { kind: "lesson", id: lesson.id } : { kind: "task", id: taskId };
@@ -71,7 +71,7 @@ export function viaLesson(ws: WorkspaceState, taskId: string): OpenItem {
  * it's one of the objective's); else whatever exists, else the lesson page
  * that has it written.
  */
-export function entryOf(ws: WorkspaceState, objective: string, current: OpenItem | null): OpenItem {
+export function entryOf(ws: WorkspaceSnapshot, objective: string, current: OpenItem | null): OpenItem {
   const lesson = (ws.lessons ?? []).find((l) => l.objective === objective);
   const passed = ws.progress.objectives?.[objective]?.status === "passed";
   if (lesson && !passed && !lessonDone(lesson)) return { kind: "lesson", id: lesson.id };
@@ -85,7 +85,7 @@ export function entryOf(ws: WorkspaceState, objective: string, current: OpenItem
  * becomes the real lesson or exercise once the tutor has written it, and stays
  * open while its objective is in the plan. Otherwise the default opens.
  */
-export function resolveOpen(ws: WorkspaceState, item: OpenItem | null): OpenItem | null {
+export function resolveOpen(ws: WorkspaceSnapshot, item: OpenItem | null): OpenItem | null {
   const tasks = ws.tasks ?? [];
   const lessons = ws.lessons ?? [];
   switch (item?.kind) {
@@ -129,7 +129,7 @@ export const sameItem = (a: OpenItem | null, b: OpenItem | null) => (a && b ? it
  * if the learner hasn't finished that yet; else the first lesson without an
  * exercise; else the last task.
  */
-function defaultItem(ws: WorkspaceState): OpenItem | null {
+function defaultItem(ws: WorkspaceSnapshot): OpenItem | null {
   const tasks = ws.tasks ?? [];
   const lessons = ws.lessons ?? [];
   const next = tasks.find((t) => !t.passed);

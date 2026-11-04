@@ -121,7 +121,7 @@ export interface QuestionsEvent {
 /**
  * SandboxCheck is a check in the sandbox that an agent waits for and the
  * learner watches: a writer's new task in the quality gate, or a language a
- * chat sets up with set_toolchain. WorkspaceState.Checks keeps writers'
+ * chat sets up with set_toolchain. WorkspaceSnapshot.Checks keeps writers'
  * latest ones.
  */
 export interface SandboxCheck {
@@ -175,9 +175,10 @@ export interface WorkspaceEvent {
 }
 
 /**
- * WorkspaceState is everything the workspace screen shows.
+ * WorkspaceSnapshot is everything the workspace screen shows, read at one
+ * moment. The frontend keeps it current with events until the next one.
  */
-export interface WorkspaceState {
+export interface WorkspaceSnapshot {
     "id": string;
     "title": string;
     "icon": string;

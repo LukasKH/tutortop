@@ -14,7 +14,7 @@ An adapter is one file, like `claude.go` or `codex.go`. It has three parts:
 
 That's all the app needs. Settings list `Providers()` and show the ones that aren't installed as missing. The frontend gets each provider's display name from `App.Environment`, so a new agent needs no frontend change.
 
-A workspace remembers one agent (`Meta.Provider`) and its threads' session ids. Session ids belong to one agent, so when a thread starts with another agent, `Workspace.UseProvider` switches the workspace to it and forgets the saved sessions: every thread starts a fresh conversation, and the tutor catches up from the workspace files.
+A workspace remembers one agent (`Meta.Provider`) and, for each chat, the `Session.ID()` to resume (`Meta.ResumeIDs`). Those ids belong to one agent, so when a thread starts with another agent, `Workspace.UseProvider` switches the workspace to it and forgets them: every thread starts a fresh conversation, and the tutor catches up from the workspace files.
 
 ## Outside this package
 

@@ -16,7 +16,7 @@ Tutortop is a Go program with a React frontend, shipped as one desktop app by [W
 ## Packages
 
 - `main.go` gives the app the user's shell PATH, builds `App`, registers it with Wails and opens the window.
-- `internal/app` holds `App`. Every exported method on it is callable from the frontend. It also runs the chat sessions, the background writers, the MCP server and the language servers.
+- `internal/app` holds `App`. Every exported method on it is callable from the frontend. It also runs each thread's agent (the chats' tutors and the background writers), the MCP server and the language servers.
 - `internal/workspace` stores one topic as plain files in `~/Tutortop/<id>`, plus private files (hidden tests, reference solutions) under the XDG data dir. It knows nothing about agents or Wails.
 - `internal/agent` starts the Claude Code or Codex CLI, streams its output as text and tool events, and decides which tool calls to allow. The agent may change files in the workspace, except under `tasks/`, and may not run commands. [Adding an agent](agents.md) describes its contract.
 - `internal/runner` runs tests in a Docker or Podman container built for the task's toolchain. It also runs the quality gate for new tasks.
@@ -97,7 +97,7 @@ The open item is an `OpenItem`: a task, a lesson, or an objective's lesson or ex
 To add:
 
 - **A centre page:**
-  1. Get its data. `WorkspaceState` carries only the mission of the tutor's documents, so a page for `NOTES.md` or `GLOSSARY.md` needs a field on it in Go (`App.Workspace`) or its own `App` method that the page calls itself, like `LessonPanel`. Either needs the bindings regenerated.
+  1. Get its data. `WorkspaceSnapshot` carries only the mission of the tutor's documents, so a page for `NOTES.md` or `GLOSSARY.md` needs a field on it in Go (`App.Workspace`) or its own `App` method that the page calls itself, like `LessonPanel`. Either needs the bindings regenerated.
   2. If the learner chooses the page, as they choose "Your plan", add a value to `CenterView` in `use-open-item.ts` and a link in `Sidebar`, whose callback in `workspace-view.tsx` calls `nav.setView` (see `onShowPlan` and `planOpen`). The chat shows the plan thread for every view but `item`.
   3. Add a kind to `Center` and decide in `centerOf` when it shows. Until the first plan is approved, `centerOf` returns early with `setup`, `proposal` or `plan`; add a case there if the page is needed then too.
   4. Render it in `CenterPane`. The compiler points at the missing `case`. Add a `centerOf` case to `use-open-item.test.ts`.
@@ -116,22 +116,22 @@ The agent is the learner's own CLI, signed in already. In a chat thread it's the
 
 Writers have no chat window. They prepare an objective's lesson and exercise in the background, and the app keeps the next two unpassed objectives written so the learner doesn't wait.
 
-### Sessions
+### Thread agents
 
-A thread's agent process runs in a session (`internal/app/session.go`), which answers the thread's messages one turn at a time, in order. When the learner sends a message, `SendMessage` adds a `[context]` block about the open task or lesson (`prompts.go`), posts the message to the chat and queues it with `enqueue`. That starts the session if the thread has none. The session's loop hands each message to the agent, and its `transcript` streams the reply into the chat as `chat:message` events.
+A thread's agent runs as a `threadAgent` (`internal/app/agents.go`): the CLI's `agent.Session` and a queue of the thread's messages, answered one turn at a time, in order. When the learner sends a message, `SendMessage` adds a `[context]` block about the open task or lesson (`prompts.go`), posts the message to the chat and queues it with `enqueue`. That starts the thread's agent if it has none. Its loop hands each message to the CLI, and its `transcript` streams the reply into the chat as `chat:message` events.
 
-- A session starts with the first message for its thread, in the background. Chats resume their saved conversation; a writer starts fresh.
-- The thread is busy (`thread:busy`) from the moment a message is queued until every queued message is answered, including while the process starts. The session's count of pending messages is the only source of this state.
-- When the settings change, an idle session restarts with the next message. A busy one finishes its queue first.
-- A session ends when its process exits, its workspace is deleted or the app quits. A writer also ends as soon as it's idle, and starting any thread but the plan ends the workspace's idle task and lesson sessions.
+- A thread's agent starts with the first message for its thread, in the background. Chats resume their saved conversation (`Meta.ResumeIDs`); a writer starts fresh.
+- The thread is busy (`thread:busy`) from the moment a message is queued until every queued message is answered, including while the process starts. The thread agent's count of pending messages is the only source of this state.
+- When the settings change, an idle thread agent restarts with the next message. A busy one finishes its queue first.
+- A thread agent ends when its process exits, its workspace is deleted or the app quits. A writer also ends as soon as it's idle, and starting any thread but the plan ends the workspace's idle task and lesson agents.
 
 The calls that message an agent (`SendMessage`, `AnswerQuestions`, `RequestHint`, `PrepareObjective`) return once the message is queued. They don't wait for the process to start. Their error means the message wasn't sent at all, for example because the thread name is invalid. Once a message is in the chat, anything that goes wrong with it is posted in that thread as a notice with status `failed`, and nowhere else:
 
-- If the agent doesn't start (the CLI is missing or not signed in), the session posts why once, however many messages were waiting. It drops them and ends, so the thread turns idle and the next message tries a fresh start.
-- If a turn fails, its error is posted and the session takes the next message. If the process exits, its error is posted, the queued messages are dropped and the next message starts a new process.
+- If the agent doesn't start (the CLI is missing or not signed in), the thread agent posts why once, however many messages were waiting. It drops them and ends, so the thread turns idle and the next message tries a fresh start.
+- If a turn fails, its error is posted and the thread agent takes the next message. If the process exits, its error is posted, the queued messages are dropped and the next message starts a new process.
 - A writer has no chat, so the objective's page shows its failure.
 
-To add a kind of thread, add it and its name to `internal/workspace/thread.go`, give it a role in `prompts.go` (and `prompts/`), decide in `session.go` whether it resumes and when it ends, and add the kind to the tools it gets in `mcp.go`'s `mcpTools`.
+To add a kind of thread, add it and its name to `internal/workspace/thread.go`, give it a role in `prompts.go` (and `prompts/`), decide in `agents.go` whether it resumes and when it ends, and add the kind to the tools it gets in `mcp.go`'s `mcpTools`.
 
 The agent changes the app's state only through MCP tools, built on the [official Go SDK](https://github.com/modelcontextprotocol/go-sdk). `App` serves them over HTTP on `127.0.0.1`, with a random token in each thread's URL, so a thread can only reach its own workspace. The tool handlers write to the workspace and emit events.
 

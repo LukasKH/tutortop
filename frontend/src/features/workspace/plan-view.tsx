@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { App, type WorkspaceState } from "@/lib/api";
+import { App, type WorkspaceSnapshot } from "@/lib/api";
 import { PencilIcon } from "lucide-react";
 import { Markdown } from "@/components/markdown";
 import { AutoTextarea } from "@/components/auto-textarea";
@@ -11,7 +11,7 @@ import { CurriculumTitle, ModuleItem, ModuleList, ModuleNote, ObjectiveItem, Obj
 
 type Props = {
   wsId: string;
-  ws: WorkspaceState;
+  ws: WorkspaceSnapshot;
   onClose?: () => void;
   /** Opens the tutor beside the page, ready for a message about the plan. Not offered before the first plan. */
   onAskTutor?: () => void;

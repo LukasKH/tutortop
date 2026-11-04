@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { lessonDone } from "@/lib/workspace";
-import { type LessonStatus, type TaskStatus, type WorkspaceState } from "@/lib/api";
+import { type LessonStatus, type TaskStatus, type WorkspaceSnapshot } from "@/lib/api";
 import { describeItem, entryOf, itemKey, lessonOf, sameItem, type OpenItem } from "@/features/workspace/open-item";
 import type { Attention } from "@/features/chat/chat-panel";
 import { PencilIcon } from "lucide-react";
@@ -10,7 +10,7 @@ import { TopicIcon } from "@/components/topic-icon";
 import { ProgressBar } from "@/components/progress-bar";
 
 type Props = {
-  ws: WorkspaceState;
+  ws: WorkspaceSnapshot;
   /** The open item, or null while a plan page is open. */
   openItem: OpenItem | null;
   planOpen: boolean;

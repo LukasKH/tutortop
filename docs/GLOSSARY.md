@@ -5,8 +5,8 @@ The words the code uses, what each means, and where it lives. Go identifiers are
 ## Workspaces and conversations
 
 - **Workspace**: one topic the learner studies, kept as plain files and a git repo in `~/Tutortop/<id>`, plus private files outside it. Go: `workspace.Workspace`, opened through `workspace.Store`.
-- **Snapshot**: everything the workspace screen shows, read at one moment. Go: `app.WorkspaceState`, returned by `App.Workspace`. The frontend keeps it current between refetches as `LiveWorkspace` (`workspace-state.ts`); `useWorkspace` returns that plus its calls (`UseWorkspaceResult`).
-- **Agent**: the learner's own coding-agent CLI (Claude Code, Codex), which Tutortop drives. Go: `agent.Provider` for each kind, `agent.Session` for one running process; the workspace remembers which one it last used in `Meta.Provider`. Every thread, tutor or writer, runs on the agent, model and effort chosen in Settings (`Settings.Agent` and `Settings.Models`, together an `agentConfig`), and its instructions start with the rules in `prompts/shared.md`.
+- **Snapshot**: everything the workspace screen shows, read at one moment. Go: `app.WorkspaceSnapshot`, returned by `App.Workspace`. The frontend keeps it current between refetches as `LiveWorkspace` (`workspace-state.ts`), the snapshot plus what events changed since; `useWorkspace` returns that plus its calls (`UseWorkspaceResult`).
+- **Agent**: the learner's own coding-agent CLI (Claude Code, Codex), which Tutortop drives. Go: `agent.Provider` for each kind; the workspace remembers which one it last used in `Meta.Provider`. Every thread, tutor or writer, runs on the agent, model and effort chosen in Settings (`Settings.Agent` and `Settings.Models`, together an `agentConfig`), and its instructions start with the rules in `prompts/shared.md`.
 - **Thread**: one conversation with the agent in a workspace, named by a string that is also its chat's file name. Go: `workspace.Thread` with a `ThreadKind`; TS: `PLAN_THREAD`, `lessonThread`, `writerThread` (`lib/workspace.ts`). The kinds:
   - **plan** (`PlanKind`, `"plan"`): the interview, the mission and the curriculum.
   - **task** (`TaskKind`, the task id): help with one task.
@@ -14,7 +14,8 @@ The words the code uses, what each means, and where it lives. Go identifiers are
   - **writer** (`WriterKind`, `"write-<objective>"`): writes one objective's lesson and task in the background. It has no chat window.
 - **Chat**: a thread's transcript as the learner sees it, a list of chat items saved in `.tutortop/chat/<thread>.jsonl`. Plan, task and lesson threads are the **chats**. Go: `workspace.ChatItem`, with a `ChatRole`, a `ChatStatus` for tool calls and failures, and a `ChatMark` for items code looks for (`MarkPlanApproved`).
 - **Chat panel**: the column beside the centre pane that shows the chat of whatever is open. The UI labels it "Tutor". TS: `ChatPanel`, folded into `ChatRail` (`features/chat/`).
-- **Session**: one thread's running agent process in the app, which answers the thread's messages one turn at a time. Go: `app.session` (`session.go`). The agent's own session id is saved per thread in `Meta.Sessions`, so a chat resumes its conversation.
+- **Thread agent**: one thread's running agent in the app: its session and the queue of messages it answers one turn at a time. Go: `app.threadAgent` (`agents.go`), kept by thread in `App.agents`.
+- **Session**: one conversation with the agent's CLI, in one running process. Go: `agent.Session`. Its id (`Session.ID`) is saved per chat as a **resume id** in `Meta.ResumeIDs` (the `sessions` key of `.tutortop/workspace.json`), so the chat resumes its conversation.
 - **Turn**: one message to the agent and everything it does until it answers. Go: one `agent.Session.Prompt` call. A thread is **busy** while it has turns queued or running (`thread:busy`).
 - **Tutor**: the agent answering in a chat (plan, task or lesson thread), as opposed to a writer. Its role is `prompts/plan.md`, `task.md` or `lesson.md`, after the shared rules. TS: `tutorBusy` means some chat's tutor is working.
 - **Writer**: the agent in a writer thread. It publishes its objective's lesson and task with `create_lesson` and `create_task`, then ends. Go: `writer.go`, `prompts/writer.md`; the app keeps the next `readyAhead` objectives written.
@@ -23,7 +24,7 @@ The words the code uses, what each means, and where it lives. Go identifiers are
 
 - **Mission**: why the learner is learning this and what they want to build, in `MISSION.md`. The tutor writes it; the learner can edit it.
 - **Curriculum**: the approved plan, in `curriculum.yaml`: the default language and modules of objectives. Go: `workspace.Curriculum`.
-- **Proposal**: a curriculum the tutor suggests with `propose_curriculum`, saved in `.tutortop/proposal.yaml` until the learner approves or rejects it. Go: `Workspace.Propose`, `ApproveProposal`; `WorkspaceState.Proposal`.
+- **Proposal**: a curriculum the tutor suggests with `propose_curriculum`, saved in `.tutortop/proposal.yaml` until the learner approves or rejects it. Go: `Workspace.Propose`, `ApproveProposal`; `WorkspaceSnapshot.Proposal`.
 - **Revision**: the number of an approved curriculum, counting up from 1 with each approval. Go: `Curriculum.Revision`.
 - **Module**: a chapter of the curriculum, a group of objectives with the references it's based on. Go: `workspace.Module`.
 - **Objective**: one thing the learner should be able to do, provable by unit tests. Each has one lesson and its tasks. Go: `workspace.Objective`, ids like `go.errors.wrap`.

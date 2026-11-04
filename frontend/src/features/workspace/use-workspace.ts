@@ -71,5 +71,5 @@ export function useWorkspace(id: string) {
   };
 }
 
-/** What useWorkspace returns: the LiveWorkspace, kept current, and the calls that change it. Not workspace.Workspace or WorkspaceState. */
+/** What useWorkspace returns: the LiveWorkspace, kept current, and the calls that change it. Not workspace.Workspace or WorkspaceSnapshot. */
 export type UseWorkspaceResult = ReturnType<typeof useWorkspace>;

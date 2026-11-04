@@ -1,4 +1,4 @@
-import { CheckKind, type ChatItem, type Questions, type SandboxCheck, type WorkspaceState } from "@/lib/api";
+import { CheckKind, type ChatItem, type Questions, type SandboxCheck, type WorkspaceSnapshot } from "@/lib/api";
 import { objectiveOfWriter } from "@/lib/workspace";
 
 /**
@@ -8,7 +8,7 @@ import { objectiveOfWriter } from "@/lib/workspace";
  * to wait for a refetch.
  */
 export type LiveWorkspace = {
-  ws: WorkspaceState | null;
+  ws: WorkspaceSnapshot | null;
   /** Which threads' tutor or writer is working, by thread name. */
   busy: Record<string, boolean | undefined>;
   /** Writers' sandbox checks of new exercises, by objective; they show on the objective. */
@@ -32,7 +32,7 @@ export type LiveWorkspace = {
 
 /** What changes it: a snapshot arriving, one of the backend's events, or the learner. */
 export type Action =
-  | { type: "snapshot"; ws: WorkspaceState; asked: number }
+  | { type: "snapshot"; ws: WorkspaceSnapshot; asked: number }
   | { type: "failed"; error: string }
   | { type: "busy"; thread: string; busy: boolean; at: number }
   | { type: "check"; check: SandboxCheck; at: number }

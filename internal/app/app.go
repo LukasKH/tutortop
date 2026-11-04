@@ -29,7 +29,7 @@ type App struct {
 	linkCheck func(ctx context.Context, urls []string) []string
 
 	mu          sync.Mutex
-	sessions    map[threadKey]*session     // each thread's running agent (session.go)
+	agents      map[threadKey]*threadAgent // each thread's running agent (agents.go)
 	lastResults map[taskKey]runner.Result  // latest check per task, for tutor context
 	servers     map[string]*languageServer // running language servers by id
 
@@ -39,11 +39,11 @@ type App struct {
 }
 
 func New() (*App, error) {
-	a := &App{runner: runner.New(), sessions: map[threadKey]*session{}, lastResults: map[taskKey]runner.Result{},
+	a := &App{runner: runner.New(), agents: map[threadKey]*threadAgent{}, lastResults: map[taskKey]runner.Result{},
 		servers: map[string]*languageServer{}, startAgent: agent.Start, linkCheck: checkLinks,
 		settingsPath: filepath.Join(xdg.ConfigHome, "tutortop", "settings.yaml"), models: map[string]modelList{}}
 	// The workspaces folder: TUTORTOP_HOME, else the one chosen in the
-	// settings, else ~/Tutortop. It's fixed for the run: live sessions open
+	// settings, else ~/Tutortop. It's fixed for the run: running agents open
 	// their workspace by id.
 	a.store = workspace.NewStore(cmp.Or(os.Getenv("TUTORTOP_HOME"), a.loadSettings().WorkspacesFolder, workspace.DefaultRoot()))
 	h, err := startMCP(a)
@@ -78,8 +78,8 @@ func (a *App) ServiceStartup(context.Context, application.ServiceOptions) error 
 func (a *App) ServiceShutdown() error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	for _, s := range a.sessions {
-		a.end(s)
+	for _, ta := range a.agents {
+		a.end(ta)
 	}
 	for _, ls := range a.servers {
 		ls.srv.Close()

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { AppEvents, useEvent, type LessonStatus, type Objective, type Questions, type WorkspaceState } from "@/lib/api";
+import { AppEvents, useEvent, type LessonStatus, type Objective, type Questions, type WorkspaceSnapshot } from "@/lib/api";
 import { PLAN_THREAD } from "@/lib/workspace";
 import { readStored, useStored } from "@/hooks/use-stored";
 import { describeItem, itemKey, parseItemKey, resolveOpen, sameItem, threadOf, type OpenItem, type Part } from "@/features/workspace/open-item";
@@ -75,7 +75,7 @@ export function useOpenItem(id: string, { ws, refresh, dismissFinishedCheck }: P
 /** What the centre pane shows. */
 export type Center =
   | { kind: "setup" }
-  | { kind: "proposal"; proposal: NonNullable<WorkspaceState["proposal"]> }
+  | { kind: "proposal"; proposal: NonNullable<WorkspaceSnapshot["proposal"]> }
   | { kind: "plan" }
   | { kind: "questions"; questions: Questions }
   | { kind: "not-written"; objective: Objective; part: Part }
@@ -89,7 +89,7 @@ export type Center =
  * review. After that, the plan's pages when chosen, else the tutor's
  * questions if placeQuestions put them here, else the open item.
  */
-export function centerOf(ws: WorkspaceState, view: CenterView, item: OpenItem | null, centred: Questions | null): Center {
+export function centerOf(ws: WorkspaceSnapshot, view: CenterView, item: OpenItem | null, centred: Questions | null): Center {
   if (!ws.curriculum) {
     if (view === "plan") return { kind: "plan" };
     return ws.proposal ? { kind: "proposal", proposal: ws.proposal } : { kind: "setup" };
@@ -120,7 +120,7 @@ export type QuestionsPlace = {
  * chat column. Otherwise they wait in the chat of the thread that asked,
  * shown or not, and the plan's are counted on "Your plan".
  */
-export function placeQuestions(ws: WorkspaceState, view: CenterView, item: OpenItem | null, thread: string, questions: Questions | null): QuestionsPlace {
+export function placeQuestions(ws: WorkspaceSnapshot, view: CenterView, item: OpenItem | null, thread: string, questions: Questions | null): QuestionsPlace {
   const nowhere: QuestionsPlace = { center: false, chat: null, planBadge: 0 };
   if (!questions) return nowhere;
   // During setup there's no chat beside the centre. The setup page shows them, unless the plan or a proposal is open instead (centerOf).
