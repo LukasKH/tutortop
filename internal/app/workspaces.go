@@ -103,7 +103,6 @@ type WorkspaceState struct {
 	ID         string                   `json:"id"`
 	Title      string                   `json:"title"`
 	Icon       string                   `json:"icon"`
-	Provider   string                   `json:"provider"`
 	Mission    string                   `json:"mission"`
 	Curriculum *workspace.Curriculum    `json:"curriculum"`
 	Proposal   *workspace.Curriculum    `json:"proposal"`
@@ -121,7 +120,7 @@ func (a *App) Workspace(id string) (WorkspaceState, error) {
 	if err != nil {
 		return WorkspaceState{}, err
 	}
-	st := WorkspaceState{ID: w.ID, Title: w.Meta.Title, Icon: w.Meta.Icon, Provider: w.Meta.Provider, Mission: w.ReadDoc("MISSION.md"), Progress: w.Progress()}
+	st := WorkspaceState{ID: w.ID, Title: w.Meta.Title, Icon: w.Meta.Icon, Mission: w.ReadDoc("MISSION.md"), Progress: w.Progress()}
 	if st.Curriculum, err = w.Curriculum(); err != nil {
 		return st, err
 	}

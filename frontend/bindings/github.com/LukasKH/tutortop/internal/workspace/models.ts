@@ -299,7 +299,6 @@ export interface Summary {
     "id": string;
     "title": string;
     "icon": string;
-    "provider": string;
     "progress": Progress;
 
     /**

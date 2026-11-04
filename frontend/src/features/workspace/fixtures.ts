@@ -8,7 +8,6 @@ export function workspace(over: Partial<WorkspaceState> = {}): WorkspaceState {
     id: "ws",
     title: "Go",
     icon: "",
-    provider: "claude",
     mission: "",
     curriculum: {
       language: "go",

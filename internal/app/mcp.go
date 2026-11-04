@@ -29,9 +29,9 @@ import (
 // schema from the input type's json and jsonschema tags and rejects calls
 // that don't match it, so the handler only checks what the schema can't say.
 
-// mcpHost serves one MCP server per chat thread on localhost. Each gets a
-// random token in its URL, so an agent can only reach its own workspace, and
-// tools like ask_user know which conversation called them.
+// mcpHost serves one MCP server per thread, chats and writers alike, on
+// localhost. Each gets a random token in its URL, so an agent can only reach
+// its own workspace, and tools like ask_user know which thread called them.
 type mcpHost struct {
 	app     *App
 	baseURL string

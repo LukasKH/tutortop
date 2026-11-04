@@ -71,7 +71,7 @@ func (s *Store) List() ([]Summary, error) {
 		if err != nil {
 			continue // not a workspace
 		}
-		out = append(out, Summary{ID: w.ID, Title: w.Meta.Title, Icon: w.Meta.Icon, Provider: w.Meta.Provider, Progress: w.Progress(), Next: w.nextTask()})
+		out = append(out, Summary{ID: w.ID, Title: w.Meta.Title, Icon: w.Meta.Icon, Progress: w.Progress(), Next: w.nextTask()})
 	}
 	return out, nil
 }
@@ -153,7 +153,6 @@ type Summary struct {
 	ID       string   `json:"id"`
 	Title    string   `json:"title"`
 	Icon     string   `json:"icon"`
-	Provider string   `json:"provider"`
 	Progress Progress `json:"progress"`
 	Next     string   `json:"next"` // title of the first unsolved task, "" if none
 }

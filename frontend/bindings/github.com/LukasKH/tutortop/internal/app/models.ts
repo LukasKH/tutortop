@@ -179,7 +179,6 @@ export interface WorkspaceState {
     "id": string;
     "title": string;
     "icon": string;
-    "provider": string;
     "mission": string;
     "curriculum": workspace$0.Curriculum | null;
     "proposal": workspace$0.Curriculum | null;
