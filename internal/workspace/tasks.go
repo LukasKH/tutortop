@@ -249,6 +249,9 @@ func (w *Workspace) SaveWork(id string, files runner.Files) error {
 
 // ResetWork restores the starter code.
 func (w *Workspace) ResetWork(id string) error {
+	if _, err := w.taskInfo(id); err != nil {
+		return err
+	}
 	starter, err := readFiles(w.path("tasks", id, "starter"))
 	if err != nil {
 		return err

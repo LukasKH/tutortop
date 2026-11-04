@@ -192,6 +192,11 @@ func TestSaveWork(t *testing.T) {
 	if work, _ := w.Work(task.ID); work["sum.go"] != taskSpec("a").Starter["sum.go"] {
 		t.Errorf("reset work %v, want the starter", work)
 	}
+	for _, bad := range []string{"0009-missing", "..", "../.."} {
+		if err := w.ResetWork(bad); err == nil {
+			t.Errorf("reset work of task %q", bad)
+		}
+	}
 }
 
 func firstErr[T any](_ T, err error) error { return err }
