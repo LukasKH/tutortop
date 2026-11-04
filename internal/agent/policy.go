@@ -9,8 +9,9 @@ import (
 
 // The tutor may read and change files inside the learner's workspace, except
 // under tasks/, which the app manages through create_task. It may use
-// Tutortop's MCP tools and the web. It may not run commands, use other MCP
-// servers, or start background work that outlives a turn.
+// Tutortop's MCP tools and the web, and, where Options.Subagents allows,
+// subagents that finish within the turn. It may not run commands, use other
+// MCP servers, or start background work that outlives a turn.
 //
 // An adapter enforces this in two layers:
 //
@@ -28,14 +29,22 @@ import (
 type policy struct {
 	cwd       string // the workspace
 	mcpServer string // our MCP server's name
+	subagents bool   // Options.Subagents
 }
 
-func newPolicy(opts Options) policy { return policy{cwd: opts.Cwd, mcpServer: opts.MCPName} }
+func newPolicy(opts Options) policy {
+	return policy{cwd: opts.Cwd, mcpServer: opts.MCPName, subagents: opts.Subagents}
+}
 
 // allow decides one tool call, or explains why it's refused. The reason goes
 // back to the agent, so it says what to do instead.
 func (p policy) allow(t Tool) error {
 	switch {
+	case t.Subagent:
+		if !p.subagents {
+			return errNoSubagents
+		}
+		return nil
 	case t.MCPServer != "":
 		if t.MCPServer != p.mcpServer {
 			return fmt.Errorf("only the %s tools are available, not %s", p.mcpServer, t.MCPServer)
@@ -67,6 +76,7 @@ func (p policy) allow(t Tool) error {
 
 var (
 	errNoShell     = errors.New("running commands isn't available in Tutortop. Use the tutortop tools: create_task runs code in the sandbox")
+	errNoSubagents = errors.New("subagents aren't available in this conversation. Do the work yourself, in this turn")
 	errUnavailable = errors.New("not available in Tutortop. Use the tutortop tools: create_task runs code in the sandbox")
 )
 

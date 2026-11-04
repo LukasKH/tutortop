@@ -220,6 +220,8 @@ func TestCodexPermissions(t *testing.T) {
 			return r.str("result.decision") == "accept"
 		case tool.Kind == ToolRead:
 			t.Skip("Codex doesn't ask before reading: its permission profile lets it read anywhere")
+		case tool.Subagent:
+			t.Skip("Codex has no subagent tool")
 		}
 		t.Fatalf("no Codex request for %+v", tool)
 		return false

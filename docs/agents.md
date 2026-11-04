@@ -38,6 +38,7 @@ Every field must be honoured:
 - `Instructions`: add these to the agent's system prompt. Keep the CLI's own prompt.
 - `ResumeID`: an id from an earlier `Session.ID()`. If the CLI can't resume it (the transcript was deleted, or it came from another machine), start a fresh session and return its id. Don't fail.
 - `Model` and `Effort`: ids from your `Models` list. An empty string means the CLI's default.
+- `Subagents`: the agent may hand work such as research to subagents (the app turns this on for the plan and writers). A subagent must finish within the turn, so only allow them if the CLI waits for each one, and keep them under the same tool policy. If your CLI has no subagents, or can't promise that, ignore the option: the policy refuses a call marked `Tool.Subagent` unless it's on.
 
 ### A turn
 
@@ -67,11 +68,11 @@ The second row is easy to get wrong. CLIs often report an interrupted turn as a 
 
 ### The tool policy
 
-The tutor may read and change files in the workspace, except under `tasks/`, which the app manages through `create_task`. It may use Tutortop's MCP tools and the web. It may not run commands, use other MCP servers, or start work that outlives the turn, such as background subagents.
+The tutor may read and change files in the workspace, except under `tasks/`, which the app manages through `create_task`. It may use Tutortop's MCP tools and the web. Where `Options.Subagents` is on, it may also start subagents that finish within the turn. It may not run commands, use other MCP servers, or start work that outlives the turn, such as background subagents.
 
 Enforce this in two layers:
 
-1. **Configure the CLI** so it refuses what it can by itself: no shell tool, no writes under `tasks/` or outside the workspace, only our MCP server. Never use a mode that approves everything. Claude uses `--disallowedTools` with an `Edit(./tasks/**)` deny rule, `--strict-mcp-config` and `acceptEdits`. Codex uses a permission profile, with the workspace writable and `tasks/` read-only, plus `approvalPolicy: "untrusted"`.
+1. **Configure the CLI** so it refuses what it can by itself: no shell tool, no writes under `tasks/` or outside the workspace, only our MCP server. Never use a mode that approves everything. Claude uses `--disallowedTools` with an `Edit(./tasks/**)` deny rule (and `Agent` unless subagents are on), `--strict-mcp-config`, `acceptEdits`, and `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1`, which makes it wait for subagents and long MCP calls instead of moving them to the background. Codex uses a permission profile, with the workspace writable and `tasks/` read-only, plus `approvalPolicy: "untrusted"`.
 2. **Answer every permission request** the CLI still makes with `policy.allow(tool)`. Describe the call as a `Tool`, with its kind and the paths it touches. If a request names a file change by id only, remember the paths from when the item started, as Codex's adapter does. Refuse anything you can't describe, or don't recognise: unknown request types get an error or a decline, never an approval. The reason `allow` returns goes back to the agent, so pass it on if the protocol has room for it.
 
 Build the policy with `newPolicy(opts)` when the session starts.
@@ -108,7 +109,7 @@ Cover what can break:
 - the process exiting during start and during a turn, giving `ErrExited` with stderr;
 - the MCP warning, if the CLI reports MCP status;
 - the model list;
-- the policy: call `testPolicy(t, cwd, ask)` from `policy_test.go`. `ask` makes your fake CLI request permission for a `Tool` and reports whether the adapter allowed it. It runs the shared cases: shell refused, edits under `tasks/` refused, paths outside the workspace refused, our MCP server allowed and others refused. A case your CLI never asks about calls `t.Skip` with the reason.
+- the policy: call `testPolicy(t, cwd, ask)` from `policy_test.go`. `ask` makes your fake CLI request permission for a `Tool` and reports whether the adapter allowed it. It runs the shared cases: shell refused, edits under `tasks/` refused, paths outside the workspace refused, our MCP server allowed and others refused, and a subagent refused while `Subagents` is off. A case your CLI never asks about calls `t.Skip` with the reason.
 
 Get the real messages from the CLI's own schema or by recording a session. `codex app-server generate-json-schema --out DIR` writes Codex's schema.
 

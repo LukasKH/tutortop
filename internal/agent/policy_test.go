@@ -26,6 +26,7 @@ func testPolicy(t *testing.T, cwd string, ask func(t *testing.T, tool Tool) (all
 		{"read outside the workspace", Tool{Kind: ToolRead, Paths: []string{outside}}, false},
 		{"use our MCP server", Tool{Kind: ToolOther, MCPServer: "tutortop", MCPTool: "get_state"}, true},
 		{"use another MCP server", Tool{Kind: ToolOther, MCPServer: "other", MCPTool: "x"}, false},
+		{"start a subagent where they're off", Tool{Kind: ToolOther, Subagent: true}, false},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			if got := ask(t, c.tool); got != c.allow {
@@ -58,5 +59,9 @@ func TestPolicy(t *testing.T) {
 		if err := p.allow(c.tool); (err == nil) != c.ok {
 			t.Errorf("%s: allow = %v, want ok=%v", c.name, err, c.ok)
 		}
+	}
+	p.subagents = true
+	if err := p.allow(Tool{Kind: ToolOther, Subagent: true}); err != nil {
+		t.Errorf("subagent refused where they're on: %v", err)
 	}
 }

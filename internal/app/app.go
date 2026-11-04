@@ -56,9 +56,13 @@ func New() (*App, error) {
 
 // agentOptions are what a thread's agent opens its CLI with, besides the
 // settings: the workspace's folder, the thread's MCP server and its
-// instructions.
+// instructions. The plan and writers may hand research to subagents; task
+// and lesson chats answer a learner who's waiting, so they don't.
 func (a *App) agentOptions(w *workspace.Workspace, t workspace.Thread) agent.Options {
-	return agent.Options{Cwd: w.Dir, MCPName: mcpName, MCPURL: a.mcp.URL(w, t), Instructions: instructions(w, t)}
+	return agent.Options{
+		Cwd: w.Dir, MCPName: mcpName, MCPURL: a.mcp.URL(w, t), Instructions: instructions(w, t),
+		Subagents: t.Kind == workspace.PlanKind || t.Kind == workspace.WriterKind,
+	}
 }
 
 // ServiceStartup is called by Wails as the app starts. It builds the sandbox

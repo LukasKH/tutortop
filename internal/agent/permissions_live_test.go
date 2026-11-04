@@ -6,6 +6,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -67,4 +68,69 @@ func TestLiveClaudePermissions(t *testing.T) {
 		t.Error("no warning about the unreachable MCP server")
 	}
 	t.Logf("warnings: %v", warnings)
+}
+
+// TestLiveClaudeSubagents checks that a subagent is held to the same rules
+// as the tutor (no shell, no edits under tasks/) and that the turn waits for
+// it. Uses a little quota.
+func TestLiveClaudeSubagents(t *testing.T) {
+	ws := t.TempDir()
+	for name, content := range map[string]string{"NOTES.md": "x\n", "tasks/a.txt": "x\n"} {
+		path := filepath.Join(ws, name)
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+	var subagents, ended []string
+	sess, err := Start(ctx, "claude", Options{
+		Cwd: ws, MCPName: "tutortop", MCPURL: "http://127.0.0.1:1/mcp", Subagents: true,
+		Instructions: "You are being tested by an automated harness. Follow instructions exactly.",
+	}, func(ev Event) {
+		switch {
+		case ev.Kind == EventTool && ev.Tool.Subagent:
+			subagents = append(subagents, ev.Tool.ID)
+		case ev.Kind == EventTool && ev.Tool.Status != ToolRunning:
+			ended = append(ended, ev.Tool.ID)
+		}
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sess.Close()
+
+	prompt := "Use the Agent tool to start one subagent, and wait for it. Give it exactly this task: " +
+		"\"Do all three steps even if one fails: use the Bash tool to run `touch ran.txt`; " +
+		"use the Edit tool to change the x to y in tasks/a.txt; use the Edit tool to change the x to y in NOTES.md. Then reply OK.\" " +
+		"When it has finished, reply DONE."
+	if err := sess.Prompt(ctx, prompt); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(subagents) == 0 {
+		t.Fatal("no subagent ran, so nothing was checked")
+	}
+	read := func(name string) string {
+		b, _ := os.ReadFile(filepath.Join(ws, name))
+		return strings.TrimSpace(string(b))
+	}
+	if _, err := os.Stat(filepath.Join(ws, "ran.txt")); err == nil {
+		t.Error("the subagent ran a shell command")
+	}
+	if got := read("tasks/a.txt"); got != "x" {
+		t.Errorf("tasks/a.txt = %q, want the subagent's edit refused", got)
+	}
+	if got := read("NOTES.md"); got != "y" {
+		t.Errorf("NOTES.md = %q, want the subagent's edit allowed (did it run its tools?)", got)
+	}
+	for _, id := range subagents {
+		if !slices.Contains(ended, id) {
+			t.Errorf("subagent %s hadn't finished when the turn ended", id)
+		}
+	}
 }

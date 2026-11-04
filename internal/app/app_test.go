@@ -291,3 +291,23 @@ func TestSettingsLoadTheOldTutorKey(t *testing.T) {
 		t.Fatalf("after saving: got %+v, want %+v", got, want)
 	}
 }
+
+// Subagents are for research in the background: the plan and writers get
+// them, the chats where a learner waits for a reply don't.
+func TestSubagentsByThread(t *testing.T) {
+	a := newTestApp(t)
+	w, err := a.store.Create("Go", "claude")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for thread, want := range map[workspace.Thread]bool{
+		workspace.PlanThread:             true,
+		workspace.WriterThread("go.x"):   true,
+		workspace.TaskThread("0001-x"):   false,
+		workspace.LessonThread("0001-x"): false,
+	} {
+		if got := a.agentOptions(w, thread).Subagents; got != want {
+			t.Errorf("%s: subagents %v, want %v", thread, got, want)
+		}
+	}
+}

@@ -56,6 +56,11 @@ type Options struct {
 	ResumeID string
 	Model    string // a Model.ID; empty uses the CLI's default
 	Effort   string // a reasoning Effort.ID, e.g. "high"; empty uses the model's default
+	// Subagents lets the agent hand work such as research to subagents.
+	// Nothing may outlive the turn, so the CLI must wait for each subagent
+	// before the turn goes on; an adapter whose CLI can't promise that, or
+	// has no subagents, leaves them off.
+	Subagents bool
 }
 
 // Session is one running conversation with an agent CLI.
@@ -125,6 +130,7 @@ type Tool struct {
 	Paths     []string // files it reads or changes, as the CLI gave them
 	MCPServer string   // for MCP tools, the server and tool name
 	MCPTool   string
+	Subagent  bool // the call starts a subagent; allowed only with Options.Subagents
 }
 
 // ToolStatus is where a tool call is. A declined call is ToolFailed.

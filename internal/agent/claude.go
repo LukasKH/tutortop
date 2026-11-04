@@ -65,12 +65,9 @@ func startClaude(ctx context.Context, opts Options, onEvent func(Event)) (Sessio
 		// settings. Edit rules cover every file-editing tool.
 		"--permission-mode", "acceptEdits",
 		"--allowedTools", "mcp__" + opts.MCPName + "__*",
-		// Subagents (Agent, formerly Task) can run in the background and
-		// keep working after the turn ends, while the app shows the tutor
-		// as done; the tutor does its work in the turn instead.
-		"--disallowedTools", "Bash", "BashOutput", "KillShell", "Agent", "Task", "Edit(./tasks/**)",
 		"--permission-prompt-tool", "stdio",
 	}
+	args = append(append(args, "--disallowedTools"), claudeDisallowed(opts)...)
 	if opts.Model != "" {
 		args = append(args, "--model", opts.Model)
 	}
@@ -85,10 +82,14 @@ func startClaude(ctx context.Context, opts Options, onEvent func(Event)) (Sessio
 		args = append(args, "--session-id", sessionID)
 	}
 
-	proc, err := startProcess(ctx, opts.Cwd,
+	proc, err := startProcess(ctx, opts.Cwd, []string{
 		// create_task runs the sandbox checks, which can take minutes.
-		[]string{"MCP_TOOL_TIMEOUT=600000"},
-		"claude", args...)
+		"MCP_TOOL_TIMEOUT=600000",
+		// Nothing may outlive the turn, while the app shows the tutor as
+		// done: Claude waits for subagents, and doesn't move a long MCP call
+		// such as create_task to the background either.
+		"CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1",
+	}, "claude", args...)
 	if err != nil {
 		return nil, err
 	}
@@ -221,9 +222,12 @@ func (s *claudeSession) request(ctx context.Context, req map[string]any) error {
 }
 
 type claudeLine struct {
-	Type    string          `json:"type"`
-	Event   json.RawMessage `json:"event"`
-	Message struct {
+	Type  string          `json:"type"`
+	Event json.RawMessage `json:"event"`
+	// ParentToolUseID is set on a subagent's messages: the Agent call that
+	// started it.
+	ParentToolUseID string `json:"parent_tool_use_id"`
+	Message         struct {
 		Content json.RawMessage `json:"content"`
 	} `json:"message"`
 	RequestID  string                `json:"request_id"`
@@ -266,7 +270,8 @@ func (s *claudeSession) readLoop() {
 					Text string `json:"text"`
 				} `json:"delta"`
 			}](l.Event)
-			if err == nil && ev.Type == "content_block_delta" && ev.Delta.Type == "text_delta" {
+			// A subagent's text is its report to the tutor, not the reply.
+			if err == nil && l.ParentToolUseID == "" && ev.Type == "content_block_delta" && ev.Delta.Type == "text_delta" {
 				s.onEvent(Event{Kind: EventText, Text: ev.Delta.Text})
 			}
 		case "assistant":
@@ -369,10 +374,21 @@ func (s *claudeSession) answerControl(id string, raw json.RawMessage) {
 // the workspace.
 func (s *claudeSession) canUseTool(name string, input json.RawMessage) error {
 	t := claudeTool(name, input)
-	if t.MCPServer == "" && !claudeAllowed[name] {
+	if t.MCPServer == "" && !t.Subagent && !claudeAllowed[name] {
 		return errUnavailable
 	}
 	return s.policy.allow(t)
+}
+
+// claudeDisallowed are the tools Claude Code refuses by itself: the shell,
+// edits under tasks/ (which acceptEdits would otherwise approve), and
+// subagents (Agent, formerly Task) unless the session allows them.
+func claudeDisallowed(opts Options) []string {
+	tools := []string{"Bash", "BashOutput", "KillShell", "Edit(./tasks/**)"}
+	if !opts.Subagents {
+		tools = append(tools, "Agent", "Task")
+	}
+	return tools
 }
 
 // Tools the tutor may use without asking. Everything else is denied: the tutor
@@ -385,11 +401,12 @@ var claudeAllowed = map[string]bool{
 // claudeTool describes a call to one of Claude Code's tools.
 func claudeTool(name string, input json.RawMessage) Tool {
 	in, _ := decode[struct {
-		FilePath string `json:"file_path"`
-		Path     string `json:"path"`
-		Pattern  string `json:"pattern"`
-		Query    string `json:"query"`
-		URL      string `json:"url"`
+		FilePath    string `json:"file_path"`
+		Path        string `json:"path"`
+		Pattern     string `json:"pattern"`
+		Query       string `json:"query"`
+		URL         string `json:"url"`
+		Description string `json:"description"`
 	}](input)
 	t := Tool{Kind: ToolOther, Title: name}
 	for _, p := range []string{in.FilePath, in.Path} {
@@ -410,6 +427,8 @@ func claudeTool(name string, input json.RawMessage) Tool {
 		t.Kind, t.Title = ToolFetch, "Fetched "+text.Truncate(in.URL, 80)
 	case "TodoWrite", "ToolSearch":
 		t.Kind = ToolThink
+	case "Agent", "Task":
+		t.Subagent, t.Title = true, "Researching"+optional(": ", in.Description)
 	default:
 		if rest, ok := strings.CutPrefix(name, "mcp__"); ok {
 			t.MCPServer, t.MCPTool, _ = strings.Cut(rest, "__")
