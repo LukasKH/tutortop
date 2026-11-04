@@ -38,6 +38,11 @@ export function useWorkspace(id: string) {
   useEvent(AppEvents.CheckStatus, ({ workspace, check, seq }) => {
     if (workspace === id) dispatch({ type: "check", check, seq });
   });
+  // chat:message carries every thread's messages, and two hooks split them by
+  // thread kind: use-chat-threads.ts keeps the chats' transcripts and drops
+  // writers'. A writer has no chat; all the screen shows of its messages is
+  // why it failed, kept here by objective because a writer starting again
+  // clears it (reduceWorkspace).
   useEvent(AppEvents.ChatMessage, ({ workspace, item }) => {
     if (workspace === id) dispatch({ type: "chat", item });
   });
