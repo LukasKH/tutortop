@@ -39,7 +39,7 @@ func (a *App) Activity() (workspace.Activity, error) {
 // The icon is "" (the tutor picks one during the interview) or one of
 // workspace.Icons, as when the topic comes from an idea.
 func (a *App) CreateWorkspace(title, icon string) (string, error) {
-	provider := a.Settings().Agent
+	provider := a.Settings().Provider
 	title = strings.TrimSpace(title)
 	if title == "" {
 		return "", errors.New("give the topic a name")
@@ -72,13 +72,9 @@ func (a *App) CreateWorkspace(title, icon string) (string, error) {
 // DeleteWorkspace stops the workspace's agents and language servers, then
 // deletes its files for good.
 func (a *App) DeleteWorkspace(id string) error {
+	a.agents.endWorkspace(id)
 	a.mu.Lock()
 	var servers []*languageServer
-	for key, ta := range a.agents {
-		if key.ws == id {
-			a.end(ta)
-		}
-	}
 	for key := range a.lastResults {
 		if key.ws == id {
 			delete(a.lastResults, key)
@@ -132,7 +128,7 @@ func (a *App) Workspace(id string) (WorkspaceSnapshot, error) {
 	st.Tasks, _ = w.TaskStatuses()
 	st.Lessons, _ = w.LessonStatuses()
 	st.Questions = w.PendingQuestions()
-	st.Busy, st.Checks, st.Seq = a.agentState(id)
+	st.Busy, st.Checks, st.Seq = a.agents.state(id)
 	return st, nil
 }
 
@@ -146,8 +142,8 @@ func (a *App) ApproveProposal(wsID string) error {
 		return err
 	}
 	emit(workspaceChanged, WorkspaceEvent{Workspace: wsID})
-	a.prepare(w, c.Language)
-	a.post(w, workspace.ChatItem{
+	a.prepareImage(w, c.Language)
+	post(w, workspace.ChatItem{
 		Thread: workspace.PlanThread.String(), Role: workspace.RoleNotice, Mark: workspace.MarkPlanApproved,
 		Text: fmt.Sprintf("You approved the plan (revision %d).", c.Revision),
 	})
@@ -155,10 +151,10 @@ func (a *App) ApproveProposal(wsID string) error {
 	return nil
 }
 
-// prepare builds a language's sandbox image in the background, so the first
-// check is fast. Plans prepare theirs when approved, and existing workspaces
+// prepareImage builds a language's sandbox image in the background, so the
+// first test run is fast. Plans prepare theirs when approved, and workspaces
 // when the app starts (ServiceStartup).
-func (a *App) prepare(w *workspace.Workspace, language string) {
+func (a *App) prepareImage(w *workspace.Workspace, language string) {
 	if tc, err := w.Toolchain(language); err == nil {
 		go a.runner.Prepare(context.Background(), tc)
 	}

@@ -22,7 +22,7 @@ func TestLiveInterview(t *testing.T) {
 	a := newTestApp(t)
 	defer a.ServiceShutdown()
 
-	if err := a.SaveSettings(Settings{Agent: provider}); err != nil {
+	if err := a.SaveSettings(Settings{Provider: provider}); err != nil {
 		t.Fatal(err)
 	}
 	id, err := a.CreateWorkspace("Go", "")

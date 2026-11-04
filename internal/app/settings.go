@@ -16,9 +16,10 @@ import (
 // Settings are app-wide preferences, kept in settings.yaml in the user's
 // config folder. They apply to every workspace.
 type Settings struct {
-	// Agent is the coding agent every thread runs on, tutors and writers
-	// alike, an agent.Provider ID.
-	Agent string `yaml:"agent" json:"agent"`
+	// Provider is the coding agent every thread runs on, tutors and writers
+	// alike, an agent.Provider ID. It's "agent" in settings.yaml and to the
+	// frontend, as the Settings screen calls it.
+	Provider string `yaml:"agent" json:"agent"`
 	// Models holds the model and reasoning effort chosen for each agent, so
 	// switching agents and back keeps both choices. Files saved before it
 	// was renamed have it under "tutor" (loadSettings).
@@ -38,14 +39,14 @@ type ModelChoice struct {
 // agentConfig is what a thread's agent is started with. One started with an
 // older config restarts once it's idle.
 type agentConfig struct {
-	Agent  string
-	Model  string
-	Effort string
+	Provider string
+	Model    string
+	Effort   string
 }
 
 func (s Settings) agentConfig() agentConfig {
-	c := s.Models[s.Agent]
-	return agentConfig{Agent: s.Agent, Model: c.Model, Effort: c.Effort}
+	c := s.Models[s.Provider]
+	return agentConfig{Provider: s.Provider, Model: c.Model, Effort: c.Effort}
 }
 
 // Settings returns the saved settings. Without a saved agent it picks the
@@ -71,11 +72,11 @@ func (a *App) loadSettings() Settings {
 	if s.Models == nil {
 		s.Models = map[string]ModelChoice{}
 	}
-	if !knownProvider(s.Agent) {
-		s.Agent = agent.Providers()[0].ID
+	if !knownProvider(s.Provider) {
+		s.Provider = agent.Providers()[0].ID
 		for _, p := range agent.Providers() {
 			if _, err := exec.LookPath(p.Binary); err == nil {
-				s.Agent = p.ID
+				s.Provider = p.ID
 				break
 			}
 		}
@@ -86,8 +87,8 @@ func (a *App) loadSettings() Settings {
 // SaveSettings stores the settings. Running agents pick up a new agent,
 // model or effort with the next message once they're idle.
 func (a *App) SaveSettings(s Settings) error {
-	if !knownProvider(s.Agent) {
-		return fmt.Errorf("unknown agent %q", s.Agent)
+	if !knownProvider(s.Provider) {
+		return fmt.Errorf("unknown agent %q", s.Provider)
 	}
 	for id := range s.Models {
 		if !knownProvider(id) {

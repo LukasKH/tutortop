@@ -17,7 +17,7 @@ import (
 // process is a long-running agent CLI with piped stdio. Adapters embed it:
 // startProcess finds and starts the CLI, send writes one line of JSON, await
 // waits for a reply unless the process exits first, and exitError and abort
-// turn an exit into ErrStopped with the end of stderr.
+// turn an exit into ErrExited with the end of stderr.
 type process struct {
 	cmd    *exec.Cmd
 	stdin  io.WriteCloser
@@ -125,7 +125,7 @@ func (p *process) exitError() error {
 	if msg == "" {
 		msg = "no output"
 	}
-	return fmt.Errorf("%w: %s", ErrStopped, msg)
+	return fmt.Errorf("%w: %s", ErrExited, msg)
 }
 
 // abort stops a process whose setup failed. If it had already exited, its

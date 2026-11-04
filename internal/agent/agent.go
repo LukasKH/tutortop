@@ -22,7 +22,7 @@ import (
 // Start starts a session with a provider's CLI. It returns once the CLI is
 // ready for a prompt and the session has its ID, or an error that explains
 // what to fix: the CLI isn't installed, isn't signed in, or didn't start
-// (wrapping [ErrStopped] with the end of its stderr if it exited). Setup has
+// (wrapping [ErrExited] with the end of its stderr if it exited). Setup has
 // its own deadline, so a hung CLI can't block forever. ctx bounds the whole
 // session: when it ends, the process is stopped.
 //
@@ -69,7 +69,7 @@ type Session interface {
 	//   - nil when the turn ended, including when Cancel ended it;
 	//   - an error if the agent reports the turn failed; the session can
 	//     take the next prompt;
-	//   - an error wrapping ErrStopped if the process exited; the session
+	//   - an error wrapping ErrExited if the process exited; the session
 	//     is finished;
 	//   - ctx's error if ctx ends first, leaving the turn running.
 	Prompt(ctx context.Context, text string) error
@@ -83,8 +83,9 @@ type Session interface {
 	Close() error
 }
 
-// ErrStopped means the agent process exited; the session can't be used again.
-var ErrStopped = errors.New("the agent stopped")
+// ErrExited means the agent process exited; the session can't be used again.
+// (Stopping a turn is Session.Cancel, which doesn't end the process.)
+var ErrExited = errors.New("the agent stopped")
 
 // Event is something the agent did that the learner may see.
 //

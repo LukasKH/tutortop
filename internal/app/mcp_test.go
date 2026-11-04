@@ -84,23 +84,22 @@ func TestWriterKeepsToItsObjective(t *testing.T) {
 	}
 }
 
-// Struct tags can't be computed and the prompts are prose, so they name the
-// built-in languages by hand. A tag or a prompt line that names two of them
-// is listing them, and must name them all, so a new built-in language fails
-// this until every list names it. The shared prompt also needs each one's
-// conventions.
+// Struct tags can't be computed, so they name the built-in languages by
+// hand. A tag that names two of them is listing them, and must name them
+// all, so a new built-in language fails this until every list names it. The
+// prompts fill the list in ({{builtins}}), but each language's conventions
+// in the shared prompt are written by hand.
 func TestWrittenOutLanguagesMatchTheBuiltins(t *testing.T) {
-	// Where -> text, from the packages whose types the agent reads as tool
-	// schemas, and every prompt.
-	texts := map[string]string{}
-	tags := regexp.MustCompile(`jsonschema:"((?:[^"\\]|\\.)*)"`)
+	// Where -> tag, from the packages whose types the agent reads as tool
+	// schemas.
+	tags := map[string]string{}
+	tag := regexp.MustCompile(`jsonschema:"((?:[^"\\]|\\.)*)"`)
 	sources, _ := filepath.Glob("*.go")
 	for _, dir := range []string{"../workspace", "../runner"} {
 		more, _ := filepath.Glob(filepath.Join(dir, "*.go"))
 		sources = append(sources, more...)
 	}
-	prompts, _ := filepath.Glob("prompts/*.md")
-	for _, file := range append(sources, prompts...) {
+	for _, file := range sources {
 		if strings.HasSuffix(file, "_test.go") {
 			continue
 		}
@@ -109,12 +108,8 @@ func TestWrittenOutLanguagesMatchTheBuiltins(t *testing.T) {
 			t.Fatal(err)
 		}
 		for i, line := range strings.Split(string(src), "\n") {
-			where := fmt.Sprintf("%s:%d", file, i+1)
-			if strings.HasSuffix(file, ".md") {
-				texts[where] = line
-			}
-			for _, m := range tags.FindAllStringSubmatch(line, -1) {
-				texts[where] = m[1]
+			for _, m := range tag.FindAllStringSubmatch(line, -1) {
+				tags[fmt.Sprintf("%s:%d", file, i+1)] = m[1]
 			}
 		}
 	}
@@ -127,11 +122,11 @@ func TestWrittenOutLanguagesMatchTheBuiltins(t *testing.T) {
 	for _, lang := range runner.BuiltinLanguages() {
 		tc, _ := runner.Builtin(lang)
 		builtins = append(builtins, builtin{lang, regexp.MustCompile(`\b(` + regexp.QuoteMeta(lang) + `|` + regexp.QuoteMeta(tc.Name) + `)\b`)})
-		if !strings.Contains(sharedPrompt, "\n- **"+tc.Name+"**: ") {
-			t.Errorf("shared.md has no conventions for %s, as a line starting \"- **%s**: \"", lang, tc.Name)
+		if !strings.Contains(sharedPrompt, "\n- **"+tc.Name+" ") {
+			t.Errorf("shared.md has no conventions for %s, as a line starting \"- **%s <version>**: \"", lang, tc.Name)
 		}
 	}
-	for where, text := range texts {
+	for where, text := range tags {
 		var named, missing []string
 		for _, b := range builtins {
 			if b.name.MatchString(text) {
@@ -142,6 +137,21 @@ func TestWrittenOutLanguagesMatchTheBuiltins(t *testing.T) {
 		}
 		if len(named) >= 2 && len(missing) > 0 {
 			t.Errorf("%s names %v but not %v: %q", where, named, missing, text)
+		}
+	}
+}
+
+// Every placeholder in the prompts is filled, for every kind of thread.
+func TestInstructionsFillEveryPlaceholder(t *testing.T) {
+	a := newTestApp(t)
+	w, err := a.store.Create("Go", "claude")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, thread := range []workspace.Thread{workspace.PlanThread, workspace.TaskThread("0001-x"), workspace.LessonThread("0001-x"), workspace.WriterThread("go.x")} {
+		if text := instructions(w, thread); strings.Contains(text, "{{") {
+			i := strings.Index(text, "{{")
+			t.Errorf("%s: unfilled placeholder at %q", thread, text[i:min(len(text), i+20)])
 		}
 	}
 }
@@ -198,7 +208,7 @@ func TestAskUserTakesTwoToFourQuestions(t *testing.T) {
 // writer gets the gate's report to fix it.
 func TestCreateTaskWithholdsATaskThatFailsTheGate(t *testing.T) {
 	a := newTestApp(t)
-	if err := a.runner.Check(context.Background()); err != nil {
+	if err := a.runner.Available(context.Background()); err != nil {
 		t.Skip(err)
 	}
 	w := goWorkspace(t, a)

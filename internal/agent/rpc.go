@@ -68,7 +68,7 @@ func (c *rpcConn) Call[T any](ctx context.Context, method string, params any) (T
 		}
 		return decode[T](m.Result)
 	case <-c.closed:
-		return zero, fmt.Errorf("%s: %w", method, ErrStopped)
+		return zero, fmt.Errorf("%s: %w", method, ErrExited)
 	case <-ctx.Done():
 		return zero, fmt.Errorf("%s: %w", method, ctx.Err())
 	}

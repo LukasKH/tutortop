@@ -45,7 +45,7 @@ export function NotWritten({ wsId, objective, part, moduleTitle, writing, check,
     setError("");
     setStarting(true);
     try {
-      await App.PrepareObjective(wsId, objective.id);
+      await App.WriteObjectiveNow(wsId, objective.id);
     } catch (e) {
       setError(errorText(e));
     } finally {

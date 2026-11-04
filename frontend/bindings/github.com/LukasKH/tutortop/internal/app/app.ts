@@ -97,16 +97,6 @@ export function Models(provider: string): $CancellablePromise<agent$0.Model[] | 
     return $Call.ByID(1225600886, provider);
 }
 
-/**
- * PrepareObjective has a writer write an objective's lesson and task now,
- * because the learner opened it ahead of the suggested order. It returns
- * once the writer is asked; the lesson and task arrive as events, and a
- * writer that fails posts why in its thread.
- */
-export function PrepareObjective(wsID: string, objectiveID: string): $CancellablePromise<void> {
-    return $Call.ByID(3889623002, wsID, objectiveID);
-}
-
 export function RejectProposal(wsID: string, feedback: string): $CancellablePromise<void> {
     return $Call.ByID(925547969, wsID, feedback);
 }
@@ -124,12 +114,12 @@ export function ResetWork(wsID: string, taskID: string): $CancellablePromise<voi
 }
 
 /**
- * RunChecks runs the visible tests, or all tests when submit is true.
- * A passing submission tells the planning tutor, and writers prepare what
+ * RunTests runs the visible tests, or all tests when submit is true.
+ * A passing submission tells the planning tutor, and writers write what
  * comes next.
  */
-export function RunChecks(wsID: string, taskID: string, files: runner$0.Files, submit: boolean): $CancellablePromise<runner$0.Result> {
-    return $Call.ByID(2415138656, wsID, taskID, files, submit);
+export function RunTests(wsID: string, taskID: string, files: runner$0.Files, submit: boolean): $CancellablePromise<runner$0.Result> {
+    return $Call.ByID(2984770350, wsID, taskID, files, submit);
 }
 
 /**
@@ -209,4 +199,14 @@ export function Task(wsID: string, taskID: string): $CancellablePromise<workspac
 
 export function Workspace(id: string): $CancellablePromise<$models.WorkspaceSnapshot> {
     return $Call.ByID(2978239553, id);
+}
+
+/**
+ * WriteObjectiveNow has a writer write an objective's lesson and task now,
+ * because the learner opened it ahead of the suggested order. It returns
+ * once the writer is asked; the lesson and task arrive as events, and a
+ * writer that fails posts why in its thread.
+ */
+export function WriteObjectiveNow(wsID: string, objectiveID: string): $CancellablePromise<void> {
+    return $Call.ByID(771519502, wsID, objectiveID);
 }

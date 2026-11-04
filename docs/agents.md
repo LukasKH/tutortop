@@ -1,27 +1,26 @@
 # Adding an agent
 
-`internal/agent` drives the learner's own coding-agent CLI: Claude Code over its stream-json stdio protocol, Codex over `codex app-server` JSON-RPC. Each CLI has an adapter. The adapter turns what the CLI prints into a few events and holds the tutor to Tutortop's tool policy. To add an agent (Gemini CLI, OpenCode, anything that speaks the Agent Client Protocol), the work is in this package, plus the few edits [outside it](#outside-this-package).
+`internal/agent` drives the learner's own coding-agent CLI: Claude Code over its stream-json stdio protocol, Codex over `codex app-server` JSON-RPC. Each CLI has an adapter. The adapter turns what the CLI prints into a few events and holds the tutor to Tutortop's tool policy. To add an agent (Gemini CLI, OpenCode, anything that speaks the Agent Client Protocol), the work is in this package, plus the few edits [outside it](#steps).
 
 The contract is in code. `agent.go` has the types and their doc comments, and `policy.go` has the tool policy. This page explains them and adds the steps.
 
-## What an adapter is
+## Steps
 
-An adapter is one file, like `claude.go` or `codex.go`. It has three parts:
+An adapter is one file, like `claude.go` or `codex.go`, and an entry in a list:
 
-- `startX(ctx, opts, onEvent) (Session, error)`, which starts the CLI and returns a `Session`;
-- `xModels(ctx) ([]Model, error)`, which lists the models it offers, the CLI's default first, each with the reasoning efforts it takes. Claude's list is fixed, because the CLI takes aliases that follow each release. Codex's is asked live from the CLI. The app caches the answer for a few minutes;
-- an entry in `Providers()` with an id, a display name and the binary to look up on `PATH`.
+1. `internal/agent/<x>.go`: `startX(ctx, opts, onEvent) (Session, error)`, which starts the CLI and returns a `Session` that keeps [the contract](#the-contract).
+2. The same file: `xModels(ctx) ([]Model, error)`, which lists the models it offers, the CLI's default first, each with the reasoning efforts it takes. Claude's list is fixed, because the CLI takes aliases that follow each release. Codex's is asked live from the CLI. The app caches the answer for a few minutes.
+3. `internal/agent/agent.go`: an entry in `Providers()` with an id, a display name, the binary to look up on `PATH`, and the two functions.
+4. `internal/agent/<x>_test.go`: tests against a fake CLI, including the shared policy cases (`testPolicy`); see [Testing an adapter](#testing-an-adapter).
+5. `internal/agent/live_test.go`: add the id to the provider list in `TestLive`. `internal/app/live_test.go`'s `TestLiveInterview` runs a whole interview on any agent: `TUTORTOP_PROVIDER=<id> task test:live`.
+6. `Taskfile.yml`: the `test:live` summary, and `.github/workflows/ci.yml`: the comment above the `test` job. Both name the CLIs the live tests talk to.
+7. `go.mod` and `go.sum`, for an SDK the adapter uses, such as `github.com/coder/acp-go-sdk`.
+8. `internal/shellpath/shellpath.go`: `commonDirs`. An app started from a desktop launcher doesn't get the user's shell PATH, so it asks the login shell and falls back to these folders, where the agents' installers put their binaries. Add the new CLI's folder if it isn't there; OpenCode's install script, for one, uses `~/.opencode/bin`.
+9. `README.md`: the introduction and **Install** name the agents Tutortop runs on, with a link to each one's setup.
 
-That's all the app needs. Settings list `Providers()` and show the ones that aren't installed as missing. The frontend gets each provider's display name from `App.Environment`, so a new agent needs no frontend change.
+Nothing else changes. Settings list `Providers()` and show the ones that aren't installed as missing. The frontend gets each provider's display name from `App.Environment`, so a new agent needs no frontend change. The prompts in `internal/app/prompts` don't name an agent, and the chat shows Tutortop's own tools by their `mcpTools` line, whatever title the CLI gives the call.
 
 A workspace remembers one agent (`Meta.Provider`) and, for each chat, the `Session.ID()` to resume (`Meta.ResumeIDs`). Those ids belong to one agent, so when a thread starts with another agent, `Workspace.UseProvider` switches the workspace to it and forgets them: every thread starts a fresh conversation, and the tutor catches up from the workspace files.
-
-## Outside this package
-
-- `go.mod` and `go.sum`, for an SDK the adapter uses, such as `github.com/coder/acp-go-sdk`.
-- `internal/shellpath`: an app started from a desktop launcher doesn't get the user's shell PATH, so it asks the login shell, and falls back to `commonDirs`, the folders where the agents' installers put their binaries. Add the new CLI's folder if it isn't there; OpenCode's install script, for one, uses `~/.opencode/bin`.
-- `README.md`: the introduction and **Install** name the agents Tutortop runs on, with a link to each one's setup.
-- The `test:live` summary in `Taskfile.yml` and the comment above the tests in `.github/workflows/ci.yml` name the CLIs the live tests talk to.
 
 ## The contract
 
@@ -29,7 +28,7 @@ A workspace remembers one agent (`Meta.Provider`) and, for each chat, the `Sessi
 
 `Start` returns once the CLI is ready for a prompt and the session has an id. Do any handshake (initialize, sign-in check, new or resumed session) before returning, under its own timeout, so a CLI that hangs can't block the app. The process runs in `opts.Cwd`, the learner's workspace.
 
-When start fails, return an error the learner can act on. If the CLI isn't installed, `startProcess` already says so. If it isn't signed in, say which command to run. If it exited, return `process.abort(err)`, which wraps `ErrStopped` around the end of the CLI's stderr.
+When start fails, return an error the learner can act on. If the CLI isn't installed, `startProcess` already says so. If it isn't signed in, say which command to run. If it exited, return `process.abort(err)`, which wraps `ErrExited` around the end of the CLI's stderr.
 
 ### Options
 
@@ -49,7 +48,7 @@ Every field must be honoured:
 | the turn ended | `nil` | takes the next prompt |
 | `Cancel` ended it | `nil` | takes the next prompt |
 | the agent reports the turn failed (usage limit, API error) | an error with the agent's reason | takes the next prompt |
-| the process exited | an error wrapping `ErrStopped` | finished; the app starts a new one |
+| the process exited | an error wrapping `ErrExited` | finished; the app starts a new one |
 | `ctx` ended first | `ctx.Err()` | the turn may still be running |
 
 The second row is easy to get wrong. CLIs often report an interrupted turn as a failure, and Claude Code does. The adapter has to remember that it asked for the interrupt.
@@ -81,7 +80,7 @@ Build the policy with `newPolicy(opts)` when the session starts.
 
 | File | What it gives an adapter |
 | --- | --- |
-| `process.go` | `startProcess` finds and starts the CLI with piped stdio; `send` writes one line of JSON; `await` waits for a reply unless the process exits first; `abort` and `exitError` turn an exit into `ErrStopped` with stderr. `decode[T]` decodes a message or a field of one. |
+| `process.go` | `startProcess` finds and starts the CLI with piped stdio; `send` writes one line of JSON; `await` waits for a reply unless the process exits first; `abort` and `exitError` turn an exit into `ErrExited` with stderr. `decode[T]` decodes a message or a field of one. |
 | `rpc.go` | `rpcConn`, newline-delimited JSON-RPC: `Call[T]`, `Notify`, and handlers for the CLI's notifications and requests. |
 | `policy.go` | `policy.allow`, the one place that decides tool calls. |
 | `agent.go` | `optional`, for titles like `"Searched files" + optional(": ", pattern)`. |
@@ -106,14 +105,14 @@ Cover what can break:
 - a turn's text deltas, tool calls starting, finishing and failing, and the turn ending;
 - a failed turn as an error, after which the next prompt still works;
 - `Cancel` sending the CLI's interrupt, and the interrupted turn returning `nil`;
-- the process exiting during start and during a turn, giving `ErrStopped` with stderr;
+- the process exiting during start and during a turn, giving `ErrExited` with stderr;
 - the MCP warning, if the CLI reports MCP status;
 - the model list;
 - the policy: call `testPolicy(t, cwd, ask)` from `policy_test.go`. `ask` makes your fake CLI request permission for a `Tool` and reports whether the adapter allowed it. It runs the shared cases: shell refused, edits under `tasks/` refused, paths outside the workspace refused, our MCP server allowed and others refused. A case your CLI never asks about calls `t.Skip` with the reason.
 
 Get the real messages from the CLI's own schema or by recording a session. `codex app-server generate-json-schema --out DIR` writes Codex's schema.
 
-Add a live test too (`//go:build live`, see `live_test.go`). It checks the real CLI end to end, and `task test:live` runs it.
+The live tests (`//go:build live`, step 5) check the real CLI end to end, and `task test:live` runs them.
 
 ## An ACP agent
 
@@ -136,7 +135,7 @@ An ACP tool call doesn't say which MCP server its tool belongs to, so the adapte
 
 An agent that has no model or thought-level option returns a single `Model` with an empty `ID` and no efforts, which tells the app to leave the choice to the CLI. Don't fall back to sending the instructions as the first prompt: a resumed session would get them twice, and the agent may drop them when it compacts its context.
 
-Don't offer the terminal capability. If you offer file access, put each read and write through the policy too. Pass the SDK's connection the `process` pipes, so `ErrStopped`, stderr and `Close` work the same as for the other adapters.
+Don't offer the terminal capability. If you offer file access, put each read and write through the policy too. Pass the SDK's connection the `process` pipes, so `ErrExited`, stderr and `Close` work the same as for the other adapters.
 
 The SDK's `acp.Client` interface, which `NewClientSideConnection` takes, has every method an agent may call on the client, whatever the client offers: `SessionUpdate`, `RequestPermission`, `ReadTextFile`, `WriteTextFile`, and the terminal methods `CreateTerminal`, `TerminalOutput`, `WaitForTerminalExit`, `KillTerminal` and `ReleaseTerminal`. An agent shouldn't call the file or terminal ones without the capability, but the adapter must still have them: make each one you don't offer return an error, so a call is refused, never carried out. When `Cancel` ends a turn, ACP requires the client to answer each pending `session/request_permission` with the `cancelled` outcome.
 

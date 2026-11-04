@@ -77,7 +77,7 @@ func (t *threadTools) proposeCurriculum(ctx context.Context, _ *mcp.CallToolRequ
 
 var setToolchainTool = &mcp.Tool{
 	Name: "set_toolchain",
-	Description: "Set up a programming language the app doesn't ship (it ships " + strings.Join(runner.BuiltinLanguages(), " and ") + "), or change one you set up before, so the curriculum and tasks can use it. " +
+	Description: "Set up a programming language the app doesn't ship (it ships " + text.List(runner.BuiltinLanguages()) + "), or change one you set up before, so the curriculum and tasks can use it. " +
 		"The app builds the sandbox image (this can take several minutes) and runs the example's tests, which must all pass. Only then is the language saved. " +
 		"If something fails, fix the toolchain using the report and call set_toolchain again. A language server that doesn't answer isn't a failure: the language is saved without it. " +
 		"Changing a language affects its existing tasks, so keep the test command compatible.",
@@ -104,7 +104,7 @@ func (t *threadTools) setToolchain(ctx context.Context, _ *mcp.CallToolRequest, 
 		return nil, nil, fmt.Errorf("%s is built in; use it directly", tc.Language)
 	}
 	check := SandboxCheck{Kind: CheckToolchain, Thread: t.thread.String(), Title: tc.Name, Running: true}
-	t.app.showCheck(t.w.ID, check)
+	t.app.agents.showCheck(t.w.ID, check)
 	report, err := t.app.checkToolchain(ctx, tc, in.Example)
 	var lspErr error
 	if err == nil && report == "" && len(tc.LanguageServer) > 0 {
@@ -113,7 +113,7 @@ func (t *threadTools) setToolchain(ctx context.Context, _ *mcp.CallToolRequest, 
 		lspErr = t.app.probeLanguageServer(ctx, tc, files)
 	}
 	check.Running, check.Passed = false, err == nil && report == ""
-	t.app.showCheck(t.w.ID, check)
+	t.app.agents.showCheck(t.w.ID, check)
 	if err != nil {
 		return nil, nil, sandboxProblem(err)
 	}
@@ -159,7 +159,7 @@ func (a *App) checkToolchain(ctx context.Context, tc runner.Toolchain, ex toolch
 	}
 	if err := a.runner.Prepare(ctx, tc); err != nil {
 		// Build errors are the tutor's to fix, not a broken sandbox.
-		if a.runner.Check(ctx) != nil {
+		if a.runner.Available(ctx) != nil {
 			return "", err
 		}
 		return "Toolchain check FAILED: the image didn't build.\n" + err.Error(), nil

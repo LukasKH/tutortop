@@ -106,7 +106,7 @@ func TestSetToolchainEnablesALanguage(t *testing.T) {
 	if err != nil || d.EditorLanguage != "javascript" || d.HiddenCount != 1 {
 		t.Fatalf("task detail = %+v, %v", d, err)
 	}
-	res, err := a.RunChecks(w.ID, created.TaskID, runner.Files{"add.mjs": reference["add.mjs"]}, true)
+	res, err := a.RunTests(w.ID, created.TaskID, runner.Files{"add.mjs": reference["add.mjs"]}, true)
 	if err != nil || res.Status != runner.StatusPassed || len(res.Tests) != 2 || !res.Tests[0].Hidden && !res.Tests[1].Hidden {
 		t.Fatalf("submit = %v %+v", err, res)
 	}

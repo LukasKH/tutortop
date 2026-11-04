@@ -24,7 +24,8 @@ import (
 //
 // To add a tool, write those three next to the others, then add a line to
 // mcpTools with its chat line (or hidden) and the kinds of thread that get
-// it. The SDK derives the input schema from the input type's json and
+// it, and say when to use it in prompts/shared.md (docs/architecture.md has
+// the steps). The SDK derives the input schema from the input type's json and
 // jsonschema tags and rejects calls that don't match it, so the handler only
 // checks what the schema can't say.
 
@@ -86,12 +87,22 @@ func (h *mcpHost) forget(wsID string) {
 func (h *mcpHost) newServer(w *workspace.Workspace, thread workspace.Thread) *mcp.Server {
 	t := &threadTools{app: h.app, w: w, thread: thread}
 	s := mcp.NewServer(&mcp.Implementation{Name: "tutortop", Version: "0.1.1"}, nil)
-	for _, tool := range mcpTools {
-		if slices.Contains(tool.kinds, thread.Kind) {
-			tool.add(s, t)
-		}
+	for _, tool := range toolsFor(thread.Kind) {
+		tool.add(s, t)
 	}
 	return s
+}
+
+// toolsFor returns the tools a kind of thread gets, in mcpTools' order. The
+// agent's instructions list them too (instructions).
+func toolsFor(kind workspace.ThreadKind) []threadTool {
+	var tools []threadTool
+	for _, tool := range mcpTools {
+		if slices.Contains(tool.kinds, kind) {
+			tools = append(tools, tool)
+		}
+	}
+	return tools
 }
 
 // mcpTools lists every tool, the line its calls show as in the chat, and the
