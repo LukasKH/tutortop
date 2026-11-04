@@ -199,14 +199,8 @@ func (a *App) probeLanguageServer(ctx context.Context, tc runner.Toolchain, file
 				done <- fmt.Errorf("the language server stopped before answering initialize: %w", err)
 				return
 			}
-			var resp struct {
-				ID    json.RawMessage `json:"id"`
-				Error *struct {
-					Message string `json:"message"`
-				} `json:"error"`
-				Result json.RawMessage `json:"result"`
-			}
-			if json.Unmarshal(msg, &resp) == nil && string(resp.ID) == "1" && (resp.Result != nil || resp.Error != nil) {
+			resp, err := decodeJSON[lspResponse](msg)
+			if err == nil && string(resp.ID) == "1" && (resp.Result != nil || resp.Error != nil) {
 				if resp.Error != nil {
 					done <- errors.New("initialize failed: " + resp.Error.Message)
 				} else {
@@ -224,4 +218,13 @@ func (a *App) probeLanguageServer(ctx context.Context, tc runner.Toolchain, file
 	case <-ctx.Done():
 		return context.Cause(ctx)
 	}
+}
+
+// lspResponse is the part of a JSON-RPC response probeLanguageServer reads.
+type lspResponse struct {
+	ID    json.RawMessage `json:"id"`
+	Error *struct {
+		Message string `json:"message"`
+	} `json:"error"`
+	Result json.RawMessage `json:"result"`
 }

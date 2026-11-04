@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -218,8 +217,8 @@ func TestCreateTaskWithholdsATaskThatFailsTheGate(t *testing.T) {
 		map[string]any{"name": "same-again", "description": "the reference again", "files": map[string]string{"solution.go": goReference}},
 	}
 	out, isErr := toolCaller(t, a, w, workspace.WriterThread("go.strings"))("create_task", spec)
-	var res createTaskOutput
-	if err := json.Unmarshal([]byte(out), &res); err != nil {
+	res, err := decodeJSON[createTaskOutput]([]byte(out))
+	if err != nil {
 		t.Fatalf("%v: %s", err, out)
 	}
 	if !isErr || res.Published || res.Gate == nil || res.Gate.Passed || !strings.Contains(res.Report, "same") {

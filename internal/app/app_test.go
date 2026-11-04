@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -66,8 +65,7 @@ func TestToolsEndToEnd(t *testing.T) {
 	if isErr {
 		t.Fatalf("create_task: %s", out)
 	}
-	var created createTaskOutput
-	_ = json.Unmarshal([]byte(out), &created)
+	created, _ := decodeJSON[createTaskOutput]([]byte(out))
 	if !created.Published {
 		t.Fatalf("task not published:\n%s", out)
 	}

@@ -109,13 +109,9 @@ func (s *settingsStore) Save(settings Settings) error {
 // file. Without a saved agent it picks the first one that's installed, or
 // the first one listed if none is.
 func loadSettings(b []byte) Settings {
-	var s Settings
-	_ = yaml.Unmarshal(b, &s)
+	s, _ := decodeYAML[Settings](b)
 	if s.Models == nil {
-		var old struct {
-			Tutor map[string]ModelChoice `yaml:"tutor"`
-		}
-		_ = yaml.Unmarshal(b, &old)
+		old, _ := decodeYAML[settingsBeforeModels](b)
 		s.Models = old.Tutor
 	}
 	if s.Models == nil {
@@ -131,6 +127,12 @@ func loadSettings(b []byte) Settings {
 		}
 	}
 	return s
+}
+
+// settingsBeforeModels is where settings.yaml kept the model choices before
+// they were renamed Models.
+type settingsBeforeModels struct {
+	Tutor map[string]ModelChoice `yaml:"tutor"`
 }
 
 func knownProvider(id string) bool {
