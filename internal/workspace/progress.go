@@ -1,7 +1,5 @@
 package workspace
 
-import "slices"
-
 // TaskStatus is a task plus whether the learner has passed it, and the
 // deepest hint they've asked for (0 for none).
 type TaskStatus struct {
@@ -50,9 +48,51 @@ type Progress struct {
 // Progress is derived from tasks and attempts; nothing the agent writes
 // can change it.
 func (w *Workspace) Progress() Progress {
-	p := Progress{Objectives: map[string]ObjectiveProgress{}}
+	cur, _ := w.Curriculum()
 	tasks, _ := w.Tasks()
-	passedTask := w.history().passed
+	return progress(cur, tasks, w.history().passed)
+}
+
+// NeedsWriting returns the objectives a writer should prepare: of the next
+// ahead unpassed objectives in plan order, the ones missing a lesson or a
+// task the learner hasn't solved yet.
+func (w *Workspace) NeedsWriting(ahead int) []Objective {
+	cur, err := w.Curriculum()
+	if err != nil || cur == nil {
+		return nil
+	}
+	tasks, _ := w.Tasks()
+	lessons, _ := w.Lessons()
+	p := progress(cur, tasks, w.history().passed)
+	hasLesson := map[string]bool{}
+	for _, l := range lessons {
+		hasLesson[l.Objective] = true
+	}
+	var out []Objective
+	for _, m := range cur.Modules {
+		for _, o := range m.Objectives {
+			status := p.Objectives[o.ID].Status
+			if status == ObjectivePassed {
+				continue
+			}
+			if ahead == 0 {
+				return out
+			}
+			ahead--
+			// None of an unpassed objective's tasks is solved, so it has an
+			// unsolved one unless it has none at all.
+			if !hasLesson[o.ID] || status == ObjectivePlanned {
+				out = append(out, o)
+			}
+		}
+	}
+	return out
+}
+
+// progress works out how far the learner got with each objective of the
+// plan, from the tasks and which of them passed. cur may be nil.
+func progress(cur *Curriculum, tasks []TaskInfo, passedTask map[string]bool) Progress {
+	p := Progress{Objectives: map[string]ObjectiveProgress{}}
 	byObjective := map[string][]string{}
 	passedObjective := map[string]bool{}
 	for _, t := range tasks {
@@ -62,8 +102,6 @@ func (w *Workspace) Progress() Progress {
 		}
 	}
 	p.PassedEver = len(passedObjective)
-
-	cur, _ := w.Curriculum()
 	if cur == nil {
 		return p
 	}
@@ -71,7 +109,7 @@ func (w *Workspace) Progress() Progress {
 		for _, o := range m.Objectives {
 			op := ObjectiveProgress{ID: o.ID, Status: ObjectivePlanned, Tasks: byObjective[o.ID]}
 			if op.Tasks == nil {
-				op.Tasks = []string{}
+				op.Tasks = []string{} // [] in JSON, not null
 			}
 			switch {
 			case passedObjective[o.ID]:
@@ -85,37 +123,6 @@ func (w *Workspace) Progress() Progress {
 		}
 	}
 	return p
-}
-
-// NeedsWriting returns the objectives a writer should prepare: of the next
-// ahead unpassed objectives in plan order, the ones missing a lesson or a
-// task the learner hasn't solved yet.
-func (w *Workspace) NeedsWriting(ahead int) []Objective {
-	c, err := w.Curriculum()
-	if err != nil || c == nil {
-		return nil
-	}
-	tasks, _ := w.TaskStatuses()
-	lessons, _ := w.LessonStatuses()
-	progress := w.Progress()
-	var out []Objective
-	for _, m := range c.Modules {
-		for _, o := range m.Objectives {
-			if progress.Objectives[o.ID].Status == ObjectivePassed {
-				continue
-			}
-			if ahead == 0 {
-				return out
-			}
-			ahead--
-			hasLesson := slices.ContainsFunc(lessons, func(l LessonStatus) bool { return l.Objective == o.ID })
-			hasTask := slices.ContainsFunc(tasks, func(t TaskStatus) bool { return t.Objective == o.ID && !t.Passed })
-			if !hasLesson || !hasTask {
-				out = append(out, o)
-			}
-		}
-	}
-	return out
 }
 
 func (w *Workspace) TaskPassed(id string) bool { return w.history().passed[id] }
