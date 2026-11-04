@@ -6,7 +6,7 @@ import { PLAN_THREAD, writerThread } from "@/lib/workspace";
 import { describeItem, exerciseOf, itemKey, lessonOf, viaLesson } from "@/features/workspace/open-item";
 import { useChatPanel } from "@/features/workspace/use-chat-panel";
 import { useChatThreads } from "@/features/workspace/use-chat-threads";
-import { centerOf, questionsInCenter, useOpenItem, type Center } from "@/features/workspace/use-open-item";
+import { centerOf, placeQuestions, useOpenItem, type Center } from "@/features/workspace/use-open-item";
 import { useWorkspace, type UseWorkspaceResult } from "@/features/workspace/use-workspace";
 import { Sidebar } from "@/features/workspace/sidebar";
 import { TaskPanel } from "@/features/task/task-panel";
@@ -61,13 +61,11 @@ export function WorkspaceView({ id, tutor, onSettings, onBack }: Props) {
   // Until the first plan is approved, everything happens in the centre. No chat beside it.
   const setup = !ws.curriculum;
 
-  // Questions that aren't in the centre wait in the chat of the thread that
-  // asked. The plan's also show on "Your plan" while another chat is shown.
-  const questionsWaiting = !!questions && !questionsInCenter(view, item, questions);
-  const planAsked = questionsWaiting && questions.thread === PLAN_THREAD;
+  // The tutor's questions: in the centre, or in the chat of the thread that asked.
+  const place = placeQuestions(ws, view, item, thread, questions);
   const planAttention: Attention = {
-    attention: thread !== PLAN_THREAD && (!!unread[PLAN_THREAD] || !!busy[PLAN_THREAD] || planAsked),
-    questions: planAsked ? (questions?.questions ?? []).length : 0,
+    attention: thread !== PLAN_THREAD && (!!unread[PLAN_THREAD] || !!busy[PLAN_THREAD] || place.planBadge > 0),
+    questions: place.planBadge,
   };
 
   // Hints are for the open exercise's own conversation, until it's solved.
@@ -112,7 +110,7 @@ export function WorkspaceView({ id, tutor, onSettings, onBack }: Props) {
         )}
         <CenterPane
           id={id}
-          center={centerOf(ws, view, item, questions)}
+          center={centerOf(ws, view, item, place.center ? questions : null)}
           ws={ws}
           live={live}
           nav={nav}
@@ -135,12 +133,12 @@ export function WorkspaceView({ id, tutor, onSettings, onBack }: Props) {
           items={thread === PLAN_THREAD ? afterSetup(threads[PLAN_THREAD] ?? []) : (threads[thread] ?? [])}
           busy={!!busy[thread]}
           questions={
-            questions && !questionsWaiting && thread === PLAN_THREAD ? (
+            questions && place.chat === thread ? (
+              <QuestionsForm key={JSON.stringify(questions)} layout="chat" form={questions} onAnswer={live.answerQuestions} onDismiss={live.dismissQuestions} />
+            ) : place.center ? (
               <div className="max-w-[88%] self-center text-center text-[12px] text-balance wrap-anywhere whitespace-pre-wrap text-muted-foreground">
                 Questions are open in the main panel.
               </div>
-            ) : questions && questionsWaiting && questions.thread === thread ? (
-              <QuestionsForm key={JSON.stringify(questions)} layout="chat" form={questions} onAnswer={live.answerQuestions} onDismiss={live.dismissQuestions} />
             ) : null
           }
           status={
@@ -159,7 +157,7 @@ export function WorkspaceView({ id, tutor, onSettings, onBack }: Props) {
           onSettings={onSettings}
         />
       ) : (
-        <ChatRail attention={Object.values(unread).some(Boolean) || questionsWaiting} busy={live.tutorBusy} onExpand={() => chat.setOpen(true)} />
+        <ChatRail attention={Object.values(unread).some(Boolean) || place.chat !== null} busy={live.tutorBusy} onExpand={() => chat.setOpen(true)} />
       )}
       {!setup && (
         // The handle sits on the chat panel's left border, in the shell, so one
