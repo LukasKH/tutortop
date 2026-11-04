@@ -30,9 +30,25 @@ func TestProcessCloseStops(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	start := time.Now()
 	_ = p.Close()
-	if d := time.Since(start); d > 3*time.Second {
-		t.Fatalf("Close took %v", d)
+	select {
+	case <-p.done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("the process is still running 3s after Close")
+	}
+}
+
+// Close returns, and the process stops, even when its output is never read.
+func TestProcessCloseUnread(t *testing.T) {
+	p, err := startProcess(t.Context(), t.TempDir(), nil, "sh", "-c", "yes")
+	if err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(100 * time.Millisecond) // the pipe fills up
+	_ = p.Close()
+	select {
+	case <-p.done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("the process is still running 3s after Close")
 	}
 }

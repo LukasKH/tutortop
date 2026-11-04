@@ -37,9 +37,12 @@ type Props = {
 export function WorkspaceView({ id, tutor, onSettings, onBack }: Props) {
   const { ws, error, fail, refresh, busy, checks, writeFailed, gate, dismissFinishedGate, questions, answerQuestions, dismissQuestions } = useWorkspace(id);
   // The open task or lesson (by key), remembered per workspace. Each snapshot
-  // checks it still exists; until the first one, the stored key is unchecked.
+  // checks it still exists, and what it picks instead is remembered, so a
+  // default doesn't move on its own. Until the first snapshot, the stored key
+  // is unchecked.
   const [storedId, setTaskId] = useStored<string | null>(`task.${id}`, null);
   const taskId = ws ? resolveOpen(ws, storedId) : storedId;
+  if (taskId !== storedId) setTaskId(taskId);
   // Until the learner picks a view, a proposal waiting for review comes first.
   const [chosenView, setView] = useState<CenterView | null>(null);
   const view = chosenView ?? (ws?.proposal ? "proposal" : "task");

@@ -1,7 +1,7 @@
-import { useState, type SetStateAction } from "react";
+import { useEffect, useState } from "react";
 
 /** useState that survives reloads, stored in localStorage under "tutortop.<key>". */
-export function useStored<T>(key: string, initial: T | (() => T)): [T, (v: SetStateAction<T>) => void] {
+export function useStored<T>(key: string, initial: T | (() => T)) {
   const full = `tutortop.${key}`;
   const [value, setValue] = useState<T>(() => {
     const raw = localStorage.getItem(full);
@@ -14,11 +14,6 @@ export function useStored<T>(key: string, initial: T | (() => T)): [T, (v: SetSt
     }
     return typeof initial === "function" ? (initial as () => T)() : initial;
   });
-  const set = (v: SetStateAction<T>) =>
-    setValue((prev) => {
-      const next = typeof v === "function" ? (v as (prev: T) => T)(prev) : v;
-      localStorage.setItem(full, JSON.stringify(next));
-      return next;
-    });
-  return [value, set];
+  useEffect(() => localStorage.setItem(full, JSON.stringify(value)), [full, value]);
+  return [value, setValue] as const;
 }

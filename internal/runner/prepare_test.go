@@ -11,8 +11,8 @@ import (
 	"time"
 )
 
-// Callers that need the same image share one build, and one that gives up
-// doesn't stop it for the others.
+// Callers that need the same image share one build, and the caller that
+// started it can give up without stopping it for the others.
 func TestPrepareSharesBuild(t *testing.T) {
 	dir := t.TempDir()
 	log := filepath.Join(dir, "calls")
@@ -23,32 +23,36 @@ func TestPrepareSharesBuild(t *testing.T) {
 	}
 	r := &Runner{Engine: engine, prepared: map[string]bool{}}
 	tc := Toolchain{Name: "Go", Image: "tutortop-test:1", Dockerfile: "FROM scratch"}
+	calls := func() string { b, _ := os.ReadFile(log); return string(b) }
 
-	quitter, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
-	defer cancel()
+	// The first caller starts the build, then gives up.
+	quitter, cancel := context.WithCancel(t.Context())
+	quit := make(chan error, 1)
+	go func() { quit <- r.Prepare(quitter, tc) }()
+	for !strings.Contains(calls(), "build") {
+		time.Sleep(10 * time.Millisecond)
+	}
 	var wg sync.WaitGroup
-	errs := make([]error, 3)
+	errs := make([]error, 2)
 	for i := range errs {
-		wg.Go(func() {
-			ctx := t.Context()
-			if i == 0 {
-				ctx = quitter
-			}
-			errs[i] = r.Prepare(ctx, tc)
-		})
+		wg.Go(func() { errs[i] = r.Prepare(t.Context(), tc) })
+	}
+	cancel()
+	if err := <-quit; !errors.Is(err, context.Canceled) {
+		t.Fatalf("the caller that gave up got %v", err)
 	}
 	wg.Wait()
-	if !errors.Is(errs[0], context.DeadlineExceeded) || errs[1] != nil || errs[2] != nil {
+	if errs[0] != nil || errs[1] != nil {
 		t.Fatalf("errors: %v", errs)
 	}
-	calls, _ := os.ReadFile(log)
-	if got := strings.Count(string(calls), "build"); got != 1 {
-		t.Fatalf("%d builds, want 1:\n%s", got, calls)
+	if got := strings.Count(calls(), "build"); got != 1 {
+		t.Fatalf("%d builds, want 1:\n%s", got, calls())
 	}
+	before := calls()
 	if err := r.Prepare(t.Context(), tc); err != nil {
 		t.Fatal(err)
 	}
-	if again, _ := os.ReadFile(log); len(again) != len(calls) {
-		t.Fatalf("a prepared image was checked again:\n%s", again)
+	if calls() != before {
+		t.Fatalf("a prepared image was checked again:\n%s", calls())
 	}
 }

@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -21,7 +22,7 @@ type process struct {
 	stderr tailBuffer
 	done   chan struct{}
 	err    error
-	cancel context.CancelFunc // stops the process: SIGTERM, then a kill after WaitDelay
+	cancel context.CancelFunc // stops the process: an interrupt, then a kill after WaitDelay
 
 	wmu sync.Mutex // one message per line on stdin, from any goroutine
 }
@@ -35,8 +36,14 @@ func startProcess(ctx context.Context, cwd string, env []string, binary string, 
 	cmd := exec.CommandContext(ctx, path, args...)
 	cmd.Dir = cwd
 	cmd.Env = append(os.Environ(), env...)
-	// Ask the CLI to stop first, so it can save its session.
-	cmd.Cancel = func() error { return cmd.Process.Signal(os.Interrupt) }
+	// Ask the CLI to stop first, so it can save its session. Windows has no
+	// interrupt signal, so there it's killed at once.
+	cmd.Cancel = func() error {
+		if runtime.GOOS == "windows" {
+			return cmd.Process.Kill()
+		}
+		return cmd.Process.Signal(os.Interrupt)
+	}
 	cmd.WaitDelay = 5 * time.Second
 	p := &process{cmd: cmd, done: make(chan struct{}), cancel: cancel}
 	cmd.Stderr = &p.stderr
@@ -94,10 +101,13 @@ func (p *process) Closed() bool {
 	}
 }
 
+// Close stops the process without waiting for it to exit, since callers may
+// hold the app's lock. Closing stdout also frees a write the reader never
+// took, so Wait can't hang on it.
 func (p *process) Close() error {
 	_ = p.stdin.Close()
+	_ = p.stdout.Close()
 	p.cancel()
-	<-p.done
 	return nil
 }
 

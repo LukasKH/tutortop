@@ -154,7 +154,10 @@ func (r *Runner) Prepare(ctx context.Context, tc Toolchain) error {
 		return nil
 	}
 	build := r.builds.DoChan(tc.Image, func() (any, error) {
-		return nil, r.build(context.WithoutCancel(ctx), tc)
+		// Its own deadline, so a stuck build doesn't hold up every later caller.
+		ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), buildTimeout)
+		defer cancel()
+		return nil, r.build(ctx, tc)
 	})
 	select {
 	case res := <-build:
@@ -163,6 +166,9 @@ func (r *Runner) Prepare(ctx context.Context, tc Toolchain) error {
 		return ctx.Err()
 	}
 }
+
+// buildTimeout bounds one image build, including pulling its base image.
+const buildTimeout = 20 * time.Minute
 
 func (r *Runner) build(ctx context.Context, tc Toolchain) error {
 	if exec.CommandContext(ctx, r.Engine, "image", "inspect", tc.Image).Run() != nil {

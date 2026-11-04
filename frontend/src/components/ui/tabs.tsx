@@ -26,7 +26,7 @@ function TabsTrigger({ className, ...props }: React.ComponentProps<typeof TabsPr
   );
 }
 
-/** A tab's panel. It takes focus when it has nothing focusable, so keyboard users can scroll it. */
+/** A tab's panel. It's a tab stop (Radix), so keyboard users can scroll it; the ring shows where focus is. */
 function TabsContent({ className, ...props }: React.ComponentProps<typeof TabsPrimitive.Content>) {
   return (
     <TabsPrimitive.Content
