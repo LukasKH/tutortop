@@ -102,20 +102,7 @@ type (
 		Gate      *runner.GateReport `json:"gate,omitempty"`
 		Report    string             `json:"report"`
 	}
-	// Gate tells the UI a new task, or a new language's sandbox (Kind
-	// "toolchain"), is being checked.
-	Gate struct {
-		Kind      string `json:"kind,omitempty"`
-		Objective string `json:"objective,omitempty"` // for a task: whose writer is checking it
-		Title     string `json:"title"`
-		Running   bool   `json:"running"`
-		Passed    bool   `json:"passed"`
-	}
 )
-
-func textResult(msg string) *mcp.CallToolResult {
-	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: msg}}}
-}
 
 // newServer builds the tools for one thread. A returned error reaches the
 // agent as an error result with its text, so it can fix the call.
@@ -223,6 +210,10 @@ func (h *mcpHost) newServer(w *workspace.Workspace, thread string) *mcp.Server {
 		return textResult(fmt.Sprintf("%s is set up. Use language %q in the curriculum.%s", tc.Name, tc.Language, note)), nil, nil
 	})
 	return s
+}
+
+func textResult(msg string) *mcp.CallToolResult {
+	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: msg}}}
 }
 
 // addWriterTools adds the tools that publish an objective's lesson and task.

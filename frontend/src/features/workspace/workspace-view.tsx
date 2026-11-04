@@ -2,7 +2,7 @@ import { useRef, useState, type CSSProperties } from "react";
 import { cn } from "cn";
 import { afterSetup } from "@/lib/chat";
 import { App, AppEvents, useEvent, type WorkspaceState } from "@/lib/api";
-import { lessonKey, objectiveOfWriter, PLAN_THREAD, todoOfKey, writerThread } from "@/lib/workspace";
+import { lessonKey, objectiveOfWriter, PLAN_THREAD, todoOfKey, writerThread, type NewItem } from "@/lib/workspace";
 import { exerciseOf, lessonOf, openItem, resolveOpen, viaLesson } from "@/features/workspace/open-item";
 import { useChatPanel } from "@/features/workspace/use-chat-panel";
 import { useChatThreads } from "@/features/workspace/use-chat-threads";
@@ -24,9 +24,6 @@ import { Splitter } from "@/components/splitter";
 import { useStored } from "@/hooks/use-stored";
 
 export type CenterView = "task" | "plan" | "proposal";
-
-/** Something new the tutor wrote while the learner was busy: a task, or a lesson (id is its key). */
-export type NewItem = { id: string; title: string; kind: "task" | "lesson" };
 
 type Props = {
   id: string;

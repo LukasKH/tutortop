@@ -1,4 +1,4 @@
-import { clamp } from "@/components/splitter";
+import { clamp } from "@/lib/math";
 import { useStored } from "@/hooks/use-stored";
 
 /**

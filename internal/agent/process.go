@@ -26,41 +26,6 @@ type process struct {
 	wmu sync.Mutex // one message per line on stdin, from any goroutine
 }
 
-// send writes v to stdin as one line of JSON. Both CLIs speak newline-delimited
-// JSON: Claude's stream-json and Codex's app-server JSON-RPC.
-func (p *process) send(v any) error {
-	b, err := json.Marshal(v)
-	if err != nil {
-		return err
-	}
-	p.wmu.Lock()
-	defer p.wmu.Unlock()
-	_, err = p.stdin.Write(append(b, '\n'))
-	return err
-}
-
-// decode unmarshals one JSON message, or a field of one, into a T. Like
-// json.Unmarshal, it keeps the fields that decoded when another one doesn't:
-// a tool call's file_path must survive an odd value elsewhere in its input,
-// or the permission check would see no path.
-func decode[T any](raw []byte) (T, error) {
-	var v T
-	err := json.Unmarshal(raw, &v)
-	return v, err
-}
-
-// await waits for a reply, the process exiting, or ctx.
-func (p *process) await[T any](ctx context.Context, reply <-chan T) (T, error) {
-	select {
-	case v := <-reply:
-		return v, nil
-	case <-p.done:
-		return *new(T), p.exitError()
-	case <-ctx.Done():
-		return *new(T), ctx.Err()
-	}
-}
-
 func startProcess(ctx context.Context, cwd string, env []string, binary string, args ...string) (*process, error) {
 	path, err := exec.LookPath(binary)
 	if err != nil {
@@ -93,6 +58,31 @@ func startProcess(ctx context.Context, cwd string, env []string, binary string, 
 		close(p.done)
 	}()
 	return p, nil
+}
+
+// send writes v to stdin as one line of JSON. Both CLIs speak newline-delimited
+// JSON: Claude's stream-json and Codex's app-server JSON-RPC.
+func (p *process) send(v any) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	p.wmu.Lock()
+	defer p.wmu.Unlock()
+	_, err = p.stdin.Write(append(b, '\n'))
+	return err
+}
+
+// await waits for a reply, the process exiting, or ctx.
+func (p *process) await[T any](ctx context.Context, reply <-chan T) (T, error) {
+	select {
+	case v := <-reply:
+		return v, nil
+	case <-p.done:
+		return *new(T), p.exitError()
+	case <-ctx.Done():
+		return *new(T), ctx.Err()
+	}
 }
 
 func (p *process) Closed() bool {
@@ -155,4 +145,14 @@ func (t *tailBuffer) String() string {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	return string(t.buf)
+}
+
+// decode unmarshals one JSON message, or a field of one, into a T. Like
+// json.Unmarshal, it keeps the fields that decoded when another one doesn't:
+// a tool call's file_path must survive an odd value elsewhere in its input,
+// or the permission check would see no path.
+func decode[T any](raw []byte) (T, error) {
+	var v T
+	err := json.Unmarshal(raw, &v)
+	return v, err
 }

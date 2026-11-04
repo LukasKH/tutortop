@@ -80,13 +80,6 @@ type TestNames struct {
 	Hidden  []string `yaml:"hidden" json:"hidden"`
 }
 
-const maxOutput = 4 << 20 // bytes of test output kept before the run is stopped
-
-var (
-	errTimeout       = errors.New("timed out")
-	errTooMuchOutput = errors.New("too much output")
-)
-
 // Runner runs jobs either in containers (default) or directly on the host
 // (TUTORTOP_RUNNER=local, meant for development only).
 type Runner struct {
@@ -185,6 +178,13 @@ func (r *Runner) build(ctx context.Context, tc Toolchain) error {
 	return nil
 }
 
+const maxOutput = 4 << 20 // bytes of test output kept before the run is stopped
+
+var (
+	errTimeout       = errors.New("timed out")
+	errTooMuchOutput = errors.New("too much output")
+)
+
 // Run executes the job and returns per-test results. An error is returned only
 // for infrastructure problems; code that fails to build, hangs or floods the
 // output is a Result with StatusError.
@@ -250,6 +250,14 @@ func (r *Runner) Run(ctx context.Context, job Job) (Result, error) {
 		}
 	}
 	return res, nil
+}
+
+func readable(tc Toolchain, stdout string) string {
+	s := stripJUnit(stdout)
+	if tc.Language == "go" {
+		s = humanGoOutput(s)
+	}
+	return text.Tail(s, 8000)
 }
 
 // notRun lists the task's tests that never reported a result. A crash can
@@ -367,12 +375,4 @@ func (c *cappedBuffer) String() string {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.buf.String()
-}
-
-func readable(tc Toolchain, stdout string) string {
-	s := stripJUnit(stdout)
-	if tc.Language == "go" {
-		s = humanGoOutput(s)
-	}
-	return text.Tail(s, 8000)
 }

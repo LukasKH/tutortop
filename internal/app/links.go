@@ -12,6 +12,20 @@ import (
 	"time"
 )
 
+// brokenLinks opens the links a tool call cites and returns an error naming
+// the ones that don't exist, so the tutor fixes them and calls tool again.
+func (a *App) brokenLinks(ctx context.Context, tool string, urls []string) error {
+	bad := a.linkCheck(ctx, urls)
+	if len(bad) == 0 {
+		return nil
+	}
+	msg := "These links don't open:\n"
+	for _, b := range bad {
+		msg += "- " + b + "\n"
+	}
+	return fmt.Errorf("%sFind the right pages (open them to check), then call %s again", msg, tool)
+}
+
 // checkLinks opens every link and reports the ones that don't exist (404 or
 // 410, or a site that doesn't exist), so a made-up reference is caught before
 // the learner sees it. Pages that refuse robots or time out count as fine.
@@ -82,18 +96,4 @@ func markdownLinks(md string) []string {
 		out = append(out, m[1])
 	}
 	return out
-}
-
-// brokenLinks opens the links a tool call cites and returns an error naming
-// the ones that don't exist, so the tutor fixes them and calls tool again.
-func (a *App) brokenLinks(ctx context.Context, tool string, urls []string) error {
-	bad := a.linkCheck(ctx, urls)
-	if len(bad) == 0 {
-		return nil
-	}
-	msg := "These links don't open:\n"
-	for _, b := range bad {
-		msg += "- " + b + "\n"
-	}
-	return fmt.Errorf("%sFind the right pages (open them to check), then call %s again", msg, tool)
 }

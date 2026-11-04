@@ -9,40 +9,6 @@ import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 
-export function loadModels(agent: string): Promise<AgentModel[]> {
-  const cached = modelCache.get(agent);
-  if (cached) return Promise.resolve(cached);
-  return App.Models(agent).then((list) => {
-    modelCache.set(agent, list ?? []);
-    return list ?? [];
-  });
-}
-
-/** "Claude Code · Opus · High": the tutor as configured. */
-export function tutorLabel(s: Settings): string {
-  const choice = s.tutor?.[s.agent] ?? { model: "", effort: "" };
-  const model = currentModel(modelCache.get(s.agent) ?? null, choice.model);
-  const parts = [providerName(s.agent)];
-  if (model?.id || choice.model) parts.push(model?.name ?? choice.model);
-  const effort = choice.effort || model?.defaultEffort;
-  if (effort) parts.push(effortLabel(effort));
-  return parts.join(" · ");
-}
-
-/** The configured tutor with a way to change it. */
-export function TutorLine({ tutor, action = "Change", onSettings }: { tutor: string; action?: string; onSettings: () => void }) {
-  return (
-    <div className="flex min-w-0 items-center justify-between gap-2 text-sm text-soft-foreground">
-      <span className="min-w-0 truncate" title={tutor}>
-        {tutor || "…"}
-      </span>
-      <Button type="button" variant="ghost" className="flex-none" onClick={onSettings}>
-        {action}
-      </Button>
-    </div>
-  );
-}
-
 type Props = {
   settings: Settings;
   onChange: (s: Settings) => Promise<void>;
@@ -198,44 +164,39 @@ export function SettingsDialog({ settings, onChange, onClose }: Props) {
   );
 }
 
-function effortLabel(id: string) {
-  return EFFORT_LABELS[id] ?? id.charAt(0).toUpperCase() + id.slice(1);
+export function loadModels(agent: string): Promise<AgentModel[]> {
+  const cached = modelCache.get(agent);
+  if (cached) return Promise.resolve(cached);
+  return App.Models(agent).then((list) => {
+    modelCache.set(agent, list ?? []);
+    return list ?? [];
+  });
 }
 
-const EFFORT_LABELS: Record<string, string> = {
-  none: "None",
-  minimal: "Minimal",
-  low: "Low",
-  medium: "Medium",
-  high: "High",
-  xhigh: "Extra high",
-  max: "Max",
-  ultra: "Ultra",
-};
-
-// Model lists per agent, kept for the session: Codex is asked live, which takes a moment.
-const modelCache = new Map<string, AgentModel[]>();
-
-/**
- * The chosen model. No choice means the agent's default: Claude Code lists
- * that as its own entry; for Codex it's the default model, listed first.
- */
-function currentModel(models: AgentModel[] | null, id: string): AgentModel | null {
-  if (!models) return null;
-  return models.find((m) => m.id === id) ?? (id === "" ? (models[0] ?? null) : null);
+/** "Claude Code · Opus · High": the tutor as configured. */
+export function tutorLabel(s: Settings): string {
+  const choice = s.tutor?.[s.agent] ?? { model: "", effort: "" };
+  const model = currentModel(modelCache.get(s.agent) ?? null, choice.model);
+  const parts = [providerName(s.agent)];
+  if (model?.id || choice.model) parts.push(model?.name ?? choice.model);
+  const effort = choice.effort || model?.defaultEffort;
+  if (effort) parts.push(effortLabel(effort));
+  return parts.join(" · ");
 }
 
-const SECTION = "text-sm font-semibold text-foreground";
-
-const FIELD = "flex min-w-0 flex-col gap-1.5";
-
-const FIELD_LABEL = "text-sm text-muted-foreground";
-
-const FIELD_NOTE = "text-xs text-muted-foreground";
-
-const CHOICES = "flex flex-col gap-1.5";
-
-const CHOICE_NOTE = "text-sm text-muted-foreground";
+/** The configured tutor with a way to change it. */
+export function TutorLine({ tutor, action = "Change", onSettings }: { tutor: string; action?: string; onSettings: () => void }) {
+  return (
+    <div className="flex min-w-0 items-center justify-between gap-2 text-sm text-soft-foreground">
+      <span className="min-w-0 truncate" title={tutor}>
+        {tutor || "…"}
+      </span>
+      <Button type="button" variant="ghost" className="flex-none" onClick={onSettings}>
+        {action}
+      </Button>
+    </div>
+  );
+}
 
 /** A radio row: the mark, then its label and any grey note. Disabled rows step back. */
 function Choice({ value, title, disabled, children }: { value: string; title?: string; disabled?: boolean; children: ReactNode }) {
@@ -321,3 +282,42 @@ function WorkspacesFolder({
     </div>
   );
 }
+
+const SECTION = "text-sm font-semibold text-foreground";
+
+const FIELD = "flex min-w-0 flex-col gap-1.5";
+
+const FIELD_LABEL = "text-sm text-muted-foreground";
+
+const FIELD_NOTE = "text-xs text-muted-foreground";
+
+const CHOICES = "flex flex-col gap-1.5";
+
+const CHOICE_NOTE = "text-sm text-muted-foreground";
+
+// Model lists per agent, kept for the session: Codex is asked live, which takes a moment.
+const modelCache = new Map<string, AgentModel[]>();
+
+/**
+ * The chosen model. No choice means the agent's default: Claude Code lists
+ * that as its own entry; for Codex it's the default model, listed first.
+ */
+function currentModel(models: AgentModel[] | null, id: string): AgentModel | null {
+  if (!models) return null;
+  return models.find((m) => m.id === id) ?? (id === "" ? (models[0] ?? null) : null);
+}
+
+function effortLabel(id: string) {
+  return EFFORT_LABELS[id] ?? id.charAt(0).toUpperCase() + id.slice(1);
+}
+
+const EFFORT_LABELS: Record<string, string> = {
+  none: "None",
+  minimal: "Minimal",
+  low: "Low",
+  medium: "Medium",
+  high: "High",
+  xhigh: "Extra high",
+  max: "Max",
+  ultra: "Ultra",
+};

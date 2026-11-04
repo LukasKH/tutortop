@@ -7,84 +7,7 @@ import { Events } from "@wailsio/runtime";
 import { App, AppEvents, errorText } from "@/lib/api";
 import { monaco } from "@/lib/monaco";
 
-type M = typeof monaco;
-type Model = monaco.editor.ITextModel;
-type Json = any; // eslint-disable-line @typescript-eslint/no-explicit-any
-
-/** The Monaco model path of a task file. Work and test files both map to the task folder in the sandbox. */
-export function modelPath(taskId: string, kind: "work" | "tests", file: string) {
-  return `${taskId}/${kind}/${file}`;
-}
-
 export type LanguageStatus = "starting" | "ready" | "off" | { error: string };
-
-type LspPosition = { line: number; character: number };
-type LspRange = { start: LspPosition; end: LspPosition };
-
-const toPosition = (p: monaco.IPosition): LspPosition => ({ line: p.lineNumber - 1, character: p.column - 1 });
-const toRange = (r: LspRange): monaco.IRange => ({
-  startLineNumber: r.start.line + 1,
-  startColumn: r.start.character + 1,
-  endLineNumber: r.end.line + 1,
-  endColumn: r.end.character + 1,
-});
-
-/** LSP MarkupContent | MarkedString | MarkedString[] → Monaco markdown. */
-function markdown(c: Json): monaco.IMarkdownString[] {
-  if (c == null) return [];
-  if (Array.isArray(c)) return c.flatMap(markdown);
-  if (typeof c === "string") return c ? [{ value: c }] : [];
-  if (c.kind === "plaintext") return [{ value: "```\n" + c.value + "\n```" }];
-  if (c.language) return [{ value: "```" + c.language + "\n" + c.value + "\n```" }];
-  return c.value ? [{ value: c.value }] : [];
-}
-
-function documentation(c: Json): string | monaco.IMarkdownString | undefined {
-  if (c == null) return undefined;
-  return typeof c === "string" ? c : markdown(c)[0];
-}
-
-const SEVERITY: Record<number, monaco.MarkerSeverity> = {
-  1: monaco.MarkerSeverity.Error,
-  2: monaco.MarkerSeverity.Warning,
-  3: monaco.MarkerSeverity.Info,
-  4: monaco.MarkerSeverity.Hint,
-};
-
-// LSP CompletionItemKind (1-based) → Monaco's.
-const K = monaco.languages.CompletionItemKind;
-const KINDS = [
-  K.Text,
-  K.Method,
-  K.Function,
-  K.Constructor,
-  K.Field,
-  K.Variable,
-  K.Class,
-  K.Interface,
-  K.Module,
-  K.Property,
-  K.Unit,
-  K.Value,
-  K.Enum,
-  K.Keyword,
-  K.Snippet,
-  K.Color,
-  K.File,
-  K.Reference,
-  K.Folder,
-  K.EnumMember,
-  K.Constant,
-  K.Struct,
-  K.Event,
-  K.Operator,
-  K.TypeParameter,
-];
-
-const textEdits = (edits: Json[] | null | undefined): monaco.languages.TextEdit[] => (edits ?? []).map((e) => ({ range: toRange(e.range), text: e.newText }));
-
-type Doc = { uri: string; version: number; listener: monaco.IDisposable };
-type Pending = { resolve: (v: Json) => void; reject: (e: Error) => void };
 
 export class LanguageClient {
   private id = "";
@@ -404,6 +327,18 @@ export class LanguageClient {
   }
 }
 
+/** The Monaco model path of a task file. Work and test files both map to the task folder in the sandbox. */
+export function modelPath(taskId: string, kind: "work" | "tests", file: string) {
+  return `${taskId}/${kind}/${file}`;
+}
+
+type M = typeof monaco;
+type Model = monaco.editor.ITextModel;
+type Json = any;
+
+type Doc = { uri: string; version: number; listener: monaco.IDisposable };
+type Pending = { resolve: (v: Json) => void; reject: (e: Error) => void };
+
 const markup = { documentationFormat: ["markdown", "plaintext"] };
 
 const CLIENT_CAPABILITIES = {
@@ -433,3 +368,68 @@ const CLIENT_CAPABILITIES = {
   },
   workspace: { configuration: true, workspaceFolders: true },
 };
+
+type LspPosition = { line: number; character: number };
+type LspRange = { start: LspPosition; end: LspPosition };
+
+const toPosition = (p: monaco.IPosition): LspPosition => ({ line: p.lineNumber - 1, character: p.column - 1 });
+const toRange = (r: LspRange): monaco.IRange => ({
+  startLineNumber: r.start.line + 1,
+  startColumn: r.start.character + 1,
+  endLineNumber: r.end.line + 1,
+  endColumn: r.end.character + 1,
+});
+
+const SEVERITY: Record<number, monaco.MarkerSeverity> = {
+  1: monaco.MarkerSeverity.Error,
+  2: monaco.MarkerSeverity.Warning,
+  3: monaco.MarkerSeverity.Info,
+  4: monaco.MarkerSeverity.Hint,
+};
+
+/** LSP MarkupContent | MarkedString | MarkedString[] → Monaco markdown. */
+function markdown(c: Json): monaco.IMarkdownString[] {
+  if (c == null) return [];
+  if (Array.isArray(c)) return c.flatMap(markdown);
+  if (typeof c === "string") return c ? [{ value: c }] : [];
+  if (c.kind === "plaintext") return [{ value: "```\n" + c.value + "\n```" }];
+  if (c.language) return [{ value: "```" + c.language + "\n" + c.value + "\n```" }];
+  return c.value ? [{ value: c.value }] : [];
+}
+
+function documentation(c: Json): string | monaco.IMarkdownString | undefined {
+  if (c == null) return undefined;
+  return typeof c === "string" ? c : markdown(c)[0];
+}
+
+const textEdits = (edits: Json[] | null | undefined): monaco.languages.TextEdit[] => (edits ?? []).map((e) => ({ range: toRange(e.range), text: e.newText }));
+
+// LSP CompletionItemKind (1-based) → Monaco's.
+const K = monaco.languages.CompletionItemKind;
+const KINDS = [
+  K.Text,
+  K.Method,
+  K.Function,
+  K.Constructor,
+  K.Field,
+  K.Variable,
+  K.Class,
+  K.Interface,
+  K.Module,
+  K.Property,
+  K.Unit,
+  K.Value,
+  K.Enum,
+  K.Keyword,
+  K.Snippet,
+  K.Color,
+  K.File,
+  K.Reference,
+  K.Folder,
+  K.EnumMember,
+  K.Constant,
+  K.Struct,
+  K.Event,
+  K.Operator,
+  K.TypeParameter,
+];

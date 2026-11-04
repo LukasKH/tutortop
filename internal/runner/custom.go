@@ -3,7 +3,6 @@ package runner
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/xml"
 	"fmt"
 	"io/fs"
 	"maps"
@@ -88,88 +87,3 @@ ENV HOME=/home/runner
 WORKDIR /work
 USER 1000:1000
 `
-
-const (
-	junitBegin = "===TUTORTOP-JUNIT-BEGIN==="
-	junitEnd   = "===TUTORTOP-JUNIT-END==="
-)
-
-// junitScript runs the test command `repeat` times (frameworks have no common
-// way to repeat or shuffle tests) and prints each report between markers.
-func junitScript(command string, repeat int) string {
-	run := "rm -f /tmp/junit.xml; ( " + command + " ) 2>&1; " +
-		"echo; echo '" + junitBegin + "'; cat /tmp/junit.xml 2>/dev/null; echo; echo '" + junitEnd + "'"
-	return strings.Repeat(run+"; ", max(repeat, 1)-1) + run
-}
-
-// junitNode reads both <testsuites> and a lone <testsuite> root, with
-// suites nested to any depth.
-type junitNode struct {
-	XMLName xml.Name
-	Suites  []junitNode `xml:"testsuite"`
-	Cases   []junitCase `xml:"testcase"`
-}
-
-func (n junitNode) cases() []junitCase {
-	out := slices.Clone(n.Cases)
-	for _, s := range n.Suites {
-		out = append(out, s.cases()...)
-	}
-	return out
-}
-
-// parseJUnitRuns merges the reports of every repetition: a test passes only
-// if it passed in every run. A run without a readable report, or with no
-// tests, means the code didn't build.
-func parseJUnitRuns(stdout string, hidden map[string]bool) ([]TestResult, bool) {
-	var order []string
-	results := map[string]*TestResult{}
-	runs := 0
-	for rest := stdout; ; {
-		i := strings.Index(rest, junitBegin)
-		if i < 0 {
-			break
-		}
-		rest = rest[i+len(junitBegin):]
-		report, after, _ := strings.Cut(rest, junitEnd)
-		rest = after
-		runs++
-
-		var doc junitNode
-		if xml.Unmarshal([]byte(strings.TrimSpace(report)), &doc) != nil {
-			return nil, false
-		}
-		cases := doc.cases()
-		if len(cases) == 0 {
-			return nil, false
-		}
-		for _, c := range cases {
-			// A collection error (e.g. a syntax error) shows up as an errored
-			// case with no name: the code didn't build.
-			if c.Name == "" && c.Error != nil {
-				return nil, false
-			}
-			key := c.Classname + "\x00" + c.Name
-			r, ok := results[key]
-			if !ok {
-				r = &TestResult{Name: c.Name, Hidden: hidden[c.Name], Passed: true}
-				results[key] = r
-				order = append(order, key)
-			}
-			for _, p := range []*junitProblem{c.Failure, c.Error, c.Skipped} {
-				if p != nil && r.Passed {
-					r.Passed = false
-					r.Message = trimMessage(p.Message + "\n" + p.Body)
-				}
-			}
-		}
-	}
-	if runs == 0 {
-		return nil, false
-	}
-	out := make([]TestResult, 0, len(order))
-	for _, k := range order {
-		out = append(out, *results[k])
-	}
-	return out, true
-}

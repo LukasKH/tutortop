@@ -45,31 +45,6 @@ export function ActivityPanel({ activity, now = new Date() }: { activity: Activi
   );
 }
 
-const WEEKS = 26;
-
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-
-const STAT_VALUE = "text-[30px] leading-[1.1] font-bold tabular-nums";
-
-const STAT_LABEL = "text-sm text-muted-foreground";
-
-// One square per day; more finished, brighter.
-const CELL = "block size-[14px] rounded-[3px]";
-
-const LEVELS = ["bg-muted", "bg-[#3a3a3a]", "bg-[#6a6a6a]", "bg-[#a5a5a5]", "bg-foreground"];
-
-const pad = (n: number) => String(n).padStart(2, "0");
-
-const dateKey = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-
-const addDays = (d: Date, n: number) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
-
-function describe(date: Date, tasks: number, lessons: number) {
-  const day = `${MONTHS[date.getMonth()]} ${date.getDate()}`;
-  if (!tasks && !lessons) return `${day}: nothing finished`;
-  return `${day}: ${[tasks && plural(tasks, "exercise"), lessons && plural(lessons, "lesson")].filter(Boolean).join(", ")}`;
-}
-
 function Stat({ value, label }: { value: number; label: string }) {
   return (
     <div className="flex flex-col gap-0.5">
@@ -177,4 +152,29 @@ function Advent({ counts, now }: { counts: Counts; now: Date }) {
       </ol>
     </div>
   );
+}
+
+const STAT_VALUE = "text-[30px] leading-[1.1] font-bold tabular-nums";
+
+const STAT_LABEL = "text-sm text-muted-foreground";
+
+const WEEKS = 26;
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+// One square per day; more finished, brighter.
+const CELL = "block size-[14px] rounded-[3px]";
+
+const LEVELS = ["bg-muted", "bg-[#3a3a3a]", "bg-[#6a6a6a]", "bg-[#a5a5a5]", "bg-foreground"];
+
+const pad = (n: number) => String(n).padStart(2, "0");
+
+const dateKey = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+
+const addDays = (d: Date, n: number) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
+
+function describe(date: Date, tasks: number, lessons: number) {
+  const day = `${MONTHS[date.getMonth()]} ${date.getDate()}`;
+  if (!tasks && !lessons) return `${day}: nothing finished`;
+  return `${day}: ${[tasks && plural(tasks, "exercise"), lessons && plural(lessons, "lesson")].filter(Boolean).join(", ")}`;
 }

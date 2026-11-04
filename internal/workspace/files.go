@@ -1,0 +1,129 @@
+package workspace
+
+import (
+	"bufio"
+	"encoding/json"
+	"errors"
+	"os"
+	"path/filepath"
+
+	"gopkg.in/yaml.v3"
+)
+
+// WriteFileAtomic writes via a temporary file and a rename, so a crash never
+// leaves a half-written or empty file behind.
+func WriteFileAtomic(p string, data []byte) error {
+	f, err := os.CreateTemp(filepath.Dir(p), "."+filepath.Base(p)+".tmp-*")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(f.Name()) // no-op after a successful rename
+	if _, err := f.Write(data); err != nil {
+		f.Close()
+		return err
+	}
+	if err := f.Close(); err != nil {
+		return err
+	}
+	if err := os.Chmod(f.Name(), 0o644); err != nil {
+		return err
+	}
+	return os.Rename(f.Name(), p)
+}
+
+func readJSON[T any](p string) (T, error) {
+	return readFile[T](p, json.Unmarshal)
+}
+
+func readYAML[T any](p string) (T, error) {
+	return readFile[T](p, yaml.Unmarshal)
+}
+
+func readFile[T any](p string, unmarshal func([]byte, any) error) (T, error) {
+	var v T
+	b, err := os.ReadFile(p)
+	if err == nil {
+		err = unmarshal(b, &v)
+	}
+	if err != nil {
+		return *new(T), err // not a half-decoded value
+	}
+	return v, nil
+}
+
+// readEach reads <dir>/<entry>/<file> for every entry of dir, in name order,
+// skipping entries without a readable file.
+func readEach[T any](dir, file string) ([]T, error) {
+	entries, err := os.ReadDir(dir)
+	if errors.Is(err, os.ErrNotExist) {
+		return []T{}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	out := []T{}
+	for _, e := range entries {
+		if v, err := readYAML[T](filepath.Join(dir, e.Name(), file)); err == nil {
+			out = append(out, v)
+		}
+	}
+	return out, nil
+}
+
+func writeJSON(p string, v any) error {
+	b, err := json.MarshalIndent(v, "", "  ")
+	if err != nil {
+		return err
+	}
+	return WriteFileAtomic(p, b)
+}
+
+func writeYAML(p string, v any) error {
+	b, err := yaml.Marshal(v)
+	if err != nil {
+		return err
+	}
+	return WriteFileAtomic(p, b)
+}
+
+func removeIfExists(p string) error {
+	if err := os.Remove(p); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	return nil
+}
+
+func appendJSONL(p string, v any) error {
+	f, err := os.OpenFile(p, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	_, err = f.Write(append(b, '\n'))
+	return err
+}
+
+func readJSONL[T any](p string) ([]T, error) {
+	f, err := os.Open(p)
+	if errors.Is(err, os.ErrNotExist) {
+		return []T{}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	out := []T{}
+	sc := bufio.NewScanner(f)
+	sc.Buffer(make([]byte, 1024*1024), 16*1024*1024)
+	for sc.Scan() {
+		var v T
+		if json.Unmarshal(sc.Bytes(), &v) == nil {
+			out = append(out, v)
+		}
+	}
+	return out, sc.Err()
+}

@@ -67,8 +67,6 @@ type ActivityDay struct {
 	Lessons int    `json:"lessons"`
 }
 
-const dayLayout = "2006-01-02"
-
 // Summarize groups completions by local day as of now. A streak counts days
 // in a row with at least one completion. It stays alive through today until
 // midnight, so a learner who hasn't finished anything yet today keeps it.
@@ -121,3 +119,5 @@ func Summarize(cs []Completion, now time.Time) Activity {
 	}
 	return act
 }
+
+const dayLayout = "2006-01-02"

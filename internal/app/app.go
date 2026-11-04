@@ -86,14 +86,6 @@ func (a *App) ServiceShutdown() error {
 	return nil
 }
 
-// prepare builds a language's sandbox image in the background, so the first
-// check is fast.
-func (a *App) prepare(w *workspace.Workspace, language string) {
-	if tc, err := w.Toolchain(language); err == nil {
-		go a.runner.Prepare(context.Background(), tc)
-	}
-}
-
 // ---- environment ----
 
 type ProviderStatus struct {
@@ -307,6 +299,14 @@ func (a *App) ApproveProposal(wsID string) error {
 	a.post(w, workspace.ChatItem{Thread: workspace.PlanThread, Role: workspace.RoleNotice, Text: fmt.Sprintf("You approved the plan (revision %d).", c.Revision)})
 	a.keepReady(w, "The learner just approved the plan.")
 	return nil
+}
+
+// prepare builds a language's sandbox image in the background, so the first
+// check is fast.
+func (a *App) prepare(w *workspace.Workspace, language string) {
+	if tc, err := w.Toolchain(language); err == nil {
+		go a.runner.Prepare(context.Background(), tc)
+	}
 }
 
 // SaveMission saves the learner's own edit of their mission, then asks the

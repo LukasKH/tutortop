@@ -21,45 +21,6 @@ import (
 	"github.com/LukasKH/tutortop/internal/workspace"
 )
 
-// threadKey names one chat thread of one workspace: "plan", a task id, a
-// lesson's thread, or an objective's writer.
-type threadKey struct{ ws, thread string }
-
-// agentSession is one live tutor process for one chat thread.
-// Messages are handled one turn at a time, in order.
-type agentSession struct {
-	thread  string
-	cfg     tutorConfig // the agent, model and effort it was started with
-	queue   chan string
-	cancel  context.CancelFunc
-	busy    bool
-	stopped atomic.Bool // the learner pressed Stop during the current turn
-	once    sync.Once
-
-	ready    chan struct{} // closed once the agent has started (or failed to)
-	sess     agent.Session // set before ready is closed
-	startErr error
-}
-
-// started reports whether the agent process is up, without blocking.
-func (s *agentSession) started() bool {
-	select {
-	case <-s.ready:
-		return s.sess != nil
-	default:
-		return false
-	}
-}
-
-func (s *agentSession) close() {
-	s.once.Do(func() {
-		s.cancel()
-		if s.started() {
-			_ = s.sess.Close()
-		}
-	})
-}
-
 // Chat returns one thread's transcript: "plan" or a task id.
 func (a *App) Chat(wsID, thread string) ([]workspace.ChatItem, error) {
 	w, err := a.store.Open(wsID)
@@ -185,6 +146,62 @@ func (a *App) taskContext(w *workspace.Workspace, thread string) string {
 	}
 	b.WriteString("[/context]\n\n")
 	return b.String()
+}
+
+// lessonContext tells a lesson's tutor how the learner is doing on its quiz.
+func lessonContext(w *workspace.Workspace, id string) string {
+	d, err := w.Lesson(id)
+	if err != nil {
+		return ""
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "[context]\nOpen lesson: %s (%s), objective %s. Quiz: %d of %d answered, %d correct.\n", d.ID, d.Title, d.Objective, d.Answered, d.Questions, d.Correct)
+	for i, q := range d.Quiz {
+		if r, ok := d.Results[i]; ok && !r.Correct {
+			fmt.Fprintf(&b, "- Got question %d wrong: %q, picked %q.\n", i+1, text.Truncate(q.Question, 300), q.Options[r.Choice])
+		}
+	}
+	b.WriteString("[/context]\n\n")
+	return b.String()
+}
+
+// threadKey names one chat thread of one workspace: "plan", a task id, a
+// lesson's thread, or an objective's writer.
+type threadKey struct{ ws, thread string }
+
+// agentSession is one live tutor process for one chat thread.
+// Messages are handled one turn at a time, in order.
+type agentSession struct {
+	thread  string
+	cfg     tutorConfig // the agent, model and effort it was started with
+	queue   chan string
+	cancel  context.CancelFunc
+	busy    bool
+	stopped atomic.Bool // the learner pressed Stop during the current turn
+	once    sync.Once
+
+	ready    chan struct{} // closed once the agent has started (or failed to)
+	sess     agent.Session // set before ready is closed
+	startErr error
+}
+
+// started reports whether the agent process is up, without blocking.
+func (s *agentSession) started() bool {
+	select {
+	case <-s.ready:
+		return s.sess != nil
+	default:
+		return false
+	}
+}
+
+func (s *agentSession) close() {
+	s.once.Do(func() {
+		s.cancel()
+		if s.started() {
+			_ = s.sess.Close()
+		}
+	})
 }
 
 // message is one thing sent to the tutor. What the learner sees in the chat
@@ -360,23 +377,6 @@ func (a *App) runSession(ctx context.Context, w *workspace.Workspace, s *agentSe
 			}
 		}
 	}
-}
-
-// lessonContext tells a lesson's tutor how the learner is doing on its quiz.
-func lessonContext(w *workspace.Workspace, id string) string {
-	d, err := w.Lesson(id)
-	if err != nil {
-		return ""
-	}
-	var b strings.Builder
-	fmt.Fprintf(&b, "[context]\nOpen lesson: %s (%s), objective %s. Quiz: %d of %d answered, %d correct.\n", d.ID, d.Title, d.Objective, d.Answered, d.Questions, d.Correct)
-	for i, q := range d.Quiz {
-		if r, ok := d.Results[i]; ok && !r.Correct {
-			fmt.Fprintf(&b, "- Got question %d wrong: %q, picked %q.\n", i+1, text.Truncate(q.Question, 300), q.Options[r.Choice])
-		}
-	}
-	b.WriteString("[/context]\n\n")
-	return b.String()
 }
 
 // roleInstructions tells a tutor which conversation it's in. A title that

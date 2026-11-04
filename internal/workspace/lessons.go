@@ -34,11 +34,6 @@ type LessonSpec struct {
 	Quiz          []QuizQuestion `json:"quiz" jsonschema:"3-5 questions that make the learner recall and apply the lesson (retrieval practice), not recognise wording"`
 }
 
-type Source struct {
-	Title string `json:"title" yaml:"title"`
-	URL   string `json:"url" yaml:"url"`
-}
-
 type QuizQuestion struct {
 	Question    string   `json:"question" yaml:"question" jsonschema:"markdown; may include a code block"`
 	Options     []string `json:"options" yaml:"options" jsonschema:"3-4 plausible answers with the same number of words, so length and wording give nothing away"`
@@ -192,6 +187,24 @@ func checkQuiz(quiz []QuizQuestion, p *problems) {
 	}
 }
 
+// headings lists the markdown headings in text, outside code blocks (where
+// a line starting with # is a comment, not a heading).
+func headings(md string) []string {
+	var out []string
+	fenced := false
+	for line := range strings.SplitSeq(md, "\n") {
+		t := strings.TrimSpace(line)
+		if strings.HasPrefix(t, "```") || strings.HasPrefix(t, "~~~") {
+			fenced = !fenced
+			continue
+		}
+		if !fenced && strings.HasPrefix(t, "#") {
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
 // SaveLesson stores a validated lesson.
 func (w *Workspace) SaveLesson(spec LessonSpec) (LessonInfo, error) {
 	w.mu.Lock()
@@ -225,24 +238,6 @@ func (w *Workspace) SaveLesson(spec LessonSpec) (LessonInfo, error) {
 	}
 	w.commit("Add lesson " + info.ID)
 	return info, nil
-}
-
-// headings lists the markdown headings in text, outside code blocks (where
-// a line starting with # is a comment, not a heading).
-func headings(md string) []string {
-	var out []string
-	fenced := false
-	for line := range strings.SplitSeq(md, "\n") {
-		t := strings.TrimSpace(line)
-		if strings.HasPrefix(t, "```") || strings.HasPrefix(t, "~~~") {
-			fenced = !fenced
-			continue
-		}
-		if !fenced && strings.HasPrefix(t, "#") {
-			out = append(out, t)
-		}
-	}
-	return out
 }
 
 // markdown is the lesson as a readable file in the workspace, quiz without answers.

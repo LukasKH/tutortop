@@ -26,32 +26,6 @@ type Example struct {
 	Explanation string `json:"explanation,omitempty" jsonschema:"why, in a sentence, when it isn't obvious"`
 }
 
-func (s Statement) check(p *problems) {
-	if strings.TrimSpace(s.Task) == "" {
-		p.addf("statement.task is required: say what to write, e.g. 'Change NewNote so that …'")
-	}
-	if strings.TrimSpace(s.Context) == "" {
-		p.addf("statement.context is required")
-	}
-	if strings.TrimSpace(s.Signature) == "" {
-		p.addf("statement.signature is required")
-	}
-	if len(s.Requirements) == 0 {
-		p.addf("statement.requirements needs at least one exact rule")
-	}
-	if len(s.Examples) < 2 {
-		p.addf("statement.examples needs at least 2 examples")
-	}
-	for i, e := range s.Examples {
-		if strings.TrimSpace(e.Input) == "" || strings.TrimSpace(e.Output) == "" {
-			p.addf("statement.examples[%d] needs an input and an output", i)
-		}
-	}
-	if b := strings.TrimSpace(s.Background); b != "" && !strings.Contains(b, "```") {
-		p.addf("statement.background must show the technique with a worked example in a code block, on a different problem than the task")
-	}
-}
-
 // Markdown renders the statement as the task's README.md.
 func (s Statement) Markdown(title, language string) string {
 	var b strings.Builder
@@ -99,4 +73,30 @@ func inlineCode(s string) string {
 // example like NewNote(2, "   ", "") they're the point.
 func oneLine(s string) string {
 	return strings.TrimSpace(strings.ReplaceAll(s, "\n", " "))
+}
+
+func (s Statement) check(p *problems) {
+	if strings.TrimSpace(s.Task) == "" {
+		p.addf("statement.task is required: say what to write, e.g. 'Change NewNote so that …'")
+	}
+	if strings.TrimSpace(s.Context) == "" {
+		p.addf("statement.context is required")
+	}
+	if strings.TrimSpace(s.Signature) == "" {
+		p.addf("statement.signature is required")
+	}
+	if len(s.Requirements) == 0 {
+		p.addf("statement.requirements needs at least one exact rule")
+	}
+	if len(s.Examples) < 2 {
+		p.addf("statement.examples needs at least 2 examples")
+	}
+	for i, e := range s.Examples {
+		if strings.TrimSpace(e.Input) == "" || strings.TrimSpace(e.Output) == "" {
+			p.addf("statement.examples[%d] needs an input and an output", i)
+		}
+	}
+	if b := strings.TrimSpace(s.Background); b != "" && !strings.Contains(b, "```") {
+		p.addf("statement.background must show the technique with a worked example in a code block, on a different problem than the task")
+	}
 }
