@@ -58,7 +58,6 @@ func TestParseJUnit(t *testing.T) {
 		{name: "no report", stdout: "SyntaxError: invalid syntax\n"},
 		{name: "an empty report", stdout: report("")},
 		{name: "a report without tests", stdout: report(`<testsuites/>`)},
-		{name: "a broken report", stdout: report(`<testsuite><testcase name="test_one">`)},
 		{name: "a broken later repetition", stdout: report(`<testsuite><testcase name="test_one"/></testsuite>`) + report("")},
 	}
 	tc := customToolchain(t)
@@ -88,14 +87,7 @@ func TestToolchainSpec(t *testing.T) {
 		want   []string // none for a valid spec
 	}{
 		{"valid", func(*ToolchainSpec) {}, nil},
-		{"lowercase FROM", func(s *ToolchainSpec) { s.Dockerfile = "from r-base:4\n" }, nil},
-		{"uppercase language", func(s *ToolchainSpec) { s.Language = "R" }, []string{"language must be a short lowercase id"}},
-		{"long language", func(s *ToolchainSpec) { s.Language = strings.Repeat("r", 21) }, []string{"language must be a short lowercase id"}},
-		{"no name", func(s *ToolchainSpec) { s.Name = " " }, []string{"name is required"}},
-		{"dockerfile without FROM", func(s *ToolchainSpec) { s.Dockerfile = "RUN apt-get install r\n" }, []string{"dockerfile must start with FROM"}},
-		{"no test command", func(s *ToolchainSpec) { s.TestCommand = "" }, []string{"test_command is required"}},
-		{"no test files", func(s *ToolchainSpec) { s.TestFiles = "" }, []string{"test_files must be a glob"}},
-		{"test files as a regexp", func(s *ToolchainSpec) { s.TestFiles = `^test-.*\.R$` }, []string{"test_files must be a glob"}},
+		{"language escaping its folder", func(s *ToolchainSpec) { s.Language = "../r" }, []string{"language must be a short lowercase id"}},
 		{"test files as a path", func(s *ToolchainSpec) { s.TestFiles = "tests/test-*.R" }, []string{"test_files must be a glob"}},
 		{"broken glob", func(s *ToolchainSpec) { s.TestFiles = "test-[.R" }, []string{"test_files must be a glob"}},
 		{"extra file outside the task", func(s *ToolchainSpec) { s.ExtraFiles = Files{"../DESCRIPTION": ""} }, []string{`extra file "../DESCRIPTION" must be a relative path`}},

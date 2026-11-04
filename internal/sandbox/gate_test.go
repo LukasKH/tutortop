@@ -1,6 +1,7 @@
 package sandbox
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -27,7 +28,8 @@ func TestGate(t *testing.T) {
 		name   string
 		change func(in *GateInput)
 		passed bool
-		steps  []string // every step, failed ones marked with a leading ✗
+		steps  []string   // every step, failed ones marked with a leading ✗
+		names  *TestNames // if set, the names the gate saves
 	}{
 		{
 			name:   "a sound task",
@@ -40,6 +42,7 @@ func TestGate(t *testing.T) {
 				`mutant "ignores b" is caught`,
 				`mutant "off by one" is caught`,
 			},
+			names: &TestNames{Visible: []string{"TestSum"}, Hidden: []string{"TestNegative"}},
 		},
 		{
 			name: "missing parts are reported before anything runs",
@@ -119,30 +122,10 @@ func TestNegative(t *testing.T) { check(t, -1, -2, -3) }`)}
 					t.Errorf("step %d is %q (ok %v), want %q:\n%s", i, s.Name, s.OK, want, rep)
 				}
 			}
+			if c.names != nil && !reflect.DeepEqual(rep.Names, *c.names) {
+				t.Errorf("names %+v, want %+v", rep.Names, *c.names)
+			}
 		})
-	}
-}
-
-// The gate saves the names the reference run reported, telling hidden tests
-// apart by the visible-only run.
-func TestGateNamesTests(t *testing.T) {
-	in := GateInput{
-		Toolchain:   goToolchain,
-		Starter:     Files{"sum.go": "package task\n\nfunc Sum(a, b int) int { return 0 }\n"},
-		Reference:   Files{"sum.go": "package task\n\nfunc Sum(a, b int) int { return a + b }\n"},
-		Tests:       Files{"sum_test.go": test("func TestSum(t *testing.T) { t.Run(\"case\", func(t *testing.T) {}) }\nfunc TestZero(t *testing.T) {}")},
-		HiddenTests: Files{"edge_test.go": test(`func TestEdge(t *testing.T) { if Sum(1, 1) != 2 { t.Fatal() } }`)},
-		Mutants: []Mutant{
-			{Name: "a", Files: Files{"sum.go": "package task\n\nfunc Sum(a, b int) int { return a }\n"}},
-			{Name: "b", Files: Files{"sum.go": "package task\n\nfunc Sum(a, b int) int { return b }\n"}},
-		},
-	}
-	rep := gateLocal(t, in)
-	if !rep.Passed {
-		t.Fatalf("gate failed:\n%s", rep)
-	}
-	if strings.Join(rep.Names.Visible, " ") != "TestSum TestZero" || strings.Join(rep.Names.Hidden, " ") != "TestEdge" {
-		t.Errorf("names %+v", rep.Names)
 	}
 }
 
