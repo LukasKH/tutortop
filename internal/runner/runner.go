@@ -167,8 +167,10 @@ func (r *Runner) Prepare(ctx context.Context, tc Toolchain) error {
 	}
 }
 
-// buildTimeout bounds one image build, including pulling its base image.
-const buildTimeout = 20 * time.Minute
+// buildTimeout only stops a stuck build. A healthy first build can take a
+// while: it pulls a base image of a gigabyte or more, and a custom toolchain
+// may compile tools.
+const buildTimeout = time.Hour
 
 func (r *Runner) build(ctx context.Context, tc Toolchain) error {
 	if exec.CommandContext(ctx, r.Engine, "image", "inspect", tc.Image).Run() != nil {
