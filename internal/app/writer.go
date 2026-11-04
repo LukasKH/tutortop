@@ -7,7 +7,7 @@ import (
 	"github.com/LukasKH/tutortop/internal/workspace"
 )
 
-// Writers prepare lessons and exercises in the background. Each objective
+// Writers write lessons and exercises in the background. Each objective
 // gets its own short-lived agent conversation, so several objectives are
 // written at once, and the tutoring and planning chats stay free for the
 // learner. A writer isn't shown as a chat; the UI shows its objective as
@@ -18,11 +18,11 @@ import (
 // while it's busy, it ends once it has nothing left to do, and its MCP tools
 // publish lessons and tasks (mcp.go).
 
-// PrepareObjective has a writer write an objective's lesson and task now,
+// WriteObjectiveNow has a writer write an objective's lesson and task now,
 // because the learner opened it ahead of the suggested order. It returns
 // once the writer is asked; the lesson and task arrive as events, and a
 // writer that fails posts why in its thread.
-func (a *App) PrepareObjective(wsID, objectiveID string) error {
+func (a *App) WriteObjectiveNow(wsID, objectiveID string) error {
 	w, err := a.store.Open(wsID)
 	if err != nil {
 		return err

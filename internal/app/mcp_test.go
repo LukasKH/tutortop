@@ -198,7 +198,7 @@ func TestAskUserTakesTwoToFourQuestions(t *testing.T) {
 // writer gets the gate's report to fix it.
 func TestCreateTaskWithholdsATaskThatFailsTheGate(t *testing.T) {
 	a := newTestApp(t)
-	if err := a.runner.Check(context.Background()); err != nil {
+	if err := a.runner.Available(context.Background()); err != nil {
 		t.Skip(err)
 	}
 	w := goWorkspace(t, a)

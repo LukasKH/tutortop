@@ -267,7 +267,7 @@ func (ag *threadAgents) loop(ctx context.Context, w *workspace.Workspace, ta *th
 				// After endTurn, so the notice follows the cut-off reply.
 				post(w, workspace.ChatItem{Thread: ta.key.name, Role: workspace.RoleNotice, Text: "Stopped. Send a message to continue."})
 			}
-			ended := ag.answered(ta, errors.Is(err, agent.ErrStopped))
+			ended := ag.answered(ta, errors.Is(err, agent.ErrExited))
 			if err != nil && ctx.Err() == nil {
 				postFailure(w, ta.key.name, err.Error())
 			}
@@ -282,7 +282,7 @@ func (ag *threadAgents) loop(ctx context.Context, w *workspace.Workspace, ta *th
 func (ag *threadAgents) open(ctx context.Context, w *workspace.Workspace, ta *threadAgent, onEvent func(agent.Event)) (agent.Session, error) {
 	// This also switches the workspace to the agent in the settings, which
 	// forgets the other agent's saved conversations.
-	saved, err := w.UseProvider(ta.cfg.Agent)
+	saved, err := w.UseProvider(ta.cfg.Provider)
 	if err != nil {
 		return nil, err
 	}
@@ -293,11 +293,11 @@ func (ag *threadAgents) open(ctx context.Context, w *workspace.Workspace, ta *th
 	if resume {
 		opts.ResumeID = saved[ta.key.name]
 	}
-	cli, err := ag.openSession(ctx, ta.cfg.Agent, opts, onEvent)
+	cli, err := ag.openSession(ctx, ta.cfg.Provider, opts, onEvent)
 	// Saved before the first turn, so the id is on disk even if the app
 	// quits during it.
 	if err == nil && resume {
-		_ = w.SetResumeID(ta.cfg.Agent, ta.key.name, cli.ID())
+		_ = w.SetResumeID(ta.cfg.Provider, ta.key.name, cli.ID())
 	}
 	return cli, err
 }

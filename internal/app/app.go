@@ -24,11 +24,12 @@ type App struct {
 	mcp    *mcpHost
 	agents *threadAgents // each thread's running agent (agents.go)
 
-	// linkCheck is checkLinks; tests replace it so they don't need the network.
-	linkCheck func(ctx context.Context, urls []string) []string
+	// findBroken is findBrokenLinks; tests replace it so they don't need
+	// the network.
+	findBroken func(ctx context.Context, urls []string) []string
 
 	mu          sync.Mutex
-	lastResults map[taskKey]runner.Result  // latest check per task, for tutor context
+	lastResults map[taskKey]runner.Result  // latest test run per task, for tutor context
 	servers     map[string]*languageServer // running language servers by id
 
 	settingsMu   sync.Mutex
@@ -38,7 +39,7 @@ type App struct {
 
 func New() (*App, error) {
 	a := &App{runner: runner.New(), lastResults: map[taskKey]runner.Result{},
-		servers: map[string]*languageServer{}, linkCheck: checkLinks,
+		servers: map[string]*languageServer{}, findBroken: findBrokenLinks,
 		settingsPath: filepath.Join(xdg.ConfigHome, "tutortop", "settings.yaml"), models: map[string]modelList{}}
 	a.agents = newThreadAgents(agent.Start, func() agentConfig { return a.Settings().agentConfig() }, a.agentOptions)
 	// The workspaces folder: TUTORTOP_HOME, else the one chosen in the
@@ -72,7 +73,7 @@ func (a *App) ServiceStartup(context.Context, application.ServiceOptions) error 
 				continue
 			}
 			if c, _ := w.Curriculum(); c != nil {
-				a.prepare(w, c.Language)
+				a.prepareImage(w, c.Language)
 			}
 		}
 	}()
@@ -117,7 +118,7 @@ func (a *App) Environment() Environment {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	if err := a.runner.Check(ctx); err != nil {
+	if err := a.runner.Available(ctx); err != nil {
 		env.SandboxHint = err.Error()
 	} else {
 		env.SandboxOK = true

@@ -17,7 +17,7 @@ import (
 // brokenLinks opens the links a tool call cites and returns an error naming
 // the ones that don't exist, so the tutor fixes them and calls the tool again.
 func (a *App) brokenLinks(ctx context.Context, tool *mcp.Tool, urls []string) error {
-	bad := a.linkCheck(ctx, urls)
+	bad := a.findBroken(ctx, urls)
 	if len(bad) == 0 {
 		return nil
 	}
@@ -28,12 +28,12 @@ func (a *App) brokenLinks(ctx context.Context, tool *mcp.Tool, urls []string) er
 	return fmt.Errorf("%sFind the right pages (open them to check), then call %s again", msg, tool.Name)
 }
 
-// checkLinks opens every link and reports the ones that don't exist (404 or
-// 410, or a site that doesn't exist), so a made-up reference is caught before
-// the learner sees it. Pages that refuse robots or time out count as fine.
+// findBrokenLinks opens every link and reports the ones that don't exist
+// (404 or 410, or a site that doesn't exist), so a made-up reference is
+// caught before the learner sees it. Pages that refuse robots or time out count as fine.
 // When nothing can be reached at all, the computer is probably offline, and
 // nothing is reported.
-func checkLinks(ctx context.Context, urls []string) []string {
+func findBrokenLinks(ctx context.Context, urls []string) []string {
 	urls = slices.Compact(slices.Sorted(slices.Values(urls)))
 	if len(urls) == 0 {
 		return nil

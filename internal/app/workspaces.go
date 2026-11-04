@@ -39,7 +39,7 @@ func (a *App) Activity() (workspace.Activity, error) {
 // The icon is "" (the tutor picks one during the interview) or one of
 // workspace.Icons, as when the topic comes from an idea.
 func (a *App) CreateWorkspace(title, icon string) (string, error) {
-	provider := a.Settings().Agent
+	provider := a.Settings().Provider
 	title = strings.TrimSpace(title)
 	if title == "" {
 		return "", errors.New("give the topic a name")
@@ -142,7 +142,7 @@ func (a *App) ApproveProposal(wsID string) error {
 		return err
 	}
 	emit(workspaceChanged, WorkspaceEvent{Workspace: wsID})
-	a.prepare(w, c.Language)
+	a.prepareImage(w, c.Language)
 	post(w, workspace.ChatItem{
 		Thread: workspace.PlanThread.String(), Role: workspace.RoleNotice, Mark: workspace.MarkPlanApproved,
 		Text: fmt.Sprintf("You approved the plan (revision %d).", c.Revision),
@@ -151,10 +151,10 @@ func (a *App) ApproveProposal(wsID string) error {
 	return nil
 }
 
-// prepare builds a language's sandbox image in the background, so the first
-// check is fast. Plans prepare theirs when approved, and existing workspaces
+// prepareImage builds a language's sandbox image in the background, so the
+// first test run is fast. Plans prepare theirs when approved, and workspaces
 // when the app starts (ServiceStartup).
-func (a *App) prepare(w *workspace.Workspace, language string) {
+func (a *App) prepareImage(w *workspace.Workspace, language string) {
 	if tc, err := w.Toolchain(language); err == nil {
 		go a.runner.Prepare(context.Background(), tc)
 	}

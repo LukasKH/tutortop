@@ -159,7 +159,7 @@ func (a *App) checkToolchain(ctx context.Context, tc runner.Toolchain, ex toolch
 	}
 	if err := a.runner.Prepare(ctx, tc); err != nil {
 		// Build errors are the tutor's to fix, not a broken sandbox.
-		if a.runner.Check(ctx) != nil {
+		if a.runner.Available(ctx) != nil {
 			return "", err
 		}
 		return "Toolchain check FAILED: the image didn't build.\n" + err.Error(), nil

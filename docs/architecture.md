@@ -28,7 +28,7 @@ Wails links the two halves in two directions. The frontend calls Go methods and 
 
 ### Calls from the frontend
 
-`main.go` registers `App` as the app's only service. `wails3 generate bindings` reads it and writes `frontend/bindings`, with one TypeScript function per exported method and a TypeScript type for every struct those methods take or return. `lib/api.ts` re-exports them as `App`, so a component writes `App.RunChecks(wsID, taskID, files, false)`. A returned Go error becomes a rejected promise.
+`main.go` registers `App` as the app's only service. `wails3 generate bindings` reads it and writes `frontend/bindings`, with one TypeScript function per exported method and a TypeScript type for every struct those methods take or return. `lib/api.ts` re-exports them as `App`, so a component writes `App.RunTests(wsID, taskID, files, false)`. A returned Go error becomes a rejected promise.
 
 The bindings are generated, and committed. After changing an exported method or a type it returns, run `wails3 generate bindings -clean=true -ts -i` and commit the result. CI regenerates them and fails if they differ.
 
@@ -114,7 +114,7 @@ Components are styled with utility classes in their markup. The one exception is
 
 The agent is the learner's own CLI, signed in already. In a chat thread it's the tutor; in a writer's thread, it's that writer. `App` starts one agent process per thread, a conversation with its own chat. `workspace.Thread` names the four kinds, and its name is the chat's file name and what the frontend sends: `plan` for the mission and curriculum, the task id for a task, `lesson-<id>` for a lesson, and `write-<objective>` for an objective's writer.
 
-Writers have no chat window. They prepare an objective's lesson and exercise in the background, and the app keeps the next two unpassed objectives written so the learner doesn't wait.
+Writers have no chat window. They write an objective's lesson and exercise in the background, and the app keeps the next two unpassed objectives written so the learner doesn't wait.
 
 ### Thread agents
 
@@ -139,7 +139,7 @@ Each verb in it means one thing. A thread agent (`threadAgent`) **starts** and *
 - A thread agent ends when its CLI exits, its workspace is deleted or the app quits. A writer also ends as soon as it's idle, and starting any thread but the plan ends the workspace's idle task and lesson agents.
 - Busy and check events and snapshots take their numbers (`seq`) from one counter under `threadAgents.mu`, so the numbers order them exactly as they happened.
 
-The calls that message an agent (`SendMessage`, `AnswerQuestions`, `RequestHint`, `PrepareObjective`) return once the message is queued. They don't wait for the process to start. Their error means the message wasn't sent at all, for example because the thread name is invalid. Once a message is in the chat, anything that goes wrong with it is posted in that thread as a notice with status `failed`, and nowhere else:
+The calls that message an agent (`SendMessage`, `AnswerQuestions`, `RequestHint`, `WriteObjectiveNow`) return once the message is queued. They don't wait for the process to start. Their error means the message wasn't sent at all, for example because the thread name is invalid. Once a message is in the chat, anything that goes wrong with it is posted in that thread as a notice with status `failed`, and nowhere else:
 
 - If the CLI doesn't open (it's missing or not signed in), the thread agent posts why once, however many messages were waiting. It drops them and ends, so the thread turns idle and the next message tries a fresh start.
 - If a turn fails, its error is posted and the thread agent takes the next message. If the CLI exits, its error is posted, the queued messages are dropped and the next message starts a new thread agent.
@@ -161,7 +161,7 @@ Each tool is a `*mcp.Tool` with its name and description, a handler method on `t
 
 ## Checks and the editor
 
-**Run** and **Submit** call `App.RunChecks`. It saves the learner's code, runs the visible tests (plus the hidden ones on submit) in the sandbox and records the attempt. The sandbox images are built ahead, in the background, so the first check is fast: when the app starts (`ServiceStartup`, for every workspace's plan language) and when the learner approves a plan. Reading a workspace never starts a build, since the frontend repeats reads freely.
+**Run** and **Submit** call `App.RunTests`. It saves the learner's code, runs the visible tests (plus the hidden ones on submit) in the sandbox and records the attempt. The sandbox images are built ahead, in the background, so the first test run is fast: when the app starts (`ServiceStartup`, for every workspace's plan language) and when the learner approves a plan. Reading a workspace never starts a build, since the frontend repeats reads freely.
 
 The editor's completions and errors come from a language server running in the task's sandbox image. Go doesn't read the LSP messages. It relays them between the server's stdio and the frontend, sending them out as `lsp:message` events and taking them in through `App.SendLanguageServer`.
 

@@ -155,7 +155,7 @@ func TestFailedAgentIsReplaced(t *testing.T) {
 	fake.startErr = nil
 	queue(t, ag, w, workspace.PlanThread, "two")
 	crashed := fake.next(t)
-	crashed.end(fmt.Errorf("%w: out of memory", agent.ErrStopped))
+	crashed.end(fmt.Errorf("%w: out of memory", agent.ErrExited))
 	eventually(t, "idle after the crash", idle)
 	queue(t, ag, w, workspace.PlanThread, "three")
 	if fake.next(t).s == crashed.s {
@@ -182,7 +182,7 @@ func TestFailedAgentIsReplaced(t *testing.T) {
 // test ends them.
 func newHeldAgents(t *testing.T) (*threadAgents, *heldAgents, *workspace.Workspace) {
 	t.Helper()
-	fake := &heldAgents{turns: make(chan heldTurn, 8), cfg: agentConfig{Agent: "claude"}}
+	fake := &heldAgents{turns: make(chan heldTurn, 8), cfg: agentConfig{Provider: "claude"}}
 	ag := newThreadAgents(fake.start, func() agentConfig { return fake.cfg }, func(*workspace.Workspace, workspace.Thread) agent.Options { return agent.Options{} })
 	t.Cleanup(ag.endAll)
 	store := &workspace.Store{Root: t.TempDir(), PrivateRoot: t.TempDir()}

@@ -58,9 +58,9 @@ export function useTaskWork(wsId: string, taskId: string) {
     runningRef.current = true;
     setRunning(submit ? "submit" : "run");
     setError("");
-    cancelSave(); // RunChecks saves the files itself.
+    cancelSave(); // RunTests saves the files itself.
     try {
-      const result = await App.RunChecks(wsId, taskId, filesRef.current, submit);
+      const result = await App.RunTests(wsId, taskId, filesRef.current, submit);
       const r = { result, submit };
       lastRuns.set(runKey, r);
       setRun(r);

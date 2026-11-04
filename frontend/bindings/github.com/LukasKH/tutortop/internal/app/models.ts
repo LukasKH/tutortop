@@ -153,8 +153,9 @@ export interface SandboxCheck {
  */
 export interface Settings {
     /**
-     * Agent is the coding agent every thread runs on, tutors and writers
-     * alike, an agent.Provider ID.
+     * Provider is the coding agent every thread runs on, tutors and writers
+     * alike, an agent.Provider ID. It's "agent" in settings.yaml and to the
+     * frontend, as the Settings screen calls it.
      */
     "agent": string;
 

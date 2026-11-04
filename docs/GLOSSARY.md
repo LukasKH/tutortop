@@ -6,7 +6,7 @@ The words the code uses, what each means, and where it lives. Go identifiers are
 
 - **Workspace**: one topic the learner studies, kept as plain files and a git repo in `~/Tutortop/<id>`, plus private files outside it. Go: `workspace.Workspace`, opened through `workspace.Store`.
 - **Snapshot**: everything the workspace screen shows, read at one moment. Go: `app.WorkspaceSnapshot`, returned by `App.Workspace`; its `Seq` orders it among the `thread:busy` and `check:status` events. The frontend keeps it current between refetches as `LiveWorkspace` (`workspace-state.ts`), the snapshot plus what events changed since; `useWorkspace` returns that plus its calls (`UseWorkspaceResult`).
-- **Agent**: the learner's own coding-agent CLI (Claude Code, Codex), which Tutortop drives. Go: `agent.Provider` for each kind; the workspace remembers which one it last used in `Meta.Provider`. Every thread, tutor or writer, runs on the agent, model and effort chosen in Settings (`Settings.Agent` and `Settings.Models`, together an `agentConfig`), and its instructions start with the rules in `prompts/shared.md`.
+- **Agent**: the learner's own coding-agent CLI (Claude Code, Codex), which Tutortop drives. Go: `agent.Provider` for each kind; the workspace remembers which one it last used in `Meta.Provider`. Every thread, tutor or writer, runs on the agent, model and effort chosen in Settings (`Settings.Provider` and `Settings.Models`, together an `agentConfig`; `Settings.Provider` is the `agent` key in `settings.yaml`), and its instructions start with the rules in `prompts/shared.md`.
 - **Thread**: one conversation with the agent in a workspace, named by a string that is also its chat's file name. Go: `workspace.Thread` with a `ThreadKind`; TS: `PLAN_THREAD`, `lessonThread`, `writerThread` (`lib/workspace.ts`). The kinds:
   - **plan** (`PlanKind`, `"plan"`): the interview, the mission and the curriculum.
   - **task** (`TaskKind`, the task id): help with one task.
@@ -18,7 +18,7 @@ The words the code uses, what each means, and where it lives. Go identifiers are
 - **Session**: one conversation with the agent's CLI, in one running process. Go: `agent.Session`. Its id (`Session.ID`) is saved per chat as a **resume id** in `Meta.ResumeIDs` (the `sessions` key of `.tutortop/workspace.json`), so the chat resumes its conversation.
 - **Turn**: one message to the agent and everything it does until it answers. Go: one `agent.Session.Prompt` call. A thread is **busy** while it has turns queued or running (`thread:busy`).
 - **Tutor**: the agent answering in a chat (plan, task or lesson thread), as opposed to a writer. Its role is `prompts/plan.md`, `task.md` or `lesson.md`, after the shared rules. TS: `tutorBusy` means some chat's tutor is working.
-- **Writer**: the agent in a writer thread. It publishes its objective's lesson and task with `create_lesson` and `create_task`, then ends. Go: `writer.go`, `prompts/writer.md`; the app keeps the next `readyAhead` objectives written.
+- **Writer**: the agent in a writer thread. It publishes its objective's lesson and task with `create_lesson` and `create_task`, then ends. Go: `writer.go`, `prompts/writer.md`; the app keeps the next `readyAhead` objectives written, and `App.WriteObjectiveNow` writes one the learner opens ahead.
 
 ## The plan
 
@@ -43,9 +43,10 @@ The words the code uses, what each means, and where it lives. Go identifiers are
 
 ## The sandbox
 
-- **Sandbox**: the Docker or Podman container a check runs in, built from the toolchain's image. Go: `runner.Runner`.
+- **Sandbox**: the Docker or Podman container tests run in, built from the toolchain's image. Go: `runner.Runner`; `Runner.Available` says whether Docker or Podman works, and `Runner.Prepare` builds a toolchain's image ahead of the first run (`App.prepareImage`). "Prepare" means only that.
+- **Test run**: running a task's tests on the learner's code: the visible ones for **Run**, the hidden ones too for **Submit**. Go: `App.RunTests`, returning a `runner.Result`, recorded as an attempt.
 - **Quality gate**: the check a new task must pass before the learner sees it: the reference passes three times in shuffled order, the starter fails, and at least two mutants are caught. Go: `runner.Gate`, reporting a `runner.GateReport`.
-- **Sandbox check**: a check an agent waits for and the learner watches: a writer's task in the quality gate, or a language a chat sets up. Go: `app.SandboxCheck` with a `CheckKind`, sent as `check:status`; TS: `LiveWorkspace.checks` (by objective) and `toolchainCheck`.
+- **Sandbox check**: a check an agent waits for and the learner watches: a writer's task in the quality gate, or a language a chat sets up. In the code, "check" means only this. Go: `app.SandboxCheck` with a `CheckKind`, sent as `check:status`; TS: `LiveWorkspace.checks` (by objective) and `toolchainCheck`.
 - **Toolchain**: how one language's tests run and are read. **Built-in** ones ship with the app (`runner.Builtin`, `BuiltinLanguages`); **custom** ones are set up by the tutor with `set_toolchain` and saved per workspace (`runner.ToolchainSpec`, `.tutortop/toolchains/<language>.yaml`). A workspace's own toolchain wins over a built-in of the same language.
 - **Language server**: the program in the sandbox image that gives the editor completions and errors. Go: `Toolchain.LanguageServer`, relayed by `lsp.go` as `lsp:message`.
 

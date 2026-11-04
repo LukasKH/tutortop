@@ -20,7 +20,7 @@ import (
 // Set TUTORTOP_RUNNER=local to run without Docker.
 func TestToolsEndToEnd(t *testing.T) {
 	a := newTestApp(t)
-	if err := a.runner.Check(context.Background()); err != nil {
+	if err := a.runner.Available(context.Background()); err != nil {
 		t.Skip(err)
 	}
 	w, err := a.store.Create("Learn Go", "claude")
@@ -39,7 +39,7 @@ func TestToolsEndToEnd(t *testing.T) {
 	}
 
 	// A reference that doesn't open is sent back.
-	a.linkCheck = func(_ context.Context, urls []string) []string { return []string{urls[0] + " returns 404 Not Found"} }
+	a.findBroken = func(_ context.Context, urls []string) []string { return []string{urls[0] + " returns 404 Not Found"} }
 	if out, isErr := callTool("propose_curriculum", map[string]any{
 		"language": "go", "modules": []any{map[string]any{"id": "basics", "title": "Basics",
 			"references": []any{map[string]any{"title": "Made up", "url": "https://go.dev/made-up"}},
@@ -47,7 +47,7 @@ func TestToolsEndToEnd(t *testing.T) {
 	}); !isErr || !strings.Contains(out, "made-up returns 404") {
 		t.Fatalf("a broken reference was accepted: %s", out)
 	}
-	a.linkCheck = func(context.Context, []string) []string { return nil }
+	a.findBroken = func(context.Context, []string) []string { return nil }
 
 	call("propose_curriculum", map[string]any{
 		"language": "go", "taskDefaults": map[string]any{"size": "small"},
@@ -77,11 +77,11 @@ func TestToolsEndToEnd(t *testing.T) {
 	}
 
 	// The learner's starter code fails; the reference passes and counts.
-	res, err := a.RunChecks(w.ID, created.TaskID, runner.Files{"solution.go": goStarter}, true)
+	res, err := a.RunTests(w.ID, created.TaskID, runner.Files{"solution.go": goStarter}, true)
 	if err != nil || res.Status != runner.StatusFailed {
 		t.Fatalf("starter submit = %v %+v", err, res)
 	}
-	res, err = a.RunChecks(w.ID, created.TaskID, runner.Files{"solution.go": goReference}, true)
+	res, err = a.RunTests(w.ID, created.TaskID, runner.Files{"solution.go": goReference}, true)
 	if err != nil || res.Status != runner.StatusPassed {
 		t.Fatalf("reference submit = %v %+v", err, res)
 	}
@@ -133,7 +133,7 @@ func newTestApp(t *testing.T) *App {
 	}
 	a.store = &workspace.Store{Root: t.TempDir(), PrivateRoot: t.TempDir()}
 	a.settingsPath = filepath.Join(t.TempDir(), "settings.yaml")
-	a.linkCheck = func(context.Context, []string) []string { return nil }
+	a.findBroken = func(context.Context, []string) []string { return nil }
 	// Never start a real agent from a test; tests that watch the agent replace this.
 	a.agents.openSession = func(context.Context, string, agent.Options, func(agent.Event)) (agent.Session, error) {
 		return &fakeSession{prompts: new([]string), mu: &sync.Mutex{}}, nil
@@ -145,7 +145,7 @@ func newTestApp(t *testing.T) *App {
 func sandboxApp(t *testing.T) *App {
 	t.Helper()
 	a := newTestApp(t)
-	if err := a.runner.Check(context.Background()); err != nil {
+	if err := a.runner.Available(context.Background()); err != nil {
 		t.Skip(err)
 	}
 	if a.runner.Engine == "local" {

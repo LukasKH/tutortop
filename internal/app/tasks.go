@@ -32,10 +32,10 @@ func (a *App) ResetWork(wsID, taskID string) error {
 	return w.ResetWork(taskID)
 }
 
-// RunChecks runs the visible tests, or all tests when submit is true.
-// A passing submission tells the planning tutor, and writers prepare what
+// RunTests runs the visible tests, or all tests when submit is true.
+// A passing submission tells the planning tutor, and writers write what
 // comes next.
-func (a *App) RunChecks(wsID, taskID string, files runner.Files, submit bool) (runner.Result, error) {
+func (a *App) RunTests(wsID, taskID string, files runner.Files, submit bool) (runner.Result, error) {
 	w, err := a.store.Open(wsID)
 	if err != nil {
 		return runner.Result{}, err

@@ -29,7 +29,7 @@ A workspace remembers one agent (`Meta.Provider`) and, for each chat, the `Sessi
 
 `Start` returns once the CLI is ready for a prompt and the session has an id. Do any handshake (initialize, sign-in check, new or resumed session) before returning, under its own timeout, so a CLI that hangs can't block the app. The process runs in `opts.Cwd`, the learner's workspace.
 
-When start fails, return an error the learner can act on. If the CLI isn't installed, `startProcess` already says so. If it isn't signed in, say which command to run. If it exited, return `process.abort(err)`, which wraps `ErrStopped` around the end of the CLI's stderr.
+When start fails, return an error the learner can act on. If the CLI isn't installed, `startProcess` already says so. If it isn't signed in, say which command to run. If it exited, return `process.abort(err)`, which wraps `ErrExited` around the end of the CLI's stderr.
 
 ### Options
 
@@ -49,7 +49,7 @@ Every field must be honoured:
 | the turn ended | `nil` | takes the next prompt |
 | `Cancel` ended it | `nil` | takes the next prompt |
 | the agent reports the turn failed (usage limit, API error) | an error with the agent's reason | takes the next prompt |
-| the process exited | an error wrapping `ErrStopped` | finished; the app starts a new one |
+| the process exited | an error wrapping `ErrExited` | finished; the app starts a new one |
 | `ctx` ended first | `ctx.Err()` | the turn may still be running |
 
 The second row is easy to get wrong. CLIs often report an interrupted turn as a failure, and Claude Code does. The adapter has to remember that it asked for the interrupt.
@@ -81,7 +81,7 @@ Build the policy with `newPolicy(opts)` when the session starts.
 
 | File | What it gives an adapter |
 | --- | --- |
-| `process.go` | `startProcess` finds and starts the CLI with piped stdio; `send` writes one line of JSON; `await` waits for a reply unless the process exits first; `abort` and `exitError` turn an exit into `ErrStopped` with stderr. `decode[T]` decodes a message or a field of one. |
+| `process.go` | `startProcess` finds and starts the CLI with piped stdio; `send` writes one line of JSON; `await` waits for a reply unless the process exits first; `abort` and `exitError` turn an exit into `ErrExited` with stderr. `decode[T]` decodes a message or a field of one. |
 | `rpc.go` | `rpcConn`, newline-delimited JSON-RPC: `Call[T]`, `Notify`, and handlers for the CLI's notifications and requests. |
 | `policy.go` | `policy.allow`, the one place that decides tool calls. |
 | `agent.go` | `optional`, for titles like `"Searched files" + optional(": ", pattern)`. |
@@ -106,7 +106,7 @@ Cover what can break:
 - a turn's text deltas, tool calls starting, finishing and failing, and the turn ending;
 - a failed turn as an error, after which the next prompt still works;
 - `Cancel` sending the CLI's interrupt, and the interrupted turn returning `nil`;
-- the process exiting during start and during a turn, giving `ErrStopped` with stderr;
+- the process exiting during start and during a turn, giving `ErrExited` with stderr;
 - the MCP warning, if the CLI reports MCP status;
 - the model list;
 - the policy: call `testPolicy(t, cwd, ask)` from `policy_test.go`. `ask` makes your fake CLI request permission for a `Tool` and reports whether the adapter allowed it. It runs the shared cases: shell refused, edits under `tasks/` refused, paths outside the workspace refused, our MCP server allowed and others refused. A case your CLI never asks about calls `t.Skip` with the reason.
@@ -136,7 +136,7 @@ An ACP tool call doesn't say which MCP server its tool belongs to, so the adapte
 
 An agent that has no model or thought-level option returns a single `Model` with an empty `ID` and no efforts, which tells the app to leave the choice to the CLI. Don't fall back to sending the instructions as the first prompt: a resumed session would get them twice, and the agent may drop them when it compacts its context.
 
-Don't offer the terminal capability. If you offer file access, put each read and write through the policy too. Pass the SDK's connection the `process` pipes, so `ErrStopped`, stderr and `Close` work the same as for the other adapters.
+Don't offer the terminal capability. If you offer file access, put each read and write through the policy too. Pass the SDK's connection the `process` pipes, so `ErrExited`, stderr and `Close` work the same as for the other adapters.
 
 The SDK's `acp.Client` interface, which `NewClientSideConnection` takes, has every method an agent may call on the client, whatever the client offers: `SessionUpdate`, `RequestPermission`, `ReadTextFile`, `WriteTextFile`, and the terminal methods `CreateTerminal`, `TerminalOutput`, `WaitForTerminalExit`, `KillTerminal` and `ReleaseTerminal`. An agent shouldn't call the file or terminal ones without the capability, but the adapter must still have them: make each one you don't offer return an error, so a call is refused, never carried out. When `Cancel` ends a turn, ACP requires the client to answer each pending `session/request_permission` with the `cancelled` outcome.
 

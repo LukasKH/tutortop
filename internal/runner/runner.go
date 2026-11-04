@@ -93,7 +93,7 @@ type Runner struct {
 }
 
 // New uses the engine in TUTORTOP_RUNNER, or else Docker if it's installed,
-// or else Podman. With neither installed it keeps "docker", and Check says
+// or else Podman. With neither installed it keeps "docker", and Available says
 // how to get one.
 func New() *Runner {
 	engine := os.Getenv("TUTORTOP_RUNNER")
@@ -108,8 +108,9 @@ func New() *Runner {
 	return &Runner{Engine: engine, prepared: map[string]bool{}}
 }
 
-// Check reports whether the sandbox is usable, with a fix-it hint if not.
-func (r *Runner) Check(ctx context.Context) error {
+// Available reports whether the sandbox's engine is usable, with a fix-it
+// hint if not.
+func (r *Runner) Available(ctx context.Context) error {
 	if r.Engine == "local" {
 		return nil
 	}

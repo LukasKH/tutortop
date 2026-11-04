@@ -121,7 +121,7 @@ func TestClaudeTurn(t *testing.T) {
 	done = prompt(t, sess, "again")
 	cli.recv(t)
 	cli.send(t, `{"type":"result","subtype":"error_during_execution","is_error":true,"result":"Credit balance is too low"}`)
-	if err := wait(t, done); err == nil || !strings.Contains(err.Error(), "Credit balance is too low") || errors.Is(err, ErrStopped) {
+	if err := wait(t, done); err == nil || !strings.Contains(err.Error(), "Credit balance is too low") || errors.Is(err, ErrExited) {
 		t.Errorf("failed turn: %v, want Claude's reason", err)
 	}
 	done = prompt(t, sess, "once more")
@@ -206,11 +206,11 @@ func TestClaudeExit(t *testing.T) {
 		cli.recv(t)
 		cli.exit(t, 1, "Error: session expired, run claude login")
 		err := wait(t, done)
-		if !errors.Is(err, ErrStopped) || !strings.Contains(err.Error(), "run claude login") {
-			t.Errorf("Prompt = %v, want ErrStopped with the CLI's stderr", err)
+		if !errors.Is(err, ErrExited) || !strings.Contains(err.Error(), "run claude login") {
+			t.Errorf("Prompt = %v, want ErrExited with the CLI's stderr", err)
 		}
-		if err := wait(t, prompt(t, sess, "again")); !errors.Is(err, ErrStopped) {
-			t.Errorf("Prompt after exit = %v, want ErrStopped", err)
+		if err := wait(t, prompt(t, sess, "again")); !errors.Is(err, ErrExited) {
+			t.Errorf("Prompt after exit = %v, want ErrExited", err)
 		}
 	})
 	t.Run("while starting", func(t *testing.T) {
@@ -222,8 +222,8 @@ func TestClaudeExit(t *testing.T) {
 		cli := clis.next(t)
 		cli.recv(t)
 		cli.exit(t, 1, "unknown option --effort")
-		if err := wait(t, started); !errors.Is(err, ErrStopped) || !strings.Contains(err.Error(), "unknown option --effort") {
-			t.Errorf("Start = %v, want ErrStopped with the CLI's stderr", err)
+		if err := wait(t, started); !errors.Is(err, ErrExited) || !strings.Contains(err.Error(), "unknown option --effort") {
+			t.Errorf("Start = %v, want ErrExited with the CLI's stderr", err)
 		}
 	})
 }

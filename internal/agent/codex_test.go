@@ -133,7 +133,7 @@ func TestCodexTurn(t *testing.T) {
 	done = prompt(t, sess, "again")
 	codexReply(t, cli, codexExpect(t, cli, "turn/start"), `{"turn":{"id":"turn_2","status":"inProgress","items":[]}}`)
 	cli.send(t, `{"method":"turn/completed","params":{"threadId":"thr_1","turn":{"id":"turn_2","status":"failed","items":[],"error":{"message":"usage limit reached"}}}}`)
-	if err := wait(t, done); err == nil || !strings.Contains(err.Error(), "usage limit reached") || errors.Is(err, ErrStopped) {
+	if err := wait(t, done); err == nil || !strings.Contains(err.Error(), "usage limit reached") || errors.Is(err, ErrExited) {
 		t.Errorf("failed turn: %v, want Codex's reason", err)
 	}
 	done = prompt(t, sess, "once more")
@@ -166,11 +166,11 @@ func TestCodexExit(t *testing.T) {
 	done := prompt(t, sess, "hi")
 	codexReply(t, cli, codexExpect(t, cli, "turn/start"), `{"turn":{"id":"turn_1","status":"inProgress","items":[]}}`)
 	cli.exit(t, 1, "thread 'main' panicked")
-	if err := wait(t, done); !errors.Is(err, ErrStopped) || !strings.Contains(err.Error(), "panicked") {
-		t.Errorf("Prompt = %v, want ErrStopped with the CLI's stderr", err)
+	if err := wait(t, done); !errors.Is(err, ErrExited) || !strings.Contains(err.Error(), "panicked") {
+		t.Errorf("Prompt = %v, want ErrExited with the CLI's stderr", err)
 	}
-	if err := wait(t, prompt(t, sess, "again")); !errors.Is(err, ErrStopped) {
-		t.Errorf("Prompt after exit = %v, want ErrStopped", err)
+	if err := wait(t, prompt(t, sess, "again")); !errors.Is(err, ErrExited) {
+		t.Errorf("Prompt after exit = %v, want ErrExited", err)
 	}
 }
 
