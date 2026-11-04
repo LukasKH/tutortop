@@ -1,7 +1,7 @@
 import { useEffect, useEffectEvent } from "react";
 import { Events } from "@wailsio/runtime";
 import { App as Bindings } from "@bindings/github.com/LukasKH/tutortop/internal/app";
-import type { Environment, Gate, Settings, WorkspaceState } from "@bindings/github.com/LukasKH/tutortop/internal/app";
+import type { Environment, Gate, ProviderStatus, Settings, WorkspaceState } from "@bindings/github.com/LukasKH/tutortop/internal/app";
 import type { Model } from "@bindings/github.com/LukasKH/tutortop/internal/agent";
 import type {
   Activity,
@@ -35,6 +35,7 @@ export type {
   Model,
   Objective,
   Progress,
+  ProviderStatus,
   Question,
   Questions,
   QuizResult,

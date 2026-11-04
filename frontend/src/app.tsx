@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { App, type Settings } from "@/lib/api";
 import { Home } from "@/features/home/home";
 import { SettingsDialog } from "@/features/settings/settings-dialog";
-import { loadModels, tutorLabel } from "@/lib/models";
+import { loadModels, loadProviders, tutorLabel } from "@/lib/agents";
 import { WorkspaceView } from "@/features/workspace/workspace-view";
 import { useStored } from "@/hooks/use-stored";
 
@@ -19,11 +19,16 @@ export function AppRoot() {
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   useEffect(() => {
+    // The tutor label shows the agent's and model's names, which come with
+    // the backend's lists; it's drawn again as each arrives.
+    const redraw = () => setSettings((cur) => cur && { ...cur });
+    loadProviders()
+      .then(redraw)
+      .catch(() => {});
     App.Settings().then((s) => {
       setSettings(s);
-      // The tutor label shows model names, which come with the model list.
       loadModels(s.agent)
-        .then(() => setSettings((cur) => cur && { ...cur }))
+        .then(redraw)
         .catch(() => {});
     });
   }, []);

@@ -12,7 +12,7 @@ An adapter is one file, like `claude.go` or `codex.go`. It has three parts:
 - `xModels(ctx) ([]Model, error)`, which lists the models it offers;
 - an entry in `Providers()` with an id, a display name and the binary to look up on `PATH`.
 
-That's all the app needs. Settings list `Providers()` and show the ones that aren't installed as missing. Workspaces save session ids per provider id. The frontend's `providerName` in `frontend/src/lib/format.ts` falls back to showing the id, so give it the display name too.
+That's all the app needs. Settings list `Providers()` and show the ones that aren't installed as missing. Workspaces save session ids per provider id. The frontend takes the display name from `App.Environment()`, so it needs no change.
 
 ## The contract
 

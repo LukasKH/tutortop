@@ -2,8 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { cn } from "cn";
 import { Dialogs } from "@wailsio/runtime";
 import { App, errorText, type Model, type Environment, type Settings } from "@/lib/api";
-import { providerName } from "@/lib/format";
-import { cachedModels, currentModel, effortLabel, loadModels } from "@/lib/models";
+import { cachedModels, cachedProviders, currentModel, effortLabel, loadModels, providerName } from "@/lib/agents";
 import { ErrorText } from "@/components/error-text";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
@@ -62,6 +61,8 @@ export function SettingsDialog({ settings, onChange, onClose }: Props) {
   const efforts =
     selected?.efforts?.length && !selected.defaultEffort ? [{ id: "", description: "Let the agent decide" }, ...selected.efforts] : (selected?.efforts ?? []);
   const effort = choice.effort || selected?.defaultEffort || "";
+  // Until a fresh check of what's installed arrives, the agents as the app last saw them, or at least the chosen one.
+  const providers = env?.providers ?? cachedProviders() ?? [{ id: agent, name: providerName(agent), installed: true }];
 
   return (
     // Closing unmounts the dialog. Escape and a click on the backdrop close it too.
@@ -86,12 +87,7 @@ export function SettingsDialog({ settings, onChange, onClose }: Props) {
           <fieldset className={FIELD}>
             <legend className={FIELD_LABEL}>Agent</legend>
             <RadioGroup aria-label="Agent" className={CHOICES} value={agent} onValueChange={(id) => save({ ...settings, agent: id })}>
-              {(
-                env?.providers ?? [
-                  { id: "claude", name: "Claude Code", installed: true },
-                  { id: "codex", name: "Codex", installed: true },
-                ]
-              ).map((p) => (
+              {providers.map((p) => (
                 <Choice key={p.id} value={p.id} title={p.path || undefined} disabled={!p.installed}>
                   <span>{p.name}</span>
                   {!p.installed && <span className={CHOICE_NOTE}>not installed</span>}
