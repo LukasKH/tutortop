@@ -1,118 +1,112 @@
 # Style guide
 
-How code in Tutortop is written. Reviews check changes against it. Rules marked **(lint)** also fail the pre-commit hooks.
+How we write code in Tutortop. Reviews check changes against this guide. Rules marked **(lint)** are also checked by the pre-commit hooks.
 
 ## Defaults first
 
-- Follow each library's documented structure and idioms before inventing our own: Wails v3 services and bindings, React and the Vite template, shadcn/ui, the Go standard library. If you must deviate, say why in a comment.
-- Prefer the standard library or a maintained library over hand-rolled logic.
+Follow each library's documented structure and idioms: Wails v3 services and bindings, React and the Vite template, shadcn/ui, the Go standard library. If you need to deviate, explain why in a comment.
+
+Prefer the standard library or a maintained library over hand-rolled code.
 
 ## File layout
 
-- Start each file with what it offers: its exported types and functions, the main one first. Helpers and internal details go below the code that uses them, close to their caller ("newspaper" or step-down style).
-- In Go, keep a type's constructor and methods together with the type.
-- In TypeScript, a module-level value that's used while the module loads must stay above its first use.
+Put what a file offers first: its exported types and functions, the main one at the top. Put helpers below the code that uses them.
+
+In Go, keep a type's constructor and methods next to the type. In TypeScript, keep a module-level value above its first use at load time.
 
 ## Go
 
 ### Services
 
-- The frontend talks to Wails services, one per area: workspaces, tasks, chat, settings, and so on. A service is a struct whose exported methods are the frontend's API, registered in `main.go`. (Wails v3: "one service, one purpose".)
-- A service gets its dependencies through its constructor. No package-level mutable state.
+Give each area of the frontend's API its own Wails service: workspaces, tasks, chat, settings, and so on. Register them in `main.go`.
+
+Pass a service its dependencies through its constructor, not through package-level variables.
 
 ### Dependencies
 
-- A dependency is a named type with methods, like `*workspace.Store`, or a small interface defined in the package that uses it. Not a function field.
+Make dependencies named types, not function fields.
 
-  ```go
-  // Don't
-  type App struct {
-  	findBroken func(ctx context.Context, urls []string) []string
-  }
+```go
+// Good:
+type App struct {
+	links *linkChecker
+}
 
-  // Do
-  type App struct {
-  	links *linkChecker // linkChecker{client *http.Client}
-  }
-  ```
+// Bad:
+type App struct {
+	findBroken func(ctx context.Context, urls []string) []string
+}
+```
 
-- Function fields are for hooks that customise how a type behaves, like `exec.Cmd.Cancel`, not for passing in dependencies.
-- Add an interface only at a boundary that tests really replace: the agent's CLI, HTTP, the sandbox. A type with one implementation and no fake needs no interface.
-- Verify interface compliance at compile time where nothing else checks it: a type a library finds by type assertion at runtime, like a Wails service's `ServiceStartup` and `ServiceShutdown`. A wrong signature there compiles fine and is silently never called. Put the assertion next to the type:
+Use a concrete type. Define an interface only when a test needs a fake, and define it in the package that uses it.
 
-  ```go
-  var _ application.ServiceShutdown = (*ChatService)(nil)
-  ```
+When a library looks for an interface at runtime, such as Wails' `ServiceShutdown`, assert it so a wrong signature fails to compile:
 
-  Skip it where code already assigns the type to the interface (`return s, nil` from a function returning `Session`): the compiler checks that already.
-- Use the standard test seams: `httptest` for HTTP, `t.TempDir()` for files, the fake CLI in `internal/agent` for agent CLIs.
+```go
+var _ application.ServiceShutdown = (*ChatService)(nil)
+```
 
 ### State
 
-- Data lives with its owner: a workspace's data in `internal/workspace`, the app's settings in the settings store. A service doesn't keep its own map of another package's data.
-- Prefer a method on the owner (`w.LastRun(taskID)`) over a map keyed by a composite key (`map[taskKey]runner.Result`).
+Keep data in the package that owns it.
 
-### Constructors and literals
+```go
+// Good:
+run, ok := w.LastRun(taskID)
 
-- Keep struct literals plain. A value that needs explaining gets a named helper with its own comment, not a comment inside the literal.
+// Bad:
+run, ok := a.lastResults[taskKey{wsID, taskID}]
+```
 
-  ```go
-  // Don't
-  return &threadAgents{openSession: openSession, config: config, options: options, agents: map[threadKey]*threadAgent{},
-  	// Counting from the time keeps the numbers rising across a restart.
-  	seq: uint64(time.Now().UnixMicro())}
+### Return values
 
-  // Do
-  return &threadAgents{settings: settings, mcp: mcp, cli: cli, agents: map[threadKey]*threadAgent{}, seq: firstSeq()}
-  ```
+Return values instead of filling a pointer. Use a generic helper so the result and its type read on one line.
 
-### Return values, not out-parameters
+```go
+// Good:
+meta, err := decode[Meta](b)
 
-- A function that produces a value returns it, typed, so the call reads as one line: the result and its error on the left, the type on the right. Use a generic function or method (Go 1.27 allows type parameters on methods) instead of declaring a variable and passing a pointer to fill.
+// Bad:
+var meta Meta
+err := json.Unmarshal(b, &meta)
+```
 
-  ```go
-  // Don't
-  var meta Meta
-  err := json.Unmarshal(b, &meta)
+Use a pointer when performance calls for it, such as reusing one value while decoding many items in a loop. Reset it on each pass: `Unmarshal` keeps fields the input doesn't set.
 
-  // Do
-  meta, err := decode[Meta](b)
-  ```
+### Struct literals
 
-- Existing helpers: `decode[T]` (internal/agent), `readJSON[T]` and `readYAML[T]` (internal/workspace), `rpcConn.Call[T]`. Use them, or add one like them, rather than unmarshalling into a pointer. The helper itself is the one place that calls the standard library with `&v`.
-- Pass a pointer instead when:
-  - **decoding into a value that already holds data**, such as merging a file over defaults. The standard library's decoders take a pointer for this reason, even the new `encoding/json/v2`.
-  - **decoding many items in a loop.** Reuse one value instead of creating a new one each time, so it isn't allocated on every pass. `Unmarshal` leaves fields that are missing from the input untouched, so reset the value first:
+Keep struct literals plain. Move a value that needs explaining into a named function with its own comment.
 
-    ```go
-    var ev goTestEvent
-    for line := range strings.Lines(out) {
-    	ev = goTestEvent{} // or the previous line's fields leak into this one
-    	if json.Unmarshal([]byte(line), &ev) != nil {
-    		continue
-    	}
-    	…
-    }
-    ```
+```go
+// Good:
+return &threadAgents{settings: settings, agents: map[threadKey]*threadAgent{}, seq: firstSeq()}
 
-  - **an interface needs the method.** Interface methods can't have type parameters (Go spec), so a seam's method takes or returns a concrete type, and the generic call stays in a helper.
+// Bad:
+return &threadAgents{settings: settings, agents: map[threadKey]*threadAgent{},
+	// Counting from the time keeps the numbers rising across a restart.
+	seq: uint64(time.Now().UnixMicro())}
+```
 
-### Types and control flow
+### Control flow
 
-- An enum-like value gets a named type and constants. A switch over one covers every case **(lint: exhaustive)**.
-- Keep functions shallow: return early, and split a function that nests deeply or branches a lot **(lint: gocognit, nestif)**.
+Give enum-like values a named type and constants, and cover every case when you switch on one **(lint: exhaustive)**.
+
+Return early instead of nesting. Split a function that branches a lot **(lint: gocognit, nestif)**.
 
 ## TypeScript and React
 
-- Follow the rules of hooks **(lint)**.
-- A component gets what it renders. Don't pass the same data twice, and don't drill props through more than two levels; let the hook that owns the state hand it out.
-- Re-export generated binding types under their Go names. Never edit `frontend/bindings`; regenerate it.
+Follow the rules of hooks **(lint)**.
+
+Give a component only what it renders. Don't pass props down more than two levels; let the hook that owns the state provide it.
+
+Re-export generated binding types under their Go names. Don't edit `frontend/bindings`; regenerate it.
 
 ## Comments
 
-- Short and plain. Say why, not what the code already says.
+Keep comments short. Explain why, not what.
 
 ## Tests
 
-- Test behaviour that can actually break; skip anything the types already guarantee.
-- Test through a module's interface, the way its callers use it.
+Test behaviour that can break. Skip what the types already guarantee.
+
+Test through a module's interface, the way its callers use it.
