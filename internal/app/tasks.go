@@ -70,7 +70,7 @@ func (a *App) RunChecks(wsID, taskID string, files runner.Files, submit bool) (r
 		// Writers keep the next objectives ready, so the learner never waits;
 		// the planning tutor records what was learned.
 		a.keepReady(w, fmt.Sprintf("The learner just passed “%s”.", d.Title))
-		go a.send(w, workspace.PlanThread, message{
+		a.send(w, workspace.PlanThread, message{
 			Role:  workspace.RoleNotice,
 			Shown: shown,
 			Agent: fmt.Sprintf("[app] I passed task %s on submit (%d/%d tests). %s Record what I learned if there's evidence worth recording. Writers are preparing what comes next, so don't write lessons or tasks. Reply in one sentence at most.", taskID, p, t, hintSummary(w, taskID)),

@@ -116,10 +116,16 @@ Writers have no chat window. They prepare an objective's lesson and exercise in 
 
 A thread's agent process runs in a session (`internal/app/session.go`), which answers the thread's messages one turn at a time, in order. When the learner sends a message, `SendMessage` adds a `[context]` block about the open task or lesson (`prompts.go`), posts the message to the chat and queues it with `enqueue`. That starts the session if the thread has none. The session's loop hands each message to the agent, and its `transcript` streams the reply into the chat as `chat:message` events.
 
-- A session starts with the first message for its thread. Chats resume their saved conversation; a writer starts fresh.
+- A session starts with the first message for its thread, in the background. Chats resume their saved conversation; a writer starts fresh.
 - The thread is busy (`thread:busy`) from the moment a message is queued until every queued message is answered, including while the process starts. The session's count of pending messages is the only source of this state.
 - When the settings change, an idle session restarts with the next message. A busy one finishes its queue first.
 - A session ends when its process exits, its workspace is deleted or the app quits. A writer also ends as soon as it's idle, and starting any thread but the plan ends the workspace's idle task and lesson sessions.
+
+The calls that message an agent (`SendMessage`, `AnswerQuestions`, `RequestHint`, `PrepareObjective`) return once the message is queued. They don't wait for the process to start. Their error means the message wasn't sent at all, for example because the thread name is invalid. Once a message is in the chat, anything that goes wrong with it is posted in that thread as a notice with status `failed`, and nowhere else:
+
+- If the agent doesn't start (the CLI is missing or not signed in), the session posts why once, however many messages were waiting. It drops them and ends, so the thread turns idle and the next message tries a fresh start.
+- If a turn fails, its error is posted and the session takes the next message. If the process exits, its error is posted, the queued messages are dropped and the next message starts a new process.
+- A writer has no chat, so the objective's page shows its failure.
 
 To add a kind of thread, add it and its name to `internal/workspace/thread.go`, give it a role in `prompts.go` (and `prompts/`), decide in `session.go` whether it resumes and when it ends, and give it its tools in `mcp.go`'s `newServer`.
 

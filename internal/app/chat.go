@@ -32,7 +32,9 @@ func (a *App) Chat(wsID, thread string) ([]workspace.ChatItem, error) {
 
 // SendMessage sends the learner's chat message to a thread, by its name
 // ("plan", a task id, ...). In a task's or lesson's thread the app adds a
-// [context] block about it.
+// [context] block about it. It returns once the message is queued; the
+// reply, or why the agent couldn't answer, arrives in the chat. An error
+// means the message wasn't sent at all.
 func (a *App) SendMessage(wsID, text, thread string) error {
 	text = strings.TrimSpace(text)
 	if text == "" {
@@ -46,7 +48,8 @@ func (a *App) SendMessage(wsID, text, thread string) error {
 	if err != nil {
 		return err
 	}
-	return a.send(w, t, message{Role: workspace.RoleUser, Shown: text, Agent: a.contextFor(w, t) + text})
+	a.send(w, t, message{Role: workspace.RoleUser, Shown: text, Agent: a.contextFor(w, t) + text})
+	return nil
 }
 
 // AnswerQuestions sends the learner's answers to the thread that asked.
@@ -73,7 +76,8 @@ func (a *App) AnswerQuestions(wsID string, answers map[string]string) error {
 	if err := w.SetQuestions(nil); err != nil {
 		return err
 	}
-	return a.send(w, t, message{Role: workspace.RoleUser, Shown: b.String(), Agent: b.String()})
+	a.send(w, t, message{Role: workspace.RoleUser, Shown: b.String(), Agent: b.String()})
+	return nil
 }
 
 // DismissQuestions drops the pending form without answering.
@@ -99,7 +103,8 @@ func (a *App) RequestHint(wsID, taskID string, level int) error {
 	names := []string{"", "a nudge", "a pointer", "a snippet", "the solution walkthrough"}
 	msg := fmt.Sprintf("Hint level %d (%s), please.", level, names[level])
 	t := workspace.TaskThread(taskID)
-	return a.send(w, t, message{Role: workspace.RoleUser, Shown: msg, Agent: a.contextFor(w, t) + msg})
+	a.send(w, t, message{Role: workspace.RoleUser, Shown: msg, Agent: a.contextFor(w, t) + msg})
+	return nil
 }
 
 // StopAgent interrupts the current turn in a thread. The session posts a
@@ -126,14 +131,13 @@ type message struct {
 }
 
 // send records the message in a thread's chat and queues it for that
-// thread's agent.
-func (a *App) send(w *workspace.Workspace, t workspace.Thread, m message) error {
+// thread's agent, without waiting for the agent to start. Once the message
+// is in the chat, whatever goes wrong with it is posted there too.
+func (a *App) send(w *workspace.Workspace, t workspace.Thread, m message) {
 	a.post(w, workspace.ChatItem{Thread: t.String(), Role: m.Role, Text: m.Shown})
 	if err := a.enqueue(w, t, m.Agent, false); err != nil {
 		a.postFailure(w, t.String(), err.Error())
-		return err
 	}
-	return nil
 }
 
 // post saves a chat item and shows it in the UI.

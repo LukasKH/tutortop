@@ -61,7 +61,7 @@ func (a *App) CreateWorkspace(title, icon string) (string, error) {
 		return "", err
 	}
 	// The tutor starts the interview right away.
-	go a.send(w, workspace.PlanThread, message{
+	a.send(w, workspace.PlanThread, message{
 		Role:  workspace.RoleNotice,
 		Shown: "Workspace created. Your tutor is getting started.",
 		Agent: fmt.Sprintf("[app] I want to learn: %s. This is a new workspace; start the interview.", title),
@@ -175,7 +175,7 @@ func (a *App) SaveMission(wsID, mission string) error {
 		return err
 	}
 	emit(workspaceChanged, WorkspaceEvent{Workspace: wsID})
-	go a.send(w, workspace.PlanThread, message{
+	a.send(w, workspace.PlanThread, message{
 		Role:  workspace.RoleNotice,
 		Shown: "You edited your mission.",
 		Agent: "[app] I edited my mission by hand. Read it; it's mine now, so don't change it back. " +
@@ -194,6 +194,6 @@ func (a *App) RejectProposal(wsID, feedback string) error {
 	}
 	emit(workspaceChanged, WorkspaceEvent{Workspace: wsID})
 	text := "I'd like changes to the proposed curriculum: " + feedback
-	go a.send(w, workspace.PlanThread, message{Role: workspace.RoleUser, Shown: text, Agent: text})
+	a.send(w, workspace.PlanThread, message{Role: workspace.RoleUser, Shown: text, Agent: text})
 	return nil
 }

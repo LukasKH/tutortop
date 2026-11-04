@@ -13,12 +13,14 @@ import (
 // A session is one thread's agent process. It answers the thread's messages
 // one turn at a time, in order.
 //
-//   - It starts with the first message queued for its thread (enqueue). A
-//     writer's agent starts a fresh conversation; any other resumes the
-//     thread's saved one.
+//   - It starts with the first message queued for its thread (enqueue), in
+//     the background: queueing doesn't wait for the start. A writer's agent
+//     starts a fresh conversation; any other resumes the thread's saved one.
 //   - Its thread is busy from the moment a message is queued until the agent
 //     has answered every queued message. That includes the start, which can
 //     take several seconds, so the learner sees the tutor working meanwhile.
+//   - If the agent doesn't start, the session posts why in the thread's chat,
+//     once, drops the waiting messages and ends; the thread turns idle.
 //   - Once idle, it restarts with the next message if the settings changed.
 //   - It ends when its process exits, its workspace is deleted or the app
 //     quits. A writer also ends as soon as it's idle: its writing is done.
@@ -35,8 +37,7 @@ type session struct {
 	stop   atomic.Bool // the learner pressed Stop during the current turn
 
 	ready chan struct{} // closed once the agent has started, or failed to
-	agent agent.Session // set before ready is closed
-	err   error         // why the agent didn't start; set before ready is closed
+	agent agent.Session // set before ready is closed; nil if the start failed
 
 	// Guarded by App.mu.
 	pending int   // messages queued or being answered; the thread is busy while it's above 0
@@ -67,26 +68,11 @@ func (s *session) close() {
 type threadKey struct{ ws, name string }
 
 // enqueue queues a message for a thread's agent, starting the agent if it
-// isn't running, and returns once the agent has started. With ifIdle it
-// queues nothing while the thread is busy.
+// isn't running. It doesn't wait for the start: the process starts in the
+// background, and a start that fails posts one notice in the thread's chat.
+// With ifIdle it queues nothing while the thread is busy. It fails only if
+// too many messages are already waiting.
 func (a *App) enqueue(w *workspace.Workspace, t workspace.Thread, msg string, ifIdle bool) error {
-	s := a.claim(w, t, ifIdle)
-	if s == nil {
-		return nil
-	}
-	<-s.ready
-	if s.err != nil {
-		a.release(s, false)
-		return s.err
-	}
-	s.queue <- msg
-	return nil
-}
-
-// claim returns a thread's session, starting one if needed, and counts one
-// more message for it. The process starts in the background, so a slow start
-// doesn't hold a.mu; callers wait on ready for the same start.
-func (a *App) claim(w *workspace.Workspace, t workspace.Thread, ifIdle bool) *session {
 	key := threadKey{w.ID, t.String()}
 	cfg := a.Settings().tutor()
 	a.mu.Lock()
@@ -104,8 +90,15 @@ func (a *App) claim(w *workspace.Workspace, t workspace.Thread, ifIdle bool) *se
 	if s == nil {
 		s = a.start(w, t, cfg)
 	}
+	// Queued under a.mu, so a session that ends can't take a message after
+	// it has left the sessions.
+	select {
+	case s.queue <- msg:
+	default:
+		return errors.New("too many messages are waiting; let the tutor catch up first")
+	}
 	a.setPending(s, s.pending+1)
-	return s
+	return nil
 }
 
 // start starts a thread's session. Call with a.mu held.
@@ -134,17 +127,25 @@ func (a *App) run(ctx context.Context, w *workspace.Workspace, s *session) {
 		a.mu.Unlock()
 	}()
 	tr := &transcript{app: a, ws: w, thread: s.key.name, tools: map[string]*workspace.ChatItem{}}
-	s.agent, s.err = a.launch(ctx, w, s, tr.handle)
-	if s.err != nil {
-		// Out of the sessions before its callers see the error, so the next
-		// message tries a new start rather than getting this error again.
-		a.mu.Lock()
-		a.end(s)
-		a.mu.Unlock()
-		close(s.ready)
-		return
+	sess, err := a.launch(ctx, w, s, tr.handle)
+	if err == nil {
+		s.agent = sess
 	}
 	close(s.ready)
+	if err != nil {
+		// The messages waiting for this start are dropped, and the failure
+		// is posted once. The session leaves the sessions before its thread
+		// shows idle, so the next message tries a new start.
+		cancelled := ctx.Err() != nil // the workspace was deleted or the app quit
+		a.mu.Lock()
+		a.end(s)
+		a.setPending(s, 0)
+		a.mu.Unlock()
+		if !cancelled {
+			a.postFailure(w, s.key.name, err.Error())
+		}
+		return
+	}
 	for {
 		select {
 		case <-ctx.Done():
@@ -189,8 +190,8 @@ func (a *App) launch(ctx context.Context, w *workspace.Workspace, s *session, on
 		opts.ResumeID = saved[s.key.name]
 	}
 	sess, err := a.startAgent(ctx, s.cfg.Agent, opts, onEvent)
-	// Saved before ready closes, so the session id is on disk once the first
-	// message is queued.
+	// Saved before the first turn, so the session id is on disk even if the
+	// app quits during it.
 	if err == nil && resume {
 		_ = w.SetSession(s.cfg.Agent, s.key.name, sess.ID())
 	}
