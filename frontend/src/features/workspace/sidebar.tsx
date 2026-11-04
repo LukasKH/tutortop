@@ -16,7 +16,7 @@ type Props = {
   planOpen: boolean;
   /** The planning tutor wants attention: new messages, work, or questions waiting. */
   plan: Attention;
-  /** Objectives whose lesson and exercise are being written in the background. */
+  /** Objectives whose lesson and exercise are being written in the background (writingObjectives, workspace-state.ts). */
   writing: Set<string>;
   onBack: () => void;
   onOpen: (item: OpenItem) => void;

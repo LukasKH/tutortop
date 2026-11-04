@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useReducer } from "react";
 import { App, AppEvents, errorText, useEvent } from "@/lib/api";
-import { initialWorkspace, reduceWorkspace, tutorBusy, writingObjectives } from "@/features/workspace/workspace-state";
+import { initialWorkspace, isBusy, reduceWorkspace, tutorBusy, writingObjectives } from "@/features/workspace/workspace-state";
 
 /**
  * A workspace as the backend reports it (LiveWorkspace), kept current by its
@@ -57,10 +57,10 @@ export function useWorkspace(id: string) {
 
   return {
     ...state,
-    /** Objectives being written in the background. */
-    writing: writingObjectives(state.busy),
-    /** A tutor (not a writer) is working somewhere in the workspace. */
-    tutorBusy: tutorBusy(state.busy),
+    // Who is working: read busy only through these (workspace-state.ts).
+    isBusy: (thread: string) => isBusy(state, thread),
+    tutorBusy: tutorBusy(state),
+    writing: writingObjectives(state),
     fail,
     refresh,
     answerQuestions,

@@ -2,7 +2,7 @@ import type { CSSProperties } from "react";
 import { cn } from "cn";
 import { afterSetup } from "@/lib/chat";
 import { App, type ChatItem, type WorkspaceSnapshot } from "@/lib/api";
-import { PLAN_THREAD, writerThread } from "@/lib/workspace";
+import { PLAN_THREAD } from "@/lib/workspace";
 import { describeItem, exerciseOf, itemKey, lessonOf, viaLesson } from "@/features/workspace/open-item";
 import { useChatPanel } from "@/features/workspace/use-chat-panel";
 import { useChatThreads } from "@/features/workspace/use-chat-threads";
@@ -44,7 +44,7 @@ export function WorkspaceView({ id, tutor, onSettings, onBack }: Props) {
   // Conversations by thread, loaded for the shown thread and streamed in by event.
   const { threads, unread } = useChatThreads(id, nav.thread, { ready: live.ws !== null, visible: chat.open, onError: live.fail });
 
-  const { ws, busy, questions, fail } = live;
+  const { ws, questions, fail } = live;
   if (!ws) {
     return (
       <Placeholder error={live.error} loading="Opening workspace…">
@@ -56,6 +56,8 @@ export function WorkspaceView({ id, tutor, onSettings, onBack }: Props) {
   }
 
   const { item, view, thread } = nav;
+  // The shown chat's tutor is working: its "Thinking…", Stop and hint button follow this.
+  const threadBusy = live.isBusy(thread);
   // The open item's task or lesson, module and language.
   const details = describeItem(ws, item);
   // Until the first plan is approved, everything happens in the centre. No chat beside it.
@@ -64,7 +66,7 @@ export function WorkspaceView({ id, tutor, onSettings, onBack }: Props) {
   // The tutor's questions: in the centre, or in the chat of the thread that asked.
   const place = placeQuestions(ws, view, item, thread, questions);
   const planAttention: Attention = {
-    attention: thread !== PLAN_THREAD && (!!unread[PLAN_THREAD] || !!busy[PLAN_THREAD] || place.planBadge > 0),
+    attention: thread !== PLAN_THREAD && (!!unread[PLAN_THREAD] || live.isBusy(PLAN_THREAD) || place.planBadge > 0),
     questions: place.planBadge,
   };
 
@@ -131,7 +133,7 @@ export function WorkspaceView({ id, tutor, onSettings, onBack }: Props) {
           }
           // The setup interview stays out of the chat panel.
           items={thread === PLAN_THREAD ? afterSetup(threads[PLAN_THREAD] ?? []) : (threads[thread] ?? [])}
-          busy={!!busy[thread]}
+          busy={threadBusy}
           questions={
             questions && place.chat === thread ? (
               <QuestionsForm key={JSON.stringify(questions)} layout="chat" form={questions} onAnswer={live.answerQuestions} onDismiss={live.dismissQuestions} />
@@ -145,7 +147,7 @@ export function WorkspaceView({ id, tutor, onSettings, onBack }: Props) {
             <StatusLine
               check={live.toolchainCheck}
               newItem={nav.newItem}
-              busy={!!busy[thread]}
+              busy={threadBusy}
               onStop={() => App.StopAgent(id, thread).catch(fail)}
               onOpen={nav.open}
             />
@@ -198,7 +200,7 @@ function CenterPane({ id, center, ws, live, nav, planItems, onAskTutor }: Center
       return (
         <Setup
           items={planItems}
-          busy={!!live.busy[PLAN_THREAD]}
+          busy={live.isBusy(PLAN_THREAD)}
           check={live.toolchainCheck}
           questions={live.questions}
           lang={details.lang}
@@ -245,7 +247,7 @@ function CenterPane({ id, center, ws, live, nav, planItems, onAskTutor }: Center
           objective={objective}
           part={part}
           moduleTitle={moduleTitle}
-          writing={!!live.busy[writerThread(objective.id)]}
+          writing={live.writing.has(objective.id)}
           check={live.checks[objective.id] ?? null}
           failed={live.writeFailed[objective.id] ?? ""}
           other={other.kind === "todo" ? null : { label: part === "lesson" ? "Exercise →" : "← Lesson", onOpen: () => nav.open(other) }}

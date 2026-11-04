@@ -28,6 +28,7 @@ type Props = {
   /** The open exercise's next hint level (1-4), or null when hints don't apply. */
   hint: { level: number; onHint: (level: number) => void } | null;
   items: ChatItem[];
+  /** The thread's tutor is working (isBusy, workspace-state.ts): "Thinking…" shows and hints wait. */
   busy: boolean;
   /** Slots: the questions form (or a pointer to it) and the status line above the composer. */
   questions: ReactNode;
@@ -138,7 +139,15 @@ export function ChatPanel({ composer: { draft, setDraft, inputRef }, ...p }: Pro
 }
 
 /** The tutor folded into a strip: a way back, and a sign of new or running work. */
-export function ChatRail({ attention, busy, onExpand }: { attention: boolean; busy: boolean; onExpand: () => void }) {
+export function ChatRail({
+  attention,
+  busy,
+  onExpand,
+}: {
+  attention: boolean;
+  /** Some chat's tutor is working (tutorBusy). */ busy: boolean;
+  onExpand: () => void;
+}) {
   return (
     <aside className="flex flex-col items-center gap-2 border-l bg-card py-2.5">
       <IconButton label="Show tutor" onClick={onExpand} aria-expanded={false}>
@@ -164,6 +173,7 @@ type StatusProps = {
   /** The sandbox check of a language a chat is setting up (set_toolchain). */
   check: SandboxCheck | null;
   newItem: NewItem | null;
+  /** The shown thread's tutor is working (isBusy, workspace-state.ts), so it can be stopped. */
   busy: boolean;
   onStop: () => void;
   onOpen: (item: OpenItem) => void;
