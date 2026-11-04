@@ -38,6 +38,13 @@ How code in Tutortop is written. Reviews check changes against it. Rules marked 
 
 - Function fields are for hooks that customise how a type behaves, like `exec.Cmd.Cancel`, not for passing in dependencies.
 - Add an interface only at a boundary that tests really replace: the agent's CLI, HTTP, the sandbox. A type with one implementation and no fake needs no interface.
+- Verify interface compliance at compile time where nothing else checks it: a type a library finds by type assertion at runtime, like a Wails service's `ServiceStartup` and `ServiceShutdown`. A wrong signature there compiles fine and is silently never called. Put the assertion next to the type:
+
+  ```go
+  var _ application.ServiceShutdown = (*ChatService)(nil)
+  ```
+
+  Skip it where code already assigns the type to the interface (`return s, nil` from a function returning `Session`): the compiler checks that already.
 - Use the standard test seams: `httptest` for HTTP, `t.TempDir()` for files, the fake CLI in `internal/agent` for agent CLIs.
 
 ### State
