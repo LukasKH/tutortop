@@ -53,7 +53,7 @@ Git is optional. With it, every workspace keeps a history of its changes.
 
 ## Requirements for development
 
-- Go 1.27+, Node 20+, and the Wails v3 CLI (`wails3`)
+- Go 1.27+, Node 26+, and the Wails v3 CLI (`wails3`); `mise install` gets the pinned versions. The code uses Go 1.27 features, so older Go won't build it: generic methods (`rpcConn.Call[T]`, `process.await[T]` in `internal/agent`) and the standard library's `uuid` package.
 - Docker or Podman, and Claude Code and/or Codex, as above
 
 ## Development

@@ -54,7 +54,12 @@ Go code sends with `emit(name, payload)`. Because the name's type carries the pa
 
 In the frontend, `useEvent(AppEvents.ChatMessage, (ev) => ...)` listens for as long as the component is mounted. Most payloads carry the workspace id, and views ignore events for other workspaces.
 
-To add an event, add the payload struct, the constant and the `RegisterEvent` line to `events.go`, call `emit` where it happens, then regenerate the bindings.
+To add an event:
+
+1. `internal/app/events.go`: the payload struct, the name constant (`event[Payload]`) and its `application.RegisterEvent` line in `init`. `TestEventsRegistered` fails until the last two match.
+2. Call `emit(name, payload)` where it happens. If the snapshot also carries the state it changes, number it from `threadAgents.seq` under `threadAgents.mu`, as `setPending` does.
+3. Add it to the table above.
+4. Run `wails3 generate bindings -clean=true -ts -i`, then listen in the frontend ([Frontend](#frontend), "An event").
 
 ### Server mode
 
@@ -112,7 +117,7 @@ Components are styled with utility classes in their markup. The one exception is
 
 ## The agent and its tools
 
-The agent is the learner's own CLI, signed in already. In a chat thread it's the tutor; in a writer's thread, it's that writer. `App` starts one agent process per thread, a conversation with its own chat. `workspace.Thread` names the four kinds, and its name is the chat's file name and what the frontend sends: `plan` for the mission and curriculum, the task id for a task, `lesson-<id>` for a lesson, and `write-<objective>` for an objective's writer.
+The agent is the learner's own CLI, signed in already. In a chat thread it's the tutor; in a writer's thread, it's that writer. `App` runs one agent process per thread (`threadAgents`), a conversation with its own chat. `workspace.Thread` names the four kinds, and its name is the chat's file name and what the frontend sends: `plan` for the mission and curriculum, the task id for a task, `lesson-<id>` for a lesson, and `write-<objective>` for an objective's writer.
 
 Writers have no chat window. They write an objective's lesson and exercise in the background, and the app keeps the next two unpassed objectives written so the learner doesn't wait.
 
@@ -145,7 +150,14 @@ The calls that message an agent (`SendMessage`, `AnswerQuestions`, `RequestHint`
 - If a turn fails, its error is posted and the thread agent takes the next message. If the CLI exits, its error is posted, the queued messages are dropped and the next message starts a new thread agent.
 - A writer has no chat, so the objective's page shows its failure.
 
-To add a kind of thread, add it and its name to `internal/workspace/thread.go`, give it a role in `prompts.go` (and `prompts/`), decide in `agents.go` whether it resumes and when it ends, and add the kind to the tools it gets in `mcp.go`'s `mcpTools`.
+To add a kind of thread:
+
+1. `internal/workspace/thread.go`: a `ThreadKind`, its name in `Thread.String` and `ParseThread`, and a constructor like `WriterThread`.
+2. `internal/app/prompts/<kind>.md`: its role, embedded and picked in `instructions` (`prompts.go`). The role can use `{{id}}` and `{{title}}`; `instructions` decides where the title comes from. If the learner talks in it, decide in `contextFor` what `[context]` it gets.
+3. `internal/app/agents.go`: decide in `threadAgents.open` whether it resumes its conversation, in `queue` whether it takes a second message while busy, in `answered` whether it ends once idle, and in `start` whether starting it ends idle tutors. The lifecycle tests in `agents_test.go` show how to check each.
+4. `internal/app/mcp.go`: add the kind to the `mcpTools` lines of the tools it gets. Its instructions list them by themselves (`{{tools}}`).
+5. `TestInstructionsFillEveryPlaceholder` in `mcp_test.go`: add a thread of the kind.
+6. `docs/GLOSSARY.md`: the kind under **Thread**; and in the frontend, its name in `lib/workspace.ts` if the UI shows it.
 
 The agent changes the app's state only through MCP tools, built on the [official Go SDK](https://github.com/modelcontextprotocol/go-sdk). `App` serves them over HTTP on `127.0.0.1`, with a random token in each thread's URL, so a thread can only reach its own workspace. The tool handlers write to the workspace and emit events.
 
@@ -155,7 +167,13 @@ The agent changes the app's state only through MCP tools, built on the [official
 - The chats (plan, task and lesson threads) also get `ask_user`, `set_icon`, `propose_curriculum` and `set_toolchain` (`mcp_chat.go`).
 - Writers also get `create_task` and `create_lesson` (`mcp_writer.go`), for their own objective only.
 
-Each tool is a `*mcp.Tool` with its name and description, a handler method on `threadTools`, and its input and output types, kept together. The SDK derives the input schema from the input type's `json` and `jsonschema` tags and rejects calls that don't match it. A handler that returns an error sends the error's text back to the agent, which fixes its call and tries again. To add a tool, write those pieces next to the others and add a line to `mcpTools`: the line the learner sees in the chat for each call ("Saved your notes"), or `hidden` if the calls are noise or show in their own UI, then the kinds that get it. A tool for the plan only is a line with `workspace.PlanKind`.
+Each tool is a `*mcp.Tool` with its name and description, a handler method on `threadTools`, and its input and output types, kept together. The SDK derives the input schema from the input type's `json` and `jsonschema` tags and rejects calls that don't match it. A handler that returns an error sends the error's text back to the agent, which fixes its call and tries again. To add a tool:
+
+1. `internal/app/mcp_chat.go` for the chats' tools, `mcp_writer.go` for writers', or `mcp.go` for every thread's: the `*mcp.Tool` (its description is the agent's instructions for it), the input and output types, and the handler method on `threadTools`.
+2. `internal/app/mcp.go`: a line in `mcpTools` with the line the learner sees in the chat for each call ("Saved your notes"), or `hidden` if the calls are noise or show in their own UI, then the kinds that get it. A tool for the plan only is a line with `workspace.PlanKind`. Each thread's instructions list its tools from here.
+3. `internal/app/prompts/shared.md`, under "Tools from the `tutortop` MCP server": a line saying when to use it; the role prompts (`plan.md`, `writer.md`, ...) if one of them should call it at a set point.
+4. A test in `mcp_test.go` through `toolCaller`, for what the handler checks beyond the schema.
+5. If a handler changes what the workspace screen shows, emit `workspace:changed` or its own event.
 
 `create_task` publishes a task only after it passes the quality gate in the sandbox. The reference solution has to pass three times in shuffled order, the starter code has to fail, and the tests have to catch at least two wrong solutions.
 

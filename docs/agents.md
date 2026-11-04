@@ -1,27 +1,26 @@
 # Adding an agent
 
-`internal/agent` drives the learner's own coding-agent CLI: Claude Code over its stream-json stdio protocol, Codex over `codex app-server` JSON-RPC. Each CLI has an adapter. The adapter turns what the CLI prints into a few events and holds the tutor to Tutortop's tool policy. To add an agent (Gemini CLI, OpenCode, anything that speaks the Agent Client Protocol), the work is in this package, plus the few edits [outside it](#outside-this-package).
+`internal/agent` drives the learner's own coding-agent CLI: Claude Code over its stream-json stdio protocol, Codex over `codex app-server` JSON-RPC. Each CLI has an adapter. The adapter turns what the CLI prints into a few events and holds the tutor to Tutortop's tool policy. To add an agent (Gemini CLI, OpenCode, anything that speaks the Agent Client Protocol), the work is in this package, plus the few edits [outside it](#steps).
 
 The contract is in code. `agent.go` has the types and their doc comments, and `policy.go` has the tool policy. This page explains them and adds the steps.
 
-## What an adapter is
+## Steps
 
-An adapter is one file, like `claude.go` or `codex.go`. It has three parts:
+An adapter is one file, like `claude.go` or `codex.go`, and an entry in a list:
 
-- `startX(ctx, opts, onEvent) (Session, error)`, which starts the CLI and returns a `Session`;
-- `xModels(ctx) ([]Model, error)`, which lists the models it offers, the CLI's default first, each with the reasoning efforts it takes. Claude's list is fixed, because the CLI takes aliases that follow each release. Codex's is asked live from the CLI. The app caches the answer for a few minutes;
-- an entry in `Providers()` with an id, a display name and the binary to look up on `PATH`.
+1. `internal/agent/<x>.go`: `startX(ctx, opts, onEvent) (Session, error)`, which starts the CLI and returns a `Session` that keeps [the contract](#the-contract).
+2. The same file: `xModels(ctx) ([]Model, error)`, which lists the models it offers, the CLI's default first, each with the reasoning efforts it takes. Claude's list is fixed, because the CLI takes aliases that follow each release. Codex's is asked live from the CLI. The app caches the answer for a few minutes.
+3. `internal/agent/agent.go`: an entry in `Providers()` with an id, a display name, the binary to look up on `PATH`, and the two functions.
+4. `internal/agent/<x>_test.go`: tests against a fake CLI, including the shared policy cases (`testPolicy`); see [Testing an adapter](#testing-an-adapter).
+5. `internal/agent/live_test.go`: add the id to the provider list in `TestLive`. `internal/app/live_test.go`'s `TestLiveInterview` runs a whole interview on any agent: `TUTORTOP_PROVIDER=<id> task test:live`.
+6. `Taskfile.yml`: the `test:live` summary, and `.github/workflows/ci.yml`: the comment above the `test` job. Both name the CLIs the live tests talk to.
+7. `go.mod` and `go.sum`, for an SDK the adapter uses, such as `github.com/coder/acp-go-sdk`.
+8. `internal/shellpath/shellpath.go`: `commonDirs`. An app started from a desktop launcher doesn't get the user's shell PATH, so it asks the login shell and falls back to these folders, where the agents' installers put their binaries. Add the new CLI's folder if it isn't there; OpenCode's install script, for one, uses `~/.opencode/bin`.
+9. `README.md`: the introduction and **Install** name the agents Tutortop runs on, with a link to each one's setup.
 
-That's all the app needs. Settings list `Providers()` and show the ones that aren't installed as missing. The frontend gets each provider's display name from `App.Environment`, so a new agent needs no frontend change.
+Nothing else changes. Settings list `Providers()` and show the ones that aren't installed as missing. The frontend gets each provider's display name from `App.Environment`, so a new agent needs no frontend change. The prompts in `internal/app/prompts` don't name an agent, and the chat shows Tutortop's own tools by their `mcpTools` line, whatever title the CLI gives the call.
 
 A workspace remembers one agent (`Meta.Provider`) and, for each chat, the `Session.ID()` to resume (`Meta.ResumeIDs`). Those ids belong to one agent, so when a thread starts with another agent, `Workspace.UseProvider` switches the workspace to it and forgets them: every thread starts a fresh conversation, and the tutor catches up from the workspace files.
-
-## Outside this package
-
-- `go.mod` and `go.sum`, for an SDK the adapter uses, such as `github.com/coder/acp-go-sdk`.
-- `internal/shellpath`: an app started from a desktop launcher doesn't get the user's shell PATH, so it asks the login shell, and falls back to `commonDirs`, the folders where the agents' installers put their binaries. Add the new CLI's folder if it isn't there; OpenCode's install script, for one, uses `~/.opencode/bin`.
-- `README.md`: the introduction and **Install** name the agents Tutortop runs on, with a link to each one's setup.
-- The `test:live` summary in `Taskfile.yml` and the comment above the tests in `.github/workflows/ci.yml` name the CLIs the live tests talk to.
 
 ## The contract
 
@@ -113,7 +112,7 @@ Cover what can break:
 
 Get the real messages from the CLI's own schema or by recording a session. `codex app-server generate-json-schema --out DIR` writes Codex's schema.
 
-Add a live test too (`//go:build live`, see `live_test.go`). It checks the real CLI end to end, and `task test:live` runs it.
+The live tests (`//go:build live`, step 5) check the real CLI end to end, and `task test:live` runs them.
 
 ## An ACP agent
 

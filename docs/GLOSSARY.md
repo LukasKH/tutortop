@@ -52,5 +52,5 @@ The words the code uses, what each means, and where it lives. Go identifiers are
 
 ## Between the parts
 
-- **MCP tool**: a function the agent calls to change the app's state, served by Tutortop's MCP server. Go: `mcpTools` lists each with the line its calls show as in the chat (or `hidden`) and the thread kinds that get it; `threadTools` handles one thread's calls.
+- **MCP tool**: a function the agent calls to change the app's state, served by Tutortop's MCP server. Go: `mcpTools` lists each with the line its calls show as in the chat (or `hidden`) and the thread kinds that get it, and each thread's instructions list its tools from it (`{{tools}}`); `threadTools` handles one thread's calls.
 - **Event**: a message Go pushes to the frontend when something happens it didn't ask about. Go: `event[Data]` constants in `events.go`, sent with `emit`; TS: `AppEvents`, heard with `useEvent`.

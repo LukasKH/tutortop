@@ -24,7 +24,8 @@ import (
 //
 // To add a tool, write those three next to the others, then add a line to
 // mcpTools with its chat line (or hidden) and the kinds of thread that get
-// it. The SDK derives the input schema from the input type's json and
+// it, and say when to use it in prompts/shared.md (docs/architecture.md has
+// the steps). The SDK derives the input schema from the input type's json and
 // jsonschema tags and rejects calls that don't match it, so the handler only
 // checks what the schema can't say.
 
