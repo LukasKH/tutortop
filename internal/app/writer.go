@@ -1,6 +1,7 @@
 package app
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/LukasKH/tutortop/internal/workspace"
@@ -15,6 +16,28 @@ import (
 // A writer runs in a session like any thread (session.go), with three
 // differences: it starts a fresh conversation, it ends once it has nothing
 // left to do, and its MCP tools publish lessons and tasks (mcp.go).
+
+// PrepareObjective has a writer write an objective's lesson and task now,
+// because the learner opened it ahead of the suggested order. It returns
+// once the writer has started; the lesson and task arrive as events.
+func (a *App) PrepareObjective(wsID, objectiveID string) error {
+	w, err := a.store.Open(wsID)
+	if err != nil {
+		return err
+	}
+	c, err := w.Curriculum()
+	if err != nil {
+		return err
+	}
+	if c == nil {
+		return errors.New("there's no plan yet")
+	}
+	o, _, ok := c.Objective(objectiveID)
+	if !ok {
+		return fmt.Errorf("%q isn't in the plan", objectiveID)
+	}
+	return a.writeObjective(w, o, "The learner opened it and is waiting for it, so be quick. Write the lesson first, as they read it first.")
+}
 
 // Gate tells the UI a new task, or a new language's sandbox (Kind
 // "toolchain"), is being checked.
