@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { cn } from "cn";
 import { Dialogs } from "@wailsio/runtime";
-import { App, errorText, type AgentModel, type Environment, type Settings } from "@/lib/api";
+import { App, errorText, type Model, type Environment, type Settings } from "@/lib/api";
 import { providerName } from "@/lib/format";
 import { cachedModels, currentModel, effortLabel, loadModels } from "@/lib/models";
 import { ErrorText } from "@/components/error-text";
@@ -20,7 +20,7 @@ type Props = {
 export function SettingsDialog({ settings, onChange, onClose }: Props) {
   const [env, setEnv] = useState<Environment | null>(null);
   // The models as last loaded, for the agent they were loaded for.
-  const [loaded, setLoaded] = useState<{ agent: string; models: AgentModel[] | null; error: string } | null>(null);
+  const [loaded, setLoaded] = useState<{ agent: string; models: Model[] | null; error: string } | null>(null);
   const [error, setError] = useState("");
 
   const agent = settings.agent;

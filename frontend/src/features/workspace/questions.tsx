@@ -1,6 +1,6 @@
 import { useState, type KeyboardEvent } from "react";
 import { cn } from "cn";
-import { type Question, type QuestionForm } from "@/lib/api";
+import { type Question, type Questions } from "@/lib/api";
 import { AutoTextarea } from "@/components/auto-textarea";
 import { ErrorText } from "@/components/error-text";
 import { Button } from "@/components/ui/button";
@@ -10,7 +10,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { usePending } from "@/hooks/use-pending";
 
 type Props = {
-  form: QuestionForm;
+  form: Questions;
   /** "page" lays the form out in the centre pane; "chat" fits the chat column. */
   layout: "page" | "chat";
   onAnswer: (answers: Record<string, string>) => Promise<void>;

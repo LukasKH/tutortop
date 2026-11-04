@@ -123,7 +123,7 @@ export class LanguageClient {
   // ---- documents ----
 
   /** The server's uri for one of this task's models, or "" if it isn't one. */
-  private uriOf(model: Model): string {
+  private uriOf(model: TextModel): string {
     for (const kind of ["work", "tests"] as const) {
       const prefix = `/${this.taskId}/${kind}/`;
       if (model.uri.path.startsWith(prefix)) return `${this.root}/${model.uri.path.slice(prefix.length)}`;
@@ -131,7 +131,7 @@ export class LanguageClient {
     return "";
   }
 
-  private open(model: Model) {
+  private open(model: TextModel) {
     const uri = this.uriOf(model);
     const key = model.uri.toString();
     if (!uri || this.docs.has(key)) return;
@@ -153,12 +153,12 @@ export class LanguageClient {
     this.notify("textDocument/didOpen", { textDocument: { uri, languageId: this.languageId, version: 1, text: model.getValue() } });
   }
 
-  private modelFor(uri: string): Model | null {
+  private modelFor(uri: string): TextModel | null {
     for (const [key, doc] of this.docs) if (doc.uri === uri) return monaco.editor.getModel(monaco.Uri.parse(key));
     return null;
   }
 
-  private docOf(model: Model) {
+  private docOf(model: TextModel) {
     const doc = this.docs.get(model.uri.toString());
     return doc && { uri: doc.uri };
   }
@@ -333,7 +333,7 @@ export function modelPath(taskId: string, kind: "work" | "tests", file: string) 
 }
 
 type M = typeof monaco;
-type Model = monaco.editor.ITextModel;
+type TextModel = monaco.editor.ITextModel;
 type Json = any;
 
 type Doc = { uri: string; version: number; listener: monaco.IDisposable };

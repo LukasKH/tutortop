@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { type ChatItem, type Gate, type QuestionForm } from "@/lib/api";
+import { type ChatItem, type Gate, type Questions } from "@/lib/api";
 import { QuestionsForm } from "@/features/workspace/questions";
 import { AutoTextarea } from "@/components/auto-textarea";
 import { ErrorText } from "@/components/error-text";
@@ -13,7 +13,7 @@ type Props = {
   items: ChatItem[];
   busy: boolean;
   gate: Gate | null;
-  questions: QuestionForm | null;
+  questions: Questions | null;
   lang?: string;
   onAnswer: (answers: Record<string, string>) => Promise<void>;
   onDismiss: () => void;

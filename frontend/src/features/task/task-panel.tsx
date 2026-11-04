@@ -1,7 +1,7 @@
 import { useEffect, useEffectEvent, useRef, useState, type ComponentProps, type ReactNode } from "react";
 import Editor from "@monaco-editor/react";
 import { cn } from "cn";
-import type { TaskInfo } from "@/lib/api";
+import type { TaskStatus } from "@/lib/api";
 import { plural } from "@/lib/format";
 import { clamp } from "@/lib/math";
 import { editorOptions, monaco } from "@/lib/monaco";
@@ -24,7 +24,7 @@ type Props = {
   /** The module the task's objective belongs to, for the task bar. */
   moduleTitle: string;
   /** The first unsolved task after this one, if the tutor has written it yet. */
-  nextTask: TaskInfo | null;
+  nextTask: TaskStatus | null;
   /** The plan has objectives left, so a next task is coming if there isn't one yet. */
   moreComing: boolean;
   onOpenTask: (id: string) => void;

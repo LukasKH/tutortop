@@ -1,10 +1,10 @@
-import { App, type AgentModel, type Settings } from "@/lib/api";
+import { App, type Model, type Settings } from "@/lib/api";
 import { providerName } from "@/lib/format";
 
 // The agents' models, for Settings and the tutor's label.
 
 /** The agent's models, asked once per session. */
-export function loadModels(agent: string): Promise<AgentModel[]> {
+export function loadModels(agent: string): Promise<Model[]> {
   const cached = modelCache.get(agent);
   if (cached) return Promise.resolve(cached);
   return App.Models(agent).then((list) => {
@@ -28,13 +28,13 @@ export function tutorLabel(s: Settings): string {
 export const cachedModels = (agent: string) => modelCache.get(agent) ?? null;
 
 // Model lists per agent, kept for the session: Codex is asked live, which takes a moment.
-const modelCache = new Map<string, AgentModel[]>();
+const modelCache = new Map<string, Model[]>();
 
 /**
  * The chosen model. No choice means the agent's default: Claude Code lists
  * that as its own entry; for Codex it's the default model, listed first.
  */
-export function currentModel(models: AgentModel[] | null, id: string): AgentModel | null {
+export function currentModel(models: Model[] | null, id: string): Model | null {
   if (!models) return null;
   return models.find((m) => m.id === id) ?? (id === "" ? (models[0] ?? null) : null);
 }

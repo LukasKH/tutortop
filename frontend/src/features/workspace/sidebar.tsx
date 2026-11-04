@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { lessonDone } from "@/lib/workspace";
-import { type LessonStatus, type TaskInfo, type WorkspaceState } from "@/lib/api";
+import { type LessonStatus, type TaskStatus, type WorkspaceState } from "@/lib/api";
 import { describeItem, entryOf, itemKey, lessonOf, sameItem, type OpenItem } from "@/features/workspace/open-item";
 import type { Attention } from "@/features/tutor/chat-panel";
 import { PencilIcon } from "lucide-react";
@@ -187,7 +187,7 @@ function Parts({
   lesson?: LessonStatus;
   /** The lesson, or the page that has it written. */
   lessonItem: OpenItem;
-  tasks: TaskInfo[];
+  tasks: TaskStatus[];
   writing: boolean;
   openItem: OpenItem | null;
   onOpen: (item: OpenItem) => void;

@@ -1,6 +1,6 @@
 import { ChevronDownIcon } from "lucide-react";
 import { cn } from "cn";
-import type { TaskDetail, TaskInfo, TestResult } from "@/lib/api";
+import type { TaskDetail, TaskStatus, TestResult } from "@/lib/api";
 import { plural } from "@/lib/format";
 import type { Run } from "@/features/task/use-task-work";
 import { Button } from "@/components/ui/button";
@@ -14,7 +14,7 @@ export type ResultsProps = {
   running: "run" | "submit" | null;
   error: string;
   solved: boolean;
-  nextTask: TaskInfo | null;
+  nextTask: TaskStatus | null;
   moreComing: boolean;
   open: boolean;
   /** Fixed height in px when the learner has sized the results; otherwise it fits its content. */

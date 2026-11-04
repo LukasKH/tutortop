@@ -1,4 +1,4 @@
-import type { ChatItem, Gate, QuestionForm, WorkspaceState } from "@/lib/api";
+import type { ChatItem, Gate, Questions, WorkspaceState } from "@/lib/api";
 import { objectiveOfWriter, PLAN_THREAD } from "@/lib/workspace";
 
 /**
@@ -18,7 +18,7 @@ export type LiveWorkspace = {
   /** The planning tutor's sandbox check (a new language), shown in the chat's status line. Not in the snapshot. */
   gate: Gate | null;
   /** The tutor's open questions (ask_user). */
-  questions: QuestionForm | null;
+  questions: Questions | null;
   /** The last failed call, shown above the centre pane until the next snapshot loads. */
   error: string;
   // When an event last set each busy flag and check, and when the snapshot
@@ -37,7 +37,7 @@ export type Action =
   | { type: "busy"; thread: string; busy: boolean; at: number }
   | { type: "gate"; gate: Gate; at: number }
   | { type: "chat"; item: ChatItem }
-  | { type: "questions"; questions: QuestionForm | null }
+  | { type: "questions"; questions: Questions | null }
   | { type: "dismissFinishedGate" };
 
 export const initialWorkspace: LiveWorkspace = {

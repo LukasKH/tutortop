@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { AppEvents, useEvent, type LessonStatus, type Objective, type QuestionForm, type WorkspaceState } from "@/lib/api";
+import { AppEvents, useEvent, type LessonStatus, type Objective, type Questions, type WorkspaceState } from "@/lib/api";
 import { PLAN_THREAD } from "@/lib/workspace";
 import { useStored } from "@/hooks/use-stored";
 import { describeItem, itemKey, parseItemKey, resolveOpen, sameItem, threadOf, type OpenItem, type Part } from "@/features/workspace/open-item";
@@ -75,7 +75,7 @@ export type Center =
   | { kind: "setup" }
   | { kind: "proposal"; proposal: NonNullable<WorkspaceState["proposal"]> }
   | { kind: "plan" }
-  | { kind: "questions"; questions: QuestionForm }
+  | { kind: "questions"; questions: Questions }
   | { kind: "not-written"; objective: Objective; part: Part }
   | { kind: "lesson"; lesson: LessonStatus }
   | { kind: "task"; id: string }
@@ -87,7 +87,7 @@ export type Center =
  * review. After that, the plan's pages when chosen, else the tutor's
  * questions if nothing is open, else the open item.
  */
-export function centerOf(ws: WorkspaceState, view: CenterView, item: OpenItem | null, questions: QuestionForm | null): Center {
+export function centerOf(ws: WorkspaceState, view: CenterView, item: OpenItem | null, questions: Questions | null): Center {
   if (!ws.curriculum) {
     if (view === "plan") return { kind: "plan" };
     return ws.proposal ? { kind: "proposal", proposal: ws.proposal } : { kind: "setup" };
@@ -107,4 +107,4 @@ export function centerOf(ws: WorkspaceState, view: CenterView, item: OpenItem | 
  * they get the centre pane instead of the narrow chat column. Otherwise they
  * appear in the chat of the thread that asked.
  */
-export const questionsInCenter = (view: CenterView, item: OpenItem | null, questions: QuestionForm | null) => !!questions && !item && view === "item";
+export const questionsInCenter = (view: CenterView, item: OpenItem | null, questions: Questions | null) => !!questions && !item && view === "item";

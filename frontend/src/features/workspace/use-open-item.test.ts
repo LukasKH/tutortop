@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { act, cleanup, renderHook } from "@testing-library/react";
-import { AppEvents, type QuestionForm, type WorkspaceState } from "@/lib/api";
+import { AppEvents, type Questions, type WorkspaceState } from "@/lib/api";
 import { centerOf, useOpenItem } from "@/features/workspace/use-open-item";
 import { lesson, task, workspace } from "@/features/workspace/fixtures";
 
@@ -84,7 +84,7 @@ test("the chat follows what's open: its own thread, or the plan's", () => {
 });
 
 describe("centerOf", () => {
-  const questions: QuestionForm = { thread: "plan", questions: [{ id: "q", question: "Why?" }] };
+  const questions: Questions = { thread: "plan", questions: [{ id: "q", question: "Why?" }] };
   const setup = workspace({ curriculum: null });
 
   test("before the first plan: the setup page, then the proposal, or the plan page if chosen", () => {
