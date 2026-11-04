@@ -1,7 +1,6 @@
 package app
 
 import (
-	"context"
 	"encoding/json"
 	"maps"
 	"strings"
@@ -9,7 +8,6 @@ import (
 
 	"github.com/LukasKH/tutortop/internal/runner"
 	"github.com/LukasKH/tutortop/internal/workspace"
-	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // TestSetToolchainEnablesALanguage sets up JavaScript the way the tutor would,
@@ -20,27 +18,7 @@ func TestSetToolchainEnablesALanguage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx := context.Background()
-	client := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "1"}, nil)
-	cs, err := client.Connect(ctx, &mcp.StreamableClientTransport{Endpoint: a.mcp.URL(w, workspace.PlanThread)}, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer cs.Close()
-	call := func(name string, args any) (string, bool) {
-		t.Helper()
-		res, err := cs.CallTool(ctx, &mcp.CallToolParams{Name: name, Arguments: args})
-		if err != nil {
-			t.Fatalf("%s: %v", name, err)
-		}
-		var b strings.Builder
-		for _, c := range res.Content {
-			if tc, ok := c.(*mcp.TextContent); ok {
-				b.WriteString(tc.Text)
-			}
-		}
-		return b.String(), res.IsError
-	}
+	call := toolCaller(t, a, w, workspace.PlanThread)
 	plan := map[string]any{
 		"language": "javascript",
 		"modules": []any{map[string]any{"id": "basics", "title": "Basics", "references": []any{map[string]any{"title": "Docs", "url": "https://go.dev/doc/"}}, "objectives": []any{

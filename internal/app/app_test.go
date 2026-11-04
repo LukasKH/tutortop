@@ -12,7 +12,6 @@ import (
 	"github.com/LukasKH/tutortop/internal/agent"
 	"github.com/LukasKH/tutortop/internal/runner"
 	"github.com/LukasKH/tutortop/internal/workspace"
-	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // TestToolsEndToEnd drives the MCP tools the way the tutor would, without an
@@ -32,28 +31,7 @@ func TestToolsEndToEnd(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ctx := context.Background()
-	client := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "1"}, nil)
-	cs, err := client.Connect(ctx, &mcp.StreamableClientTransport{Endpoint: a.mcp.URL(w, workspace.PlanThread)}, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer cs.Close()
-
-	callTool := func(name string, args any) (string, bool) {
-		t.Helper()
-		res, err := cs.CallTool(ctx, &mcp.CallToolParams{Name: name, Arguments: args})
-		if err != nil {
-			t.Fatalf("%s: %v", name, err)
-		}
-		var b strings.Builder
-		for _, c := range res.Content {
-			if tc, ok := c.(*mcp.TextContent); ok {
-				b.WriteString(tc.Text)
-			}
-		}
-		return b.String(), res.IsError
-	}
+	callTool := toolCaller(t, a, w, workspace.PlanThread)
 	call := func(name string, args any) string {
 		t.Helper()
 		out, isErr := callTool(name, args)
@@ -94,43 +72,8 @@ func TestToolsEndToEnd(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	spec := map[string]any{
-		"objectiveId": "go.strings",
-		"title":       "Reverse words",
-		"statement": map[string]any{
-			"task":         "Write ReverseWords, which returns the words of a sentence in reverse order.",
-			"context":      "Command-line tools often reorder user input.",
-			"signature":    "func ReverseWords(s string) string",
-			"requirements": []string{"Words are separated by runs of spaces.", "Join the result with single spaces."},
-			"examples": []any{
-				map[string]any{"input": `ReverseWords("hello world")`, "output": `"world hello"`},
-				map[string]any{"input": `ReverseWords("  a   b ")`, "output": `"b a"`, "explanation": "Extra spaces don't make empty words."},
-			},
-		},
-		"starter":     map[string]string{"solution.go": goStarter},
-		"reference":   map[string]string{"solution.go": goReference},
-		"tests":       map[string]string{"visible_test.go": goVisible},
-		"hiddenTests": map[string]string{"hidden_test.go": goHidden},
-		"mutants": []any{
-			map[string]any{"name": "split", "description": "keeps empty words", "files": map[string]string{"solution.go": strings.Replace(goReference, "strings.Fields(s)", `strings.Split(s, " ")`, 1)}},
-			map[string]any{"name": "no-reverse", "description": "forgets to reverse", "files": map[string]string{"solution.go": "package solution\n\nimport \"strings\"\n\nfunc ReverseWords(s string) string { return strings.Join(strings.Fields(s), \" \") }\n"}},
-		},
-	}
-	// Planning chats can't publish tasks; the objective's writer can.
-	tools, err := cs.ListTools(ctx, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, tool := range tools.Tools {
-		if tool.Name == "create_task" || tool.Name == "create_lesson" {
-			t.Fatalf("the planning chat has %s", tool.Name)
-		}
-	}
-	write := toolCaller(t, a, w, workspace.WriterThread("go.strings"))
-	if out, isErr := toolCaller(t, a, w, workspace.WriterThread("go.maps"))("create_task", spec); !isErr || !strings.Contains(out, "go.maps") {
-		t.Fatalf("a writer published for another objective: %s", out)
-	}
-	out, isErr := write("create_task", spec)
+	// The objective's writer publishes the task.
+	out, isErr := toolCaller(t, a, w, workspace.WriterThread("go.strings"))("create_task", reverseWordsTask("go.strings"))
 	if isErr {
 		t.Fatalf("create_task: %s", out)
 	}
@@ -166,6 +109,32 @@ func TestToolsEndToEnd(t *testing.T) {
 	}
 }
 
+// reverseWordsTask is a Go task for objective that passes the quality gate.
+func reverseWordsTask(objective string) map[string]any {
+	return map[string]any{
+		"objectiveId": objective,
+		"title":       "Reverse words",
+		"statement": map[string]any{
+			"task":         "Write ReverseWords, which returns the words of a sentence in reverse order.",
+			"context":      "Command-line tools often reorder user input.",
+			"signature":    "func ReverseWords(s string) string",
+			"requirements": []string{"Words are separated by runs of spaces.", "Join the result with single spaces."},
+			"examples": []any{
+				map[string]any{"input": `ReverseWords("hello world")`, "output": `"world hello"`},
+				map[string]any{"input": `ReverseWords("  a   b ")`, "output": `"b a"`, "explanation": "Extra spaces don't make empty words."},
+			},
+		},
+		"starter":     map[string]string{"solution.go": goStarter},
+		"reference":   map[string]string{"solution.go": goReference},
+		"tests":       map[string]string{"visible_test.go": goVisible},
+		"hiddenTests": map[string]string{"hidden_test.go": goHidden},
+		"mutants": []any{
+			map[string]any{"name": "split", "description": "keeps empty words", "files": map[string]string{"solution.go": strings.Replace(goReference, "strings.Fields(s)", `strings.Split(s, " ")`, 1)}},
+			map[string]any{"name": "no-reverse", "description": "forgets to reverse", "files": map[string]string{"solution.go": "package solution\n\nimport \"strings\"\n\nfunc ReverseWords(s string) string { return strings.Join(strings.Fields(s), \" \") }\n"}},
+		},
+	}
+}
+
 // newTestApp keeps a test's workspaces in temp dirs. (Setting XDG_DATA_HOME
 // wouldn't work: adrg/xdg reads it once at startup.)
 func newTestApp(t *testing.T) *App {
@@ -195,34 +164,6 @@ func sandboxApp(t *testing.T) *App {
 		t.Skip("needs a container engine")
 	}
 	return a
-}
-
-// toolCaller connects to one thread's MCP tools, the way that thread's agent
-// would, and returns a function that calls a tool and reports its text and
-// whether it was an error.
-func toolCaller(t *testing.T, a *App, w *workspace.Workspace, thread string) func(name string, args any) (string, bool) {
-	t.Helper()
-	ctx := context.Background()
-	cs, err := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "1"}, nil).
-		Connect(ctx, &mcp.StreamableClientTransport{Endpoint: a.mcp.URL(w, thread)}, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { cs.Close() })
-	return func(name string, args any) (string, bool) {
-		t.Helper()
-		res, err := cs.CallTool(ctx, &mcp.CallToolParams{Name: name, Arguments: args})
-		if err != nil {
-			t.Fatalf("%s: %v", name, err)
-		}
-		var b strings.Builder
-		for _, c := range res.Content {
-			if tc, ok := c.(*mcp.TextContent); ok {
-				b.WriteString(tc.Text)
-			}
-		}
-		return b.String(), res.IsError
-	}
 }
 
 type fakeSession struct {
