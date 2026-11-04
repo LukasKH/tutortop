@@ -143,6 +143,6 @@ Each tool is a `*mcp.Tool` with its name and description, a handler method on `t
 
 ## Checks and the editor
 
-**Run** and **Submit** call `App.RunChecks`. It saves the learner's code, runs the visible tests (plus the hidden ones on submit) in the sandbox and records the attempt.
+**Run** and **Submit** call `App.RunChecks`. It saves the learner's code, runs the visible tests (plus the hidden ones on submit) in the sandbox and records the attempt. The sandbox images are built ahead, in the background, so the first check is fast: when the app starts (`ServiceStartup`, for every workspace's plan language) and when the learner approves a plan. Reading a workspace never starts a build, since the frontend repeats reads freely.
 
 The editor's completions and errors come from a language server running in the task's sandbox image. Go doesn't read the LSP messages. It relays them between the server's stdio and the frontend, sending them out as `lsp:message` events and taking them in through `App.SendLanguageServer`.

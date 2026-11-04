@@ -130,9 +130,6 @@ func (a *App) Workspace(id string) (WorkspaceState, error) {
 	st.Lessons, _ = w.LessonStatuses()
 	st.Questions = w.PendingQuestions()
 	st.Busy, st.Checks = a.activity(id)
-	if st.Curriculum != nil {
-		a.prepare(w, st.Curriculum.Language)
-	}
 	return st, nil
 }
 
@@ -155,7 +152,8 @@ func (a *App) ApproveProposal(wsID string) error {
 }
 
 // prepare builds a language's sandbox image in the background, so the first
-// check is fast.
+// check is fast. Plans prepare theirs when approved, and existing workspaces
+// when the app starts (ServiceStartup).
 func (a *App) prepare(w *workspace.Workspace, language string) {
 	if tc, err := w.Toolchain(language); err == nil {
 		go a.runner.Prepare(context.Background(), tc)

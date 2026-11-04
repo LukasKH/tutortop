@@ -15,6 +15,7 @@ import (
 	"github.com/LukasKH/tutortop/internal/runner"
 	"github.com/LukasKH/tutortop/internal/workspace"
 	"github.com/adrg/xdg"
+	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
 type App struct {
@@ -51,6 +52,25 @@ func New() (*App, error) {
 	}
 	a.mcp = h
 	return a, nil
+}
+
+// ServiceStartup is called by Wails as the app starts. It builds the sandbox
+// images of the workspaces' plans in the background, so the first check in
+// each is fast. Reading a workspace has no such side effect.
+func (a *App) ServiceStartup(context.Context, application.ServiceOptions) error {
+	go func() {
+		list, _ := a.store.List()
+		for _, s := range list {
+			w, err := a.store.Open(s.ID)
+			if err != nil {
+				continue
+			}
+			if c, _ := w.Curriculum(); c != nil {
+				a.prepare(w, c.Language)
+			}
+		}
+	}()
+	return nil
 }
 
 // ServiceShutdown is called by Wails on exit and stops all agent processes
