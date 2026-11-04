@@ -1,4 +1,4 @@
-import type { ChatItem } from "@/lib/api";
+import { ChatMark, ChatRole, type ChatItem } from "@/lib/api";
 
 /** Inserts or replaces a chat item by id (streaming text and tool updates reuse the id). */
 export function upsertChat(items: ChatItem[], item: ChatItem): ChatItem[] {
@@ -11,13 +11,17 @@ export function upsertChat(items: ChatItem[], item: ChatItem): ChatItem[] {
 
 /**
  * The plan conversation after setup. The interview and the first plan, up to
- * the learner approving it, stay with the tutor but off screen. The match is
- * on the notice ApproveProposal posts (internal/app/app.go).
+ * the learner approving it, stay with the tutor but off screen. The approval
+ * is the notice App.ApproveProposal posts, marked MarkPlanApproved.
  */
 export function afterSetup(items: ChatItem[]): ChatItem[] {
-  const i = items.findIndex((x) => x.role === "notice" && x.text.startsWith("You approved the plan"));
+  const i = items.findIndex(isPlanApproval);
   return i === -1 ? items : items.slice(i + 1);
 }
+
+// Notices saved before items had marks are known by their text.
+const isPlanApproval = (x: ChatItem) =>
+  x.mark === ChatMark.MarkPlanApproved || (!x.mark && x.role === ChatRole.RoleNotice && x.text.startsWith("You approved the plan"));
 
 /**
  * Merges the saved transcript with what we have live. Items still streaming

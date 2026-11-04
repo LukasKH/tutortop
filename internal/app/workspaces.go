@@ -144,9 +144,10 @@ func (a *App) ApproveProposal(wsID string) error {
 	}
 	emit(workspaceChanged, WorkspaceEvent{Workspace: wsID})
 	a.prepare(w, c.Language)
-	// The chat panel hides the plan thread up to the first of these notices
-	// (afterSetup in frontend/src/lib/chat.ts); keep the wording's start.
-	a.post(w, workspace.ChatItem{Thread: workspace.PlanThread.String(), Role: workspace.RoleNotice, Text: fmt.Sprintf("You approved the plan (revision %d).", c.Revision)})
+	a.post(w, workspace.ChatItem{
+		Thread: workspace.PlanThread.String(), Role: workspace.RoleNotice, Mark: workspace.MarkPlanApproved,
+		Text: fmt.Sprintf("You approved the plan (revision %d).", c.Revision),
+	})
 	a.keepReady(w, "The learner just approved the plan.")
 	return nil
 }
