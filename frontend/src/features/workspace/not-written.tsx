@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { App, errorText, type Gate } from "@/lib/api";
+import { App, errorText, type SandboxCheck } from "@/lib/api";
 import type { Part } from "@/features/workspace/open-item";
 import { Spinner } from "@/components/ui/spinner";
 import { ErrorText } from "@/components/error-text";
@@ -14,7 +14,7 @@ type Props = {
   /** The objective's writer is at work on it. */
   writing: boolean;
   /** The writer's latest sandbox check of the exercise, if any. */
-  check: Gate | null;
+  check: SandboxCheck | null;
   /** Why the writer stopped, if it failed. */
   failed: string;
   /** The other part, if it's written: the exercise from a lesson page, or the lesson. */
@@ -90,7 +90,7 @@ export function NotWritten({ wsId, objective, part, moduleTitle, writing, check,
 }
 
 /** What the writer is doing. It writes the lesson first, then the exercise. */
-function status(part: Part, check: Gate | null, otherMissing: boolean): string {
+function status(part: Part, check: SandboxCheck | null, otherMissing: boolean): string {
   if (check?.running) return `Checking the exercise “${check.title}” in the sandbox…`;
   if (check && !check.passed) return `Fixing the exercise “${check.title}” after the sandbox checks…`;
   if (part === "exercise" && otherMissing) return "Writing the lesson first, then the exercise…";

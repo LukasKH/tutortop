@@ -113,7 +113,7 @@ type WorkspaceState struct {
 	Questions  *workspace.Questions     `json:"questions"`
 	Busy       map[string]bool          `json:"busy"` // thread -> its tutor or writer is working
 	// Checks are writers' latest sandbox checks of new tasks, by objective.
-	Checks map[string]Gate `json:"checks"`
+	Checks map[string]SandboxCheck `json:"checks"`
 }
 
 func (a *App) Workspace(id string) (WorkspaceState, error) {
@@ -129,7 +129,7 @@ func (a *App) Workspace(id string) (WorkspaceState, error) {
 	st.Tasks, _ = w.TaskStatuses()
 	st.Lessons, _ = w.LessonStatuses()
 	st.Questions = w.PendingQuestions()
-	st.Busy, st.Checks = a.activity(id)
+	st.Busy, st.Checks = a.sessionState(id)
 	return st, nil
 }
 
@@ -144,9 +144,10 @@ func (a *App) ApproveProposal(wsID string) error {
 	}
 	emit(workspaceChanged, WorkspaceEvent{Workspace: wsID})
 	a.prepare(w, c.Language)
-	// The tutor panel hides the plan thread up to the first of these notices
-	// (afterSetup in frontend/src/lib/chat.ts); keep the wording's start.
-	a.post(w, workspace.ChatItem{Thread: workspace.PlanThread.String(), Role: workspace.RoleNotice, Text: fmt.Sprintf("You approved the plan (revision %d).", c.Revision)})
+	a.post(w, workspace.ChatItem{
+		Thread: workspace.PlanThread.String(), Role: workspace.RoleNotice, Mark: workspace.MarkPlanApproved,
+		Text: fmt.Sprintf("You approved the plan (revision %d).", c.Revision),
+	})
 	a.keepReady(w, "The learner just approved the plan.")
 	return nil
 }

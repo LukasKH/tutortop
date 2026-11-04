@@ -23,8 +23,21 @@ type ChatItem struct {
 	Role   ChatRole   `json:"role"`
 	Text   string     `json:"text"`
 	Status ChatStatus `json:"status,omitempty"` // tools always have one; notices only ChatFailed
+	Mark   ChatMark   `json:"mark,omitempty"`
 	At     time.Time  `json:"at"`
 }
+
+// ChatMark tells what an item is, for code that looks for it, so nothing
+// matches on the text the learner reads.
+type ChatMark string
+
+const (
+	// MarkPlanApproved is the notice that the learner approved a plan. The
+	// chat panel hides the plan thread up to the first one (afterSetup in
+	// frontend/src/lib/chat.ts). Notices saved before marks existed have
+	// none, and it finds them by their text.
+	MarkPlanApproved ChatMark = "plan-approved"
+)
 
 // ChatStatus is how a tool's call went, or marks a notice as a failure.
 type ChatStatus string

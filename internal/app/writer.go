@@ -60,13 +60,13 @@ func (a *App) writeObjective(w *workspace.Workspace, o workspace.Objective, why 
 // writerCheck records and shows how a writer's sandbox check of its task is
 // going, so the objective's page shows it even after the learner looks away.
 // The check is kept on the writer's session, so it goes when the writer does.
-func (a *App) writerCheck(wsID string, g Gate) {
+func (a *App) writerCheck(wsID string, c SandboxCheck) {
 	a.mu.Lock()
-	if s := a.sessions[threadKey{wsID, workspace.WriterThread(g.Objective).String()}]; s != nil {
-		s.gate = &g
+	if s := a.sessions[threadKey{wsID, c.Thread}]; s != nil {
+		s.check = &c
 	}
 	a.mu.Unlock()
-	emit(gateStatus, GateEvent{Workspace: wsID, Gate: g})
+	emit(checkStatus, CheckEvent{Workspace: wsID, Check: c})
 }
 
 // keepReady starts writers for the next unpassed objectives in plan order

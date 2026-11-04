@@ -1,6 +1,6 @@
 # Adding an agent
 
-`internal/agent` drives the learner's own coding-agent CLI: Claude Code over its stream-json stdio protocol, Codex over `codex app-server` JSON-RPC. Each CLI has an adapter. The adapter turns what the CLI prints into a few events and holds the tutor to Tutortop's tool policy. To add an agent (Gemini CLI, OpenCode, anything that speaks the Agent Client Protocol), you need this package and nothing else from the app.
+`internal/agent` drives the learner's own coding-agent CLI: Claude Code over its stream-json stdio protocol, Codex over `codex app-server` JSON-RPC. Each CLI has an adapter. The adapter turns what the CLI prints into a few events and holds the tutor to Tutortop's tool policy. To add an agent (Gemini CLI, OpenCode, anything that speaks the Agent Client Protocol), the work is in this package, plus the few edits [outside it](#outside-this-package).
 
 The contract is in code. `agent.go` has the types and their doc comments, and `policy.go` has the tool policy. This page explains them and adds the steps.
 
@@ -12,7 +12,16 @@ An adapter is one file, like `claude.go` or `codex.go`. It has three parts:
 - `xModels(ctx) ([]Model, error)`, which lists the models it offers, the CLI's default first, each with the reasoning efforts it takes. Claude's list is fixed, because the CLI takes aliases that follow each release. Codex's is asked live from the CLI. The app caches the answer for a few minutes;
 - an entry in `Providers()` with an id, a display name and the binary to look up on `PATH`.
 
-That's all the app needs. Settings list `Providers()` and show the ones that aren't installed as missing. Workspaces save session ids per provider id. The frontend gets each provider's display name from `App.Environment`, so a new agent needs no frontend change.
+That's all the app needs. Settings list `Providers()` and show the ones that aren't installed as missing. The frontend gets each provider's display name from `App.Environment`, so a new agent needs no frontend change.
+
+A workspace remembers one agent (`Meta.Provider`) and its threads' session ids. Session ids belong to one agent, so when a thread starts with another agent, `Workspace.UseProvider` switches the workspace to it and forgets the saved sessions: every thread starts a fresh conversation, and the tutor catches up from the workspace files.
+
+## Outside this package
+
+- `go.mod` and `go.sum`, for an SDK the adapter uses, such as `github.com/coder/acp-go-sdk`.
+- `internal/shellpath`: an app started from a desktop launcher doesn't get the user's shell PATH, so it asks the login shell, and falls back to `commonDirs`, the folders where the agents' installers put their binaries. Add the new CLI's folder if it isn't there; OpenCode's install script, for one, uses `~/.opencode/bin`.
+- `README.md`: the introduction and **Install** name the agents Tutortop runs on, with a link to each one's setup.
+- The `test:live` summary in `Taskfile.yml` and the comment above the tests in `.github/workflows/ci.yml` name the CLIs the live tests talk to.
 
 ## The contract
 
@@ -121,8 +130,19 @@ The Agent Client Protocol is JSON-RPC over stdio. It maps onto this package clos
 | `policy.allow` | `session/request_permission`: describe the tool call, then pick an allow-once or reject-once option |
 | `xModels` | the session's config options (`configOptions` in the `NewSession` reply): the select with category `model` gives the models, the one with category `thought_level` the efforts. ACP reports them per session only, so start the binary in a temporary folder, `Initialize`, `NewSession`, read the options and `Close`, as `codexModels` does with Codex |
 | `Model`, `Effort` | after `NewSession` or `LoadSession`, `session/set_config_option` with the option's `id` and the chosen value; leave an empty one alone |
-| `Instructions` | the agent's own way to add to its system prompt: a flag, an environment variable or a config file it reads at start. ACP's stable schema has no system-prompt field; a proposed `systemPrompt` on `session/new` (mode `append`) fits exactly, so use it if the agent advertises it |
+| `Instructions` | the agent's own way to add to its system prompt: a flag, an environment variable or a config file it reads at start (see OpenCode below). ACP's stable schema has no system-prompt field; a proposed `systemPrompt` on `session/new` (mode `append`) fits exactly, so use it if the agent advertises it |
 
 An agent that has no model or thought-level option returns a single `Model` with an empty `ID` and no efforts, which tells the app to leave the choice to the CLI. Don't fall back to sending the instructions as the first prompt: a resumed session would get them twice, and the agent may drop them when it compacts its context.
 
 Don't offer the terminal capability. If you offer file access, put each read and write through the policy too. Pass the SDK's connection the `process` pipes, so `ErrStopped`, stderr and `Close` work the same as for the other adapters.
+
+The SDK's `acp.Client` interface, which `NewClientSideConnection` takes, has every method an agent may call on the client, whatever the client offers: `SessionUpdate`, `RequestPermission`, `ReadTextFile`, `WriteTextFile`, and the terminal methods `CreateTerminal`, `TerminalOutput`, `WaitForTerminalExit`, `KillTerminal` and `ReleaseTerminal`. An agent shouldn't call the file or terminal ones without the capability, but the adapter must still have them: make each one you don't offer return an error, so a call is refused, never carried out. When `Cancel` ends a turn, ACP requires the client to answer each pending `session/request_permission` with the `cancelled` outcome.
+
+### OpenCode's instructions and policy
+
+OpenCode reads its settings from `opencode.json`, and the `OPENCODE_CONFIG` environment variable points it at another file. Write one for the session outside the workspace, so the tutor can't change it, and set it in the process's environment:
+
+- `instructions` lists files OpenCode adds to its prompt: write `opts.Instructions` to a file next to the config and name it there.
+- `permission` is the first layer of the policy: `"bash": "deny"`, `"task": "deny"` (no subagents), `"external_directory": "deny"`, and `edit` as `{"*": "allow", "tasks/**": "deny"}` (the last matching rule wins). Rules match MCP tools by name too.
+
+OpenCode merges this file with the user's own config, so their MCP servers can still load. `policy.allow` refuses those servers' tools, like anything else the config lets through to a permission request.

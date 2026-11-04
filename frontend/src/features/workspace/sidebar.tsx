@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { lessonDone } from "@/lib/workspace";
 import { type LessonStatus, type TaskStatus, type WorkspaceState } from "@/lib/api";
 import { describeItem, entryOf, itemKey, lessonOf, sameItem, type OpenItem } from "@/features/workspace/open-item";
-import type { Attention } from "@/features/tutor/chat-panel";
+import type { Attention } from "@/features/chat/chat-panel";
 import { PencilIcon } from "lucide-react";
 import { cn } from "cn";
 import { Spinner } from "@/components/ui/spinner";

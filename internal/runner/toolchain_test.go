@@ -91,7 +91,6 @@ func TestToolchainSpec(t *testing.T) {
 		{"lowercase FROM", func(s *ToolchainSpec) { s.Dockerfile = "from r-base:4\n" }, nil},
 		{"uppercase language", func(s *ToolchainSpec) { s.Language = "R" }, []string{"language must be a short lowercase id"}},
 		{"long language", func(s *ToolchainSpec) { s.Language = strings.Repeat("r", 21) }, []string{"language must be a short lowercase id"}},
-		{"built-in language", func(s *ToolchainSpec) { s.Language = "python" }, []string{"python is built in"}},
 		{"no name", func(s *ToolchainSpec) { s.Name = " " }, []string{"name is required"}},
 		{"dockerfile without FROM", func(s *ToolchainSpec) { s.Dockerfile = "RUN apt-get install r\n" }, []string{"dockerfile must start with FROM"}},
 		{"no test command", func(s *ToolchainSpec) { s.TestCommand = "" }, []string{"test_command is required"}},

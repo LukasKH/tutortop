@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { type ChatItem, type Gate, type Questions } from "@/lib/api";
+import { type ChatItem, type Questions, type SandboxCheck } from "@/lib/api";
 import { QuestionsForm } from "@/features/workspace/questions";
 import { AutoTextarea } from "@/components/auto-textarea";
 import { ErrorText } from "@/components/error-text";
@@ -12,7 +12,8 @@ type Props = {
   /** The planning conversation so far. */
   items: ChatItem[];
   busy: boolean;
-  gate: Gate | null;
+  /** The tutor's sandbox check of a language it sets up, if any. */
+  check: SandboxCheck | null;
   questions: Questions | null;
   lang?: string;
   onAnswer: (answers: Record<string, string>) => Promise<void>;
@@ -27,7 +28,7 @@ type Props = {
  * itself opens for review once proposed. There's no chat beside it yet; if
  * the tutor stops to ask something in words, the learner replies here.
  */
-export function Setup({ items, busy, gate, questions, lang, onAnswer, onDismiss, onStop, onSend }: Props) {
+export function Setup({ items, busy, check, questions, lang, onAnswer, onDismiss, onStop, onSend }: Props) {
   // Only what happened since the learner last wrote is shown.
   const lastUser = items.findLastIndex((i) => i.role === "user");
   const recent = items.slice(Math.max(0, lastUser));
@@ -56,7 +57,7 @@ export function Setup({ items, busy, gate, questions, lang, onAnswer, onDismiss,
         <QuestionsForm key={JSON.stringify(questions)} layout="page" form={questions} onAnswer={onAnswer} onDismiss={onDismiss} />
       ) : (
         <>
-          {(busy || recent.length > 0) && <WorkLog items={recent} busy={busy} gate={gate} lang={lang} onStop={onStop} />}
+          {(busy || recent.length > 0) && <WorkLog items={recent} busy={busy} check={check} lang={lang} onStop={onStop} />}
           {!busy && items.length > 0 && <Reply onSend={onSend} />}
         </>
       )}

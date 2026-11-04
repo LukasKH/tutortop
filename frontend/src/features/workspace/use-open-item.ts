@@ -3,7 +3,7 @@ import { AppEvents, useEvent, type LessonStatus, type Objective, type Questions,
 import { PLAN_THREAD } from "@/lib/workspace";
 import { readStored, useStored } from "@/hooks/use-stored";
 import { describeItem, itemKey, parseItemKey, resolveOpen, sameItem, threadOf, type OpenItem, type Part } from "@/features/workspace/open-item";
-import type { Workspace } from "@/features/workspace/use-workspace";
+import type { UseWorkspaceResult } from "@/features/workspace/use-workspace";
 
 /** The centre pane shows the open item, or one of the plan's pages. */
 export type CenterView = "item" | "plan" | "proposal";
@@ -16,7 +16,7 @@ export type NewItem = { item: OpenItem; title: string };
  * workspace), the centre's view, and the chat thread that goes with them.
  * New lessons and exercises open, or are pointed out, as they're published.
  */
-export function useOpenItem(id: string, { ws, refresh, dismissFinishedGate }: Pick<Workspace, "ws" | "refresh" | "dismissFinishedGate">) {
+export function useOpenItem(id: string, { ws, refresh, dismissFinishedCheck }: Pick<UseWorkspaceResult, "ws" | "refresh" | "dismissFinishedCheck">) {
   // Each snapshot checks the open item still exists, and what it picks
   // instead is remembered, so a default doesn't move on its own. Until the
   // first snapshot, the stored item is unchecked. Older versions stored it
@@ -41,7 +41,7 @@ export function useOpenItem(id: string, { ws, refresh, dismissFinishedGate }: Pi
     setStoredKey(itemKey(next));
     setView("item");
     setNewItem((n) => (n && sameItem(n.item, next) ? null : n));
-    dismissFinishedGate();
+    dismissFinishedCheck();
   }
 
   // New work opens at once when it's what the learner is waiting for: its
@@ -87,16 +87,16 @@ export type Center =
  * Decides the centre pane. Until the first plan is approved (setup),
  * everything happens there: the questions, the tutor's work, then the plan to
  * review. After that, the plan's pages when chosen, else the tutor's
- * questions if nothing is open, else the open item.
+ * questions if placeQuestions put them here, else the open item.
  */
-export function centerOf(ws: WorkspaceState, view: CenterView, item: OpenItem | null, questions: Questions | null): Center {
+export function centerOf(ws: WorkspaceState, view: CenterView, item: OpenItem | null, centred: Questions | null): Center {
   if (!ws.curriculum) {
     if (view === "plan") return { kind: "plan" };
     return ws.proposal ? { kind: "proposal", proposal: ws.proposal } : { kind: "setup" };
   }
   if (view === "proposal" && ws.proposal) return { kind: "proposal", proposal: ws.proposal };
   if (view === "plan") return { kind: "plan" };
-  if (questions && questionsInCenter(view, item, questions)) return { kind: "questions", questions };
+  if (centred) return { kind: "questions", questions: centred };
   const { lesson, objective } = describeItem(ws, item);
   if (item?.kind === "todo" && objective) return { kind: "not-written", objective, part: item.part };
   if (lesson) return { kind: "lesson", lesson };
@@ -104,9 +104,28 @@ export function centerOf(ws: WorkspaceState, view: CenterView, item: OpenItem | 
   return { kind: "empty" };
 }
 
+/** Where the tutor's open questions show on the workspace screen. */
+export type QuestionsPlace = {
+  /** The centre pane shows the form: the setup page, or the questions page while nothing is open. */
+  center: boolean;
+  /** The thread whose chat shows the form: the one that asked. Null when they're in the centre, or there are none. */
+  chat: string | null;
+  /** How many questions "Your plan" counts in the curriculum rail: the plan asked while another chat is shown. */
+  planBadge: number;
+};
+
 /**
- * Before the first task, the tutor's questions are the main thing to do, so
- * they get the centre pane instead of the narrow chat column. Otherwise they
- * appear in the chat of the thread that asked.
+ * Decides where the tutor's questions show. Before the first task they're
+ * the main thing to do, so they get the centre pane instead of the narrow
+ * chat column. Otherwise they wait in the chat of the thread that asked,
+ * shown or not, and the plan's are counted on "Your plan".
  */
-export const questionsInCenter = (view: CenterView, item: OpenItem | null, questions: Questions | null) => !!questions && !item && view === "item";
+export function placeQuestions(ws: WorkspaceState, view: CenterView, item: OpenItem | null, thread: string, questions: Questions | null): QuestionsPlace {
+  const nowhere: QuestionsPlace = { center: false, chat: null, planBadge: 0 };
+  if (!questions) return nowhere;
+  // During setup there's no chat beside the centre. The setup page shows them, unless the plan or a proposal is open instead (centerOf).
+  if (!ws.curriculum) return { ...nowhere, center: view !== "plan" && !ws.proposal };
+  if (view === "item" && !item) return { ...nowhere, center: true };
+  const planBadge = questions.thread === PLAN_THREAD && thread !== PLAN_THREAD ? (questions.questions ?? []).length : 0;
+  return { center: false, chat: questions.thread, planBadge };
+}

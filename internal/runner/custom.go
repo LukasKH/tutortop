@@ -38,9 +38,6 @@ func (s ToolchainSpec) Toolchain() (Toolchain, error) {
 	if !languageID.MatchString(s.Language) {
 		add("language must be a short lowercase id like r or rust")
 	}
-	if _, ok := Builtin(s.Language); ok {
-		add("%s is built in; use it directly", s.Language)
-	}
 	if strings.TrimSpace(s.Name) == "" {
 		add("name is required")
 	}

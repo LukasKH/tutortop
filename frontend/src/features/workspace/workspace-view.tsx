@@ -6,16 +6,16 @@ import { PLAN_THREAD, writerThread } from "@/lib/workspace";
 import { describeItem, exerciseOf, itemKey, lessonOf, viaLesson } from "@/features/workspace/open-item";
 import { useChatPanel } from "@/features/workspace/use-chat-panel";
 import { useChatThreads } from "@/features/workspace/use-chat-threads";
-import { centerOf, questionsInCenter, useOpenItem, type Center } from "@/features/workspace/use-open-item";
-import { useWorkspace, type Workspace } from "@/features/workspace/use-workspace";
+import { centerOf, placeQuestions, useOpenItem, type Center } from "@/features/workspace/use-open-item";
+import { useWorkspace, type UseWorkspaceResult } from "@/features/workspace/use-workspace";
 import { Sidebar } from "@/features/workspace/sidebar";
 import { TaskPanel } from "@/features/task/task-panel";
 import { LessonPanel } from "@/features/lesson/lesson-panel";
 import { NotWritten } from "@/features/workspace/not-written";
 import { PlanView } from "@/features/workspace/plan-view";
 import { ProposalView } from "@/features/workspace/proposal-view";
-import { ChatPanel, ChatRail, StatusLine, type Attention } from "@/features/tutor/chat-panel";
-import { useComposer } from "@/features/tutor/use-composer";
+import { ChatPanel, ChatRail, StatusLine, type Attention } from "@/features/chat/chat-panel";
+import { useComposer } from "@/features/chat/use-composer";
 import { Markdown } from "@/components/markdown";
 import { QuestionsForm } from "@/features/workspace/questions";
 import { Setup } from "@/features/workspace/setup";
@@ -38,13 +38,13 @@ export function WorkspaceView({ id, tutor, onSettings, onBack }: Props) {
   const live = useWorkspace(id);
   // What the learner has open, and the chat thread that goes with it (use-open-item.ts).
   const nav = useOpenItem(id, live);
-  // The tutor panel: open or folded into its rail, its width, and its message box.
+  // The chat panel: open or folded into its rail, its width, and its message box.
   const chat = useChatPanel();
   const composer = useComposer();
   // Conversations by thread, loaded for the shown thread and streamed in by event.
   const { threads, unread } = useChatThreads(id, nav.thread, { ready: live.ws !== null, visible: chat.open, onError: live.fail });
 
-  const { ws, busy, questions, gate, fail } = live;
+  const { ws, busy, questions, fail } = live;
   if (!ws) {
     return (
       <Placeholder error={live.error} loading="Opening workspace…">
@@ -61,13 +61,11 @@ export function WorkspaceView({ id, tutor, onSettings, onBack }: Props) {
   // Until the first plan is approved, everything happens in the centre. No chat beside it.
   const setup = !ws.curriculum;
 
-  // Questions that aren't in the centre wait in the chat of the thread that
-  // asked. The plan's also show on "Your plan" while another chat is shown.
-  const questionsWaiting = !!questions && !questionsInCenter(view, item, questions);
-  const planAsked = questionsWaiting && questions.thread === PLAN_THREAD;
+  // The tutor's questions: in the centre, or in the chat of the thread that asked.
+  const place = placeQuestions(ws, view, item, thread, questions);
   const planAttention: Attention = {
-    attention: thread !== PLAN_THREAD && (!!unread[PLAN_THREAD] || !!busy[PLAN_THREAD] || planAsked),
-    questions: planAsked ? (questions?.questions ?? []).length : 0,
+    attention: thread !== PLAN_THREAD && (!!unread[PLAN_THREAD] || !!busy[PLAN_THREAD] || place.planBadge > 0),
+    questions: place.planBadge,
   };
 
   // Hints are for the open exercise's own conversation, until it's solved.
@@ -81,7 +79,7 @@ export function WorkspaceView({ id, tutor, onSettings, onBack }: Props) {
 
   return (
     <div
-      // Curriculum rail, centre, tutor panel (folded into a 44px rail when collapsed).
+      // Curriculum rail, centre, chat panel (folded into a 44px rail when collapsed).
       className={cn("relative grid h-full", setup ? "grid-cols-[236px_minmax(0,1fr)]" : "grid-cols-[236px_minmax(0,1fr)_var(--chat-w)]")}
       style={setup ? undefined : ({ "--chat-w": chat.open ? `min(${chat.width}px, 50vw)` : "44px" } as CSSProperties)}
     >
@@ -112,7 +110,7 @@ export function WorkspaceView({ id, tutor, onSettings, onBack }: Props) {
         )}
         <CenterPane
           id={id}
-          center={centerOf(ws, view, item, questions)}
+          center={centerOf(ws, view, item, place.center ? questions : null)}
           ws={ws}
           live={live}
           nav={nav}
@@ -131,19 +129,27 @@ export function WorkspaceView({ id, tutor, onSettings, onBack }: Props) {
               onHint: (level) => App.RequestHint(id, hintTask.id, level).then(live.refresh).catch(fail),
             }
           }
-          // The setup interview stays out of the tutor panel.
+          // The setup interview stays out of the chat panel.
           items={thread === PLAN_THREAD ? afterSetup(threads[PLAN_THREAD] ?? []) : (threads[thread] ?? [])}
           busy={!!busy[thread]}
           questions={
-            questions && !questionsWaiting && thread === PLAN_THREAD ? (
+            questions && place.chat === thread ? (
+              <QuestionsForm key={JSON.stringify(questions)} layout="chat" form={questions} onAnswer={live.answerQuestions} onDismiss={live.dismissQuestions} />
+            ) : place.center ? (
               <div className="max-w-[88%] self-center text-center text-[12px] text-balance wrap-anywhere whitespace-pre-wrap text-muted-foreground">
                 Questions are open in the main panel.
               </div>
-            ) : questions && questionsWaiting && questions.thread === thread ? (
-              <QuestionsForm key={JSON.stringify(questions)} layout="chat" form={questions} onAnswer={live.answerQuestions} onDismiss={live.dismissQuestions} />
             ) : null
           }
-          status={<StatusLine gate={gate} newItem={nav.newItem} busy={!!busy[thread]} onStop={() => App.StopAgent(id, thread).catch(fail)} onOpen={nav.open} />}
+          status={
+            <StatusLine
+              check={live.toolchainCheck}
+              newItem={nav.newItem}
+              busy={!!busy[thread]}
+              onStop={() => App.StopAgent(id, thread).catch(fail)}
+              onOpen={nav.open}
+            />
+          }
           composer={composer}
           onSend={(text) => App.SendMessage(id, text, thread).catch(fail)}
           onCollapse={() => chat.setOpen(false)}
@@ -151,10 +157,10 @@ export function WorkspaceView({ id, tutor, onSettings, onBack }: Props) {
           onSettings={onSettings}
         />
       ) : (
-        <ChatRail attention={Object.values(unread).some(Boolean) || questionsWaiting} busy={live.tutorBusy} onExpand={() => chat.setOpen(true)} />
+        <ChatRail attention={Object.values(unread).some(Boolean) || place.chat !== null} busy={live.tutorBusy} onExpand={() => chat.setOpen(true)} />
       )}
       {!setup && (
-        // The handle sits on the tutor panel's left border, in the shell, so one
+        // The handle sits on the chat panel's left border, in the shell, so one
         // drag can fold the panel into its rail and pull it back out.
         <Splitter
           axis="x"
@@ -173,7 +179,7 @@ type CenterProps = {
   id: string;
   center: Center;
   ws: WorkspaceState;
-  live: Workspace;
+  live: UseWorkspaceResult;
   nav: ReturnType<typeof useOpenItem>;
   /** The planning conversation, which setup shows in the centre. */
   planItems: ChatItem[];
@@ -193,7 +199,7 @@ function CenterPane({ id, center, ws, live, nav, planItems, onAskTutor }: Center
         <Setup
           items={planItems}
           busy={!!live.busy[PLAN_THREAD]}
-          gate={live.gate}
+          check={live.toolchainCheck}
           questions={live.questions}
           lang={details.lang}
           onAnswer={live.answerQuestions}
@@ -207,7 +213,7 @@ function CenterPane({ id, center, ws, live, nav, planItems, onAskTutor }: Center
       return <ProposalView wsId={id} proposal={center.proposal} current={ws.curriculum} progress={ws.progress} mission={ws.mission} />;
 
     case "plan":
-      // Before the first plan there's no tutor panel to ask; after it, "Back" needs something open.
+      // Before the first plan there's no chat panel to ask; after it, "Back" needs something open.
       return ws.curriculum ? (
         <PlanView wsId={id} ws={ws} onClose={item ? back : undefined} onAskTutor={onAskTutor} />
       ) : (

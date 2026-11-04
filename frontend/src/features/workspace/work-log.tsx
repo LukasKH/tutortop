@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { plural } from "@/lib/format";
-import { type ChatItem, type Gate } from "@/lib/api";
+import { type ChatItem, type SandboxCheck } from "@/lib/api";
 import { ChevronDownIcon } from "lucide-react";
-import { Thinking } from "@/features/tutor/thinking";
+import { Thinking } from "@/features/chat/thinking";
 import { Spinner } from "@/components/ui/spinner";
 import { Markdown } from "@/components/markdown";
 import { Button } from "@/components/ui/button";
@@ -12,7 +12,8 @@ type Props = {
   /** One stretch of the planning conversation: what the tutor did since the learner last wrote. */
   items: ChatItem[];
   busy: boolean;
-  gate?: Gate | null;
+  /** The tutor's sandbox check of a language it sets up. */
+  check?: SandboxCheck | null;
   lang?: string;
   onStop?: () => void;
 };
@@ -22,7 +23,7 @@ type Props = {
  * line, its messages, and its tool calls folded into one summary line per
  * run (expand it to see each call).
  */
-export function WorkLog({ items, busy, gate, lang, onStop }: Props) {
+export function WorkLog({ items, busy, check, lang, onStop }: Props) {
   // Before the first item arrives, the clock runs from when the work started.
   const { since, now } = useClock(busy);
   const start = items[0] ? Date.parse(items[0].at) : since;
@@ -62,15 +63,13 @@ export function WorkLog({ items, busy, gate, lang, onStop }: Props) {
           </p>
         ),
       )}
-      {busy && gate?.running && (
+      {busy && check?.running && (
         <div className="flex min-w-0 items-center gap-2 text-sm text-muted-foreground">
           <Spinner className="size-[12px]" aria-hidden />
-          {gate.kind === "toolchain"
-            ? `Setting up ${gate.title} in the sandbox. The first time can take a few minutes…`
-            : `Checking “${gate.title}” in the sandbox…`}
+          Setting up {check.title} in the sandbox. The first time can take a few minutes…
         </div>
       )}
-      {!gate?.running && <Thinking items={shown} busy={busy} />}
+      {!check?.running && <Thinking items={shown} busy={busy} />}
     </section>
   );
 }

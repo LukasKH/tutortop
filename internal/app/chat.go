@@ -99,7 +99,7 @@ func (a *App) RequestHint(wsID, taskID string, level int) error {
 	if err != nil {
 		return err
 	}
-	_ = w.RecordAttempt(workspace.Attempt{TaskID: taskID, Kind: workspace.KindHint, HintLevel: level})
+	_ = w.RecordAttempt(workspace.Attempt{TaskID: taskID, Kind: workspace.AttemptHint, HintLevel: level})
 	names := []string{"", "a nudge", "a pointer", "a snippet", "the solution walkthrough"}
 	msg := fmt.Sprintf("Hint level %d (%s), please.", level, names[level])
 	t := workspace.TaskThread(taskID)
@@ -261,13 +261,8 @@ func toolLabel(t agent.Tool) (string, bool) {
 			return "Recorded what you learned", true
 		}
 	}
-	if t.MCPServer == mcpName {
-		switch t.MCPTool {
-		// create_task, propose_curriculum and set_icon show in their own UI
-		// (the status line, the proposal screen, the icon itself).
-		case "get_state", "ask_user", "create_task", "propose_curriculum", "set_icon":
-			return "", false
-		}
+	if t.MCPServer == mcpName && !shownInChat(t.MCPTool) {
+		return "", false
 	}
 	return t.Title, t.Title != ""
 }

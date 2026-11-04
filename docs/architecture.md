@@ -1,6 +1,6 @@
 # Architecture
 
-Tutortop is a Go program with a React frontend, shipped as one desktop app by [Wails v3](https://wails.io). Go does the real work. It reads and writes the workspace files, runs the learner's coding agent and runs checks in a sandbox. The frontend draws the UI and asks Go for everything else.
+Tutortop is a Go program with a React frontend, shipped as one desktop app by [Wails v3](https://wails.io). The [glossary](GLOSSARY.md) defines the words used here and in the code. Go does the real work. It reads and writes the workspace files, runs the learner's coding agent and runs checks in a sandbox. The frontend draws the UI and asks Go for everything else.
 
 ```
  React frontend (frontend/src)
@@ -42,7 +42,7 @@ All events live in `internal/app/events.go`. Each has a payload struct, a name c
 | --- | --- | --- |
 | `chat:message` | `ChatEvent` | a chat message is added or updated, including each streamed piece of a reply |
 | `thread:busy` | `BusyEvent` | a thread's tutor or writer starts or stops working |
-| `gate:status` | `GateEvent` | a new task or toolchain is being checked in the sandbox, or the check finished |
+| `check:status` | `CheckEvent` | a sandbox check (`SandboxCheck`) started or finished: a writer's new task in the quality gate, or a language a chat sets up |
 | `task:published` | `TaskEvent` | a writer published a task |
 | `lesson:published` | `LessonEvent` | a writer published a lesson |
 | `questions:asked` | `QuestionsEvent` | the tutor called `ask_user` |
@@ -67,7 +67,7 @@ React 19 with Vite, styled with [Tailwind CSS v4](https://tailwindcss.com) and [
 ```
 frontend/src/
   main.tsx, app.tsx     entry point and the top-level screen switch
-  features/<area>/      one folder per screen area: home, settings, workspace, lesson, task, tutor
+  features/<area>/      one folder per screen area: home, settings, workspace, lesson, task, chat
   components/ui/        shadcn primitives (Button, Dialog, Tabs, ...), restyled to the app's look
   components/           the app's shared components: Markdown, Page and PageHeader, Splitter, ...
   hooks/                shared React hooks
@@ -81,18 +81,18 @@ A feature's state and its backend calls live in hooks next to its components. Th
 
 ### The workspace screen
 
-`features/workspace/workspace-view.tsx` lays out the curriculum rail, the centre pane and the tutor panel. Its state comes from these hooks:
+`features/workspace/workspace-view.tsx` lays out the curriculum rail, the centre pane and the chat panel (labelled "Tutor"). Its state comes from these hooks:
 
 | Hook | State | Comes from |
 | --- | --- | --- |
-| `use-workspace.ts` | the snapshot (`App.Workspace`), busy threads, writers' checks and failures, the planning check, open questions, the last error | refetched on `workspace:changed`, `task:published` and `lesson:published`; `thread:busy`, `gate:status`, `chat:message` and `questions:asked` update it directly |
+| `use-workspace.ts` | the snapshot (`App.Workspace`), busy threads, writers' checks and failures, a chat's toolchain check, open questions, the last error | refetched on `workspace:changed`, `task:published` and `lesson:published`; `thread:busy`, `check:status`, `chat:message` and `questions:asked` update it directly |
 | `use-open-item.ts` | the open item, the centre's view (item, plan or proposal), the chat thread that goes with them, new work to point out | the learner, remembered per workspace; `task:published`, `lesson:published` and `curriculum:proposed` |
 | `use-chat-threads.ts` | conversations by thread, and which are unread | `App.Chat` for the shown thread; `chat:message` |
-| `use-chat-panel.ts`, `tutor/use-composer.ts` | the tutor panel's width and whether it's folded; the message draft | the learner |
+| `use-chat-panel.ts`, `chat/use-composer.ts` | the chat panel's width and whether it's folded; the message draft | the learner |
 
 `use-workspace.ts` sends every change through one pure reducer, `workspace-state.ts`. Events arrive faster than refetches, so the reducer keeps what an event set after a snapshot was asked for. A writer that finishes during a refetch then stops spinning.
 
-The open item is an `OpenItem`: a task, a lesson, or an objective's lesson or exercise that isn't written yet (`open-item.ts`). `centerOf` in `use-open-item.ts` decides what the centre shows, and `CenterPane` renders it. Thread names (`plan`, a task id, `lesson-<id>`, `write-<objective>`) are the backend's and live in `lib/workspace.ts`. Only the hooks and the chat pass them around.
+The open item is an `OpenItem`: a task, a lesson, or an objective's lesson or exercise that isn't written yet (`open-item.ts`). `centerOf` in `use-open-item.ts` decides what the centre shows, and `CenterPane` renders it. `placeQuestions` next to it decides where the tutor's questions show: the centre, the chat of the thread that asked, and the count on "Your plan". Thread names (`plan`, a task id, `lesson-<id>`, `write-<objective>`) are the backend's and live in `lib/workspace.ts`. Only the hooks and the chat pass them around.
 
 To add:
 
@@ -112,7 +112,7 @@ Components are styled with utility classes in their markup. The one exception is
 
 ## The agent and its tools
 
-The tutor is the learner's own CLI, signed in already. `App` starts one agent process per thread, a conversation with its own chat. `workspace.Thread` names the four kinds, and its name is the chat's file name and what the frontend sends: `plan` for the mission and curriculum, the task id for a task, `lesson-<id>` for a lesson, and `write-<objective>` for an objective's writer.
+The agent is the learner's own CLI, signed in already. In a chat thread it's the tutor; in a writer's thread, it's that writer. `App` starts one agent process per thread, a conversation with its own chat. `workspace.Thread` names the four kinds, and its name is the chat's file name and what the frontend sends: `plan` for the mission and curriculum, the task id for a task, `lesson-<id>` for a lesson, and `write-<objective>` for an objective's writer.
 
 Writers have no chat window. They prepare an objective's lesson and exercise in the background, and the app keeps the next two unpassed objectives written so the learner doesn't wait.
 
@@ -135,13 +135,13 @@ To add a kind of thread, add it and its name to `internal/workspace/thread.go`, 
 
 The agent changes the app's state only through MCP tools, built on the [official Go SDK](https://github.com/modelcontextprotocol/go-sdk). `App` serves them over HTTP on `127.0.0.1`, with a random token in each thread's URL, so a thread can only reach its own workspace. The tool handlers write to the workspace and emit events.
 
-`mcpTools` in `internal/app/mcp.go` lists every tool with the kinds of thread that get it:
+`mcpTools` in `internal/app/mcp.go` lists every tool with whether its calls show in the chat and the kinds of thread that get it:
 
 - Every kind gets `get_state`.
 - The chats (plan, task and lesson threads) also get `ask_user`, `set_icon`, `propose_curriculum` and `set_toolchain` (`mcp_chat.go`).
 - Writers also get `create_task` and `create_lesson` (`mcp_writer.go`), for their own objective only.
 
-Each tool is a `*mcp.Tool` with its name and description, a handler method on `threadTools`, and its input and output types, kept together. The SDK derives the input schema from the input type's `json` and `jsonschema` tags and rejects calls that don't match it. A handler that returns an error sends the error's text back to the agent, which fixes its call and tries again. To add a tool, write those pieces next to the others and add a line to `mcpTools` with the kinds that get it. A tool for the plan only is a line with `workspace.PlanKind`.
+Each tool is a `*mcp.Tool` with its name and description, a handler method on `threadTools`, and its input and output types, kept together. The SDK derives the input schema from the input type's `json` and `jsonschema` tags and rejects calls that don't match it. A handler that returns an error sends the error's text back to the agent, which fixes its call and tries again. To add a tool, write those pieces next to the others and add a line to `mcpTools`: `shown` if the learner should see its calls in the chat (under the agent's title for them), `hidden` if they're noise or show in their own UI, then the kinds that get it. A tool for the plan only is a line with `workspace.PlanKind`.
 
 `create_task` publishes a task only after it passes the quality gate in the sandbox. The reference solution has to pass three times in shuffled order, the starter code has to fail, and the tests have to catch at least two wrong solutions.
 
@@ -150,3 +150,15 @@ Each tool is a `*mcp.Tool` with its name and description, a handler method on `t
 **Run** and **Submit** call `App.RunChecks`. It saves the learner's code, runs the visible tests (plus the hidden ones on submit) in the sandbox and records the attempt. The sandbox images are built ahead, in the background, so the first check is fast: when the app starts (`ServiceStartup`, for every workspace's plan language) and when the learner approves a plan. Reading a workspace never starts a build, since the frontend repeats reads freely.
 
 The editor's completions and errors come from a language server running in the task's sandbox image. Go doesn't read the LSP messages. It relays them between the server's stdio and the frontend, sending them out as `lsp:message` events and taking them in through `App.SendLanguageServer`.
+
+### Languages
+
+A toolchain says how one language's tests run in the sandbox and how their results are read (`runner.Toolchain`). The built-in ones are in `internal/runner/toolchain.go`. Any other language is set up by the tutor with `set_toolchain` and saved in the workspace as `.tutortop/toolchains/<language>.yaml` (`runner.ToolchainSpec`, `internal/workspace/toolchains.go`); its tests must write a JUnit report.
+
+To add a built-in language:
+
+1. Add a `Toolchain` to `toolchain.go` and to `builtins`. Its Dockerfile installs the language, the test framework and a language server, and runs as user 1000 (`runner`) in `/work` with no network, like the others. Tag the image `tutortop-<language>:1`, and bump the tag whenever the Dockerfile changes. `script` runs the tests `repeat` times, shuffled if the framework can; a framework that writes JUnit can use `junitScript` and `parseJUnitRuns`, as Python does.
+2. Run `go test ./internal/app -run TestWrittenOutLanguagesMatchTheBuiltins`. Struct tags and prompts name the built-in languages by hand, and the test lists every one that names the others but not the new one. It also wants a conventions line for it in `prompts/tutor.md` (`- **<Name>**: …`).
+3. A language with its own report format needs its own `parse`, tested on recorded output in `internal/runner` (see `TestRunGo` and `TestParseJUnit`); `readable` in `runner.go` turns Go's JSON back into text for the learner. Add a picture to `workspace.Icons` if there's none for it.
+
+A workspace whose tutor set the language up before it was built in keeps its own toolchain: `Workspace.Toolchain` looks in the workspace first, because that workspace's tasks passed the quality gate with it. `set_toolchain` refuses to set up a built-in language anew.

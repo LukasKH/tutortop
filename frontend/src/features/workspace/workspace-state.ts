@@ -1,5 +1,5 @@
-import type { ChatItem, Gate, Questions, WorkspaceState } from "@/lib/api";
-import { objectiveOfWriter, PLAN_THREAD } from "@/lib/workspace";
+import { CheckKind, type ChatItem, type Questions, type SandboxCheck, type WorkspaceState } from "@/lib/api";
+import { objectiveOfWriter } from "@/lib/workspace";
 
 /**
  * Everything the workspace screen knows from the backend. The snapshot
@@ -12,11 +12,11 @@ export type LiveWorkspace = {
   /** Which threads' tutor or writer is working, by thread name. */
   busy: Record<string, boolean | undefined>;
   /** Writers' sandbox checks of new exercises, by objective; they show on the objective. */
-  checks: Record<string, Gate | undefined>;
+  checks: Record<string, SandboxCheck | undefined>;
   /** Why an objective's writer stopped, if it failed. Not in the snapshot. */
   writeFailed: Record<string, string | undefined>;
-  /** The planning tutor's sandbox check (a new language), shown in the chat's status line. Not in the snapshot. */
-  gate: Gate | null;
+  /** A chat's sandbox check of a language it sets up (set_toolchain), shown in the chat's status line. Not in the snapshot. */
+  toolchainCheck: SandboxCheck | null;
   /** The tutor's open questions (ask_user). */
   questions: Questions | null;
   /** The last failed call, shown above the centre pane until the next snapshot loads. */
@@ -35,17 +35,17 @@ export type Action =
   | { type: "snapshot"; ws: WorkspaceState; asked: number }
   | { type: "failed"; error: string }
   | { type: "busy"; thread: string; busy: boolean; at: number }
-  | { type: "gate"; gate: Gate; at: number }
+  | { type: "check"; check: SandboxCheck; at: number }
   | { type: "chat"; item: ChatItem }
   | { type: "questions"; questions: Questions | null }
-  | { type: "dismissFinishedGate" };
+  | { type: "dismissFinishedCheck" };
 
 export const initialWorkspace: LiveWorkspace = {
   ws: null,
   busy: {},
   checks: {},
   writeFailed: {},
-  gate: null,
+  toolchainCheck: null,
   questions: null,
   error: "",
   busyAt: {},
@@ -80,15 +80,18 @@ export function reduceWorkspace(s: LiveWorkspace, a: Action): LiveWorkspace {
         next.checkAt = { ...s.checkAt, [writing]: a.at };
         if (a.busy) next.writeFailed = { ...s.writeFailed, [writing]: undefined };
       }
-      // A finished gate result is only interesting while the plan thread works on it.
-      if (a.thread === PLAN_THREAD && !a.busy && !s.gate?.running) next.gate = null;
+      // A finished check is only news while the chat that ran it is still at work.
+      const check = s.toolchainCheck;
+      if (!a.busy && check?.thread === a.thread && !check.running) next.toolchainCheck = null;
       return next;
     }
 
-    case "gate": {
-      const objective = a.gate.objective;
-      if (!objective) return { ...s, gate: a.gate };
-      return { ...s, checks: { ...s.checks, [objective]: a.gate }, checkAt: { ...s.checkAt, [objective]: a.at } };
+    case "check": {
+      if (a.check.kind === CheckKind.CheckToolchain) return { ...s, toolchainCheck: a.check };
+      // A task is checked by its objective's writer, and shows on the objective.
+      const objective = objectiveOfWriter(a.check.thread);
+      if (!objective) return s;
+      return { ...s, checks: { ...s.checks, [objective]: a.check }, checkAt: { ...s.checkAt, [objective]: a.at } };
     }
 
     case "chat": {
@@ -101,8 +104,8 @@ export function reduceWorkspace(s: LiveWorkspace, a: Action): LiveWorkspace {
     case "questions":
       return { ...s, questions: a.questions };
 
-    case "dismissFinishedGate":
-      return s.gate && !s.gate.running ? { ...s, gate: null } : s;
+    case "dismissFinishedCheck":
+      return s.toolchainCheck && !s.toolchainCheck.running ? { ...s, toolchainCheck: null } : s;
   }
 }
 

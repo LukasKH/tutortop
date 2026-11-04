@@ -3,12 +3,15 @@ package app
 import (
 	"context"
 	"encoding/json"
-	"reflect"
+	"fmt"
+	"os"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
 	"testing"
 
+	"github.com/LukasKH/tutortop/internal/agent"
 	"github.com/LukasKH/tutortop/internal/runner"
 	"github.com/LukasKH/tutortop/internal/workspace"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -44,6 +47,23 @@ func TestThreadsGetTheirKindsTools(t *testing.T) {
 	}
 }
 
+// Our own tools show in the chat only if their mcpTools entry says so; other
+// servers' tools aren't ours to hide.
+func TestOwnToolsShowInTheChatAsListed(t *testing.T) {
+	call := func(server, tool string) agent.Tool {
+		return agent.Tool{Kind: agent.ToolOther, Title: server + " · " + tool, MCPServer: server, MCPTool: tool}
+	}
+	if label, ok := toolLabel(call(mcpName, "ask_user")); ok {
+		t.Errorf("ask_user shows as %q", label)
+	}
+	if label, ok := toolLabel(call(mcpName, "set_toolchain")); !ok || label != "tutortop · set_toolchain" {
+		t.Errorf("set_toolchain shows as %q, %v", label, ok)
+	}
+	if _, ok := toolLabel(call("other", "ask_user")); !ok {
+		t.Error("another server's ask_user is hidden")
+	}
+}
+
 // Each objective has its own writer, so one can't publish for another.
 func TestWriterKeepsToItsObjective(t *testing.T) {
 	a := newTestApp(t)
@@ -64,33 +84,81 @@ func TestWriterKeepsToItsObjective(t *testing.T) {
 	}
 }
 
-// Struct tags can't be computed and the tutor's prompt is prose, so these
-// name the built-in languages by hand. A new built-in language fails this
-// until they name it too.
+// Struct tags can't be computed and the prompts are prose, so they name the
+// built-in languages by hand. A tag or a prompt line that names two of them
+// is listing them, and must name them all, so a new built-in language fails
+// this until every list names it. The tutor's prompt also needs each one's
+// conventions.
 func TestWrittenOutLanguagesMatchTheBuiltins(t *testing.T) {
-	tag := func(typ reflect.Type, field string) string {
-		f, _ := typ.FieldByName(field)
-		return f.Tag.Get("jsonschema")
+	// Where -> text, from the packages whose types the agent reads as tool
+	// schemas, and every prompt.
+	texts := map[string]string{}
+	tags := regexp.MustCompile(`jsonschema:"((?:[^"\\]|\\.)*)"`)
+	sources, _ := filepath.Glob("*.go")
+	for _, dir := range []string{"../workspace", "../runner"} {
+		more, _ := filepath.Glob(filepath.Join(dir, "*.go"))
+		sources = append(sources, more...)
 	}
-	var prompt string
-	for line := range strings.Lines(tutorPrompt) {
-		if strings.Contains(line, "are built in") {
-			prompt = strings.ToLower(line)
+	prompts, _ := filepath.Glob("prompts/*.md")
+	for _, file := range append(sources, prompts...) {
+		if strings.HasSuffix(file, "_test.go") {
+			continue
 		}
-	}
-	texts := map[string]string{
-		"get_state's toolchains": tag(reflect.TypeFor[stateOutput](), "Toolchains"),
-		"ToolchainSpec.Language": tag(reflect.TypeFor[runner.ToolchainSpec](), "Language"),
-		"Curriculum.Language":    tag(reflect.TypeFor[workspace.Curriculum](), "Language"),
-		"tutor.md":               prompt,
-	}
-	for _, lang := range runner.BuiltinLanguages() {
-		word := regexp.MustCompile(`\b` + regexp.QuoteMeta(lang) + `\b`)
-		for where, text := range texts {
-			if !word.MatchString(text) {
-				t.Errorf("%s doesn't name %s: %q", where, lang, text)
+		src, err := os.ReadFile(file)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for i, line := range strings.Split(string(src), "\n") {
+			where := fmt.Sprintf("%s:%d", file, i+1)
+			if strings.HasSuffix(file, ".md") {
+				texts[where] = line
+			}
+			for _, m := range tags.FindAllStringSubmatch(line, -1) {
+				texts[where] = m[1]
 			}
 		}
+	}
+
+	type builtin struct {
+		lang string
+		name *regexp.Regexp // its id or its name as a word
+	}
+	var builtins []builtin
+	for _, lang := range runner.BuiltinLanguages() {
+		tc, _ := runner.Builtin(lang)
+		builtins = append(builtins, builtin{lang, regexp.MustCompile(`\b(` + regexp.QuoteMeta(lang) + `|` + regexp.QuoteMeta(tc.Name) + `)\b`)})
+		if !strings.Contains(tutorPrompt, "\n- **"+tc.Name+"**: ") {
+			t.Errorf("tutor.md has no conventions for %s, as a line starting \"- **%s**: \"", lang, tc.Name)
+		}
+	}
+	for where, text := range texts {
+		var named, missing []string
+		for _, b := range builtins {
+			if b.name.MatchString(text) {
+				named = append(named, b.lang)
+			} else {
+				missing = append(missing, b.lang)
+			}
+		}
+		if len(named) >= 2 && len(missing) > 0 {
+			t.Errorf("%s names %v but not %v: %q", where, named, missing, text)
+		}
+	}
+}
+
+// The tutor uses a built-in language as it is, before any image is built.
+func TestSetToolchainRefusesABuiltin(t *testing.T) {
+	a := newTestApp(t)
+	w, err := a.store.Create("Python", "claude")
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, isErr := toolCaller(t, a, w, workspace.PlanThread)("set_toolchain", map[string]any{
+		"toolchain": map[string]any{"language": "python", "name": "Python", "editorLanguage": "python", "dockerfile": "FROM python:3.14", "testCommand": "pytest", "testFiles": "test_*.py"},
+		"example":   map[string]any{"solution": map[string]string{"a.py": ""}, "tests": map[string]string{"test_a.py": ""}},
+	})
+	if !isErr || !strings.Contains(out, "python is built in") || len(w.ToolchainSpecs()) != 0 {
+		t.Fatalf("set_toolchain for python: %s", out)
 	}
 }
 

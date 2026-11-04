@@ -73,7 +73,7 @@ task test:live               # talks to the real Claude Code and Codex CLIs; use
 
 `TUTORTOP_RUNNER=local` runs learner code directly on your machine with no sandbox. Use it for development only.
 
-[docs/architecture.md](docs/architecture.md) explains how the Go backend, the frontend and Wails fit together.
+[docs/architecture.md](docs/architecture.md) explains how the Go backend, the frontend and Wails fit together, and [docs/GLOSSARY.md](docs/GLOSSARY.md) says what the code's words mean (thread, writer, sandbox check, …).
 
 ### Contributing
 

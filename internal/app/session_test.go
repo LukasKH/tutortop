@@ -18,7 +18,7 @@ import (
 // message is answered.
 func TestBusyFromStartUntilQueueIsDone(t *testing.T) {
 	a, agents, w := newHeldApp(t)
-	busy := func() bool { b, _ := a.activity(w.ID); return b["plan"] }
+	busy := func() bool { b, _ := a.sessionState(w.ID); return b["plan"] }
 
 	agents.holdStart = make(chan struct{})
 	if err := a.SendMessage(w.ID, "one", "plan"); err != nil {
@@ -60,7 +60,7 @@ func TestWriterEndsAfterItsTurn(t *testing.T) {
 	if err := a.PrepareObjective(w.ID, "go.errors"); err != nil {
 		t.Fatal(err)
 	}
-	a.writerCheck(w.ID, Gate{Kind: GateTask, Objective: "go.errors", Title: "Wrap errors", Running: true})
+	a.writerCheck(w.ID, SandboxCheck{Kind: CheckTask, Thread: "write-go.errors", Title: "Wrap errors", Running: true})
 	if st, _ := a.Workspace(w.ID); !st.Busy["write-go.errors"] || !st.Checks["go.errors"].Running {
 		t.Fatalf("busy %v, checks %v", st.Busy, st.Checks)
 	}
@@ -103,7 +103,7 @@ func TestSettingsRestartIdleSession(t *testing.T) {
 		t.Fatal("restarted a busy session")
 	}
 	second.end(nil)
-	eventually(t, "idle", func() bool { b, _ := a.activity(w.ID); return !b["plan"] })
+	eventually(t, "idle", func() bool { b, _ := a.sessionState(w.ID); return !b["plan"] })
 
 	if err := a.SendMessage(w.ID, "three", "plan"); err != nil {
 		t.Fatal(err)
@@ -130,7 +130,7 @@ func TestIdleTutorsCloseWhenAnotherStarts(t *testing.T) {
 	answer := func(thread string, s *heldSession) {
 		t.Helper()
 		s.turn <- nil
-		eventually(t, thread+" idle", func() bool { b, _ := a.activity(w.ID); return !b[thread] })
+		eventually(t, thread+" idle", func() bool { b, _ := a.sessionState(w.ID); return !b[thread] })
 	}
 	busyTask := open("0001-busy")
 	idleTask := open("0002-idle")
@@ -169,7 +169,7 @@ func TestStopPostsNoticeAfterReply(t *testing.T) {
 // agent.
 func TestFailedAgentIsReplaced(t *testing.T) {
 	a, agents, w := newHeldApp(t)
-	idle := func() bool { b, _ := a.activity(w.ID); return !b["plan"] }
+	idle := func() bool { b, _ := a.sessionState(w.ID); return !b["plan"] }
 	agents.holdStart = make(chan struct{})
 	agents.startErr = errors.New("claude isn't installed")
 	for _, text := range []string{"one", "one again"} {

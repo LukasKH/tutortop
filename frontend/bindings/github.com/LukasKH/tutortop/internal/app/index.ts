@@ -7,20 +7,20 @@ export {
 };
 
 export {
-    GateKind
+    CheckKind
 } from "./models.js";
 
 export type {
     BusyEvent,
     ChatEvent,
+    CheckEvent,
     Environment,
-    Gate,
-    GateEvent,
     LSPEvent,
     LanguageServerInfo,
     LessonEvent,
     ProviderStatus,
     QuestionsEvent,
+    SandboxCheck,
     Settings,
     TaskEvent,
     TutorChoice,

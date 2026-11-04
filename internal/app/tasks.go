@@ -54,9 +54,9 @@ func (a *App) RunChecks(wsID, taskID string, files runner.Files, submit bool) (r
 	a.mu.Lock()
 	a.lastResults[taskKey{wsID, taskID}] = res
 	a.mu.Unlock()
-	kind := workspace.KindRun
+	kind := workspace.AttemptRun
 	if submit {
-		kind = workspace.KindSubmit
+		kind = workspace.AttemptSubmit
 	}
 	p, t := res.Counts()
 	firstPass := submit && res.Status == runner.StatusPassed && !w.TaskPassed(taskID)

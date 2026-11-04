@@ -57,8 +57,28 @@ export interface ChatItem {
      * tools always have one; notices only ChatFailed
      */
     "status"?: ChatStatus;
+    "mark"?: ChatMark;
     "at": string;
 }
+
+/**
+ * ChatMark tells what an item is, for code that looks for it, so nothing
+ * matches on the text the learner reads.
+ */
+export enum ChatMark {
+    /**
+     * The Go zero value for the underlying type of the enum.
+     */
+    $zero = "",
+
+    /**
+     * MarkPlanApproved is the notice that the learner approved a plan. The
+     * chat panel hides the plan thread up to the first one (afterSetup in
+     * frontend/src/lib/chat.ts). Notices saved before marks existed have
+     * none, and it finds them by their text.
+     */
+    MarkPlanApproved = "plan-approved",
+};
 
 /**
  * ChatRole is who or what a chat item comes from.

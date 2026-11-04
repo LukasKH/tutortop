@@ -337,7 +337,7 @@ func (w *Workspace) AnswerQuiz(id string, question, choice int) (QuizResult, err
 		return QuizResult{}, fmt.Errorf("choice %d isn't an option", choice)
 	}
 	r := QuizResult{Choice: choice, Correct: choice == q.Answer, Answer: q.Answer, Explanation: q.Explanation}
-	a := Attempt{Kind: KindQuiz, LessonID: id, Question: question, Choice: choice, Total: 1}
+	a := Attempt{Kind: AttemptQuiz, LessonID: id, Question: question, Choice: choice, Total: 1}
 	if r.Correct {
 		a.Passed = 1
 	}

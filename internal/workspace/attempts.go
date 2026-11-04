@@ -10,10 +10,10 @@ import (
 type AttemptKind string
 
 const (
-	KindRun    AttemptKind = "run"    // checked the visible tests
-	KindSubmit AttemptKind = "submit" // checked every test; only a passed submit is progress
-	KindHint   AttemptKind = "hint"
-	KindQuiz   AttemptKind = "quiz" // answered a lesson's quiz question
+	AttemptRun    AttemptKind = "run"    // checked the visible tests
+	AttemptSubmit AttemptKind = "submit" // checked every test; only a passed submit is progress
+	AttemptHint   AttemptKind = "hint"
+	AttemptQuiz   AttemptKind = "quiz" // answered a lesson's quiz question
 )
 
 // Attempt is one learner action on a task or lesson, written by the app only.
@@ -43,7 +43,7 @@ func (w *Workspace) Attempts() ([]Attempt, error) {
 
 // passedTask reports whether the attempt passed a task: a submission that
 // passed every test, the only thing that counts as progress.
-func (a Attempt) passedTask() bool { return a.Kind == KindSubmit && a.Status == runner.StatusPassed }
+func (a Attempt) passedTask() bool { return a.Kind == AttemptSubmit && a.Status == runner.StatusPassed }
 
 // history is what the attempt log says about each task and lesson.
 type history struct {
@@ -59,10 +59,10 @@ func (w *Workspace) history() history {
 		switch {
 		case a.passedTask():
 			h.passed[a.TaskID] = true
-		case a.Kind == KindHint:
+		case a.Kind == AttemptHint:
 			u := h.hints[a.TaskID]
 			h.hints[a.TaskID] = HintUse{Count: u.Count + 1, Highest: max(u.Highest, a.HintLevel)}
-		case a.Kind == KindQuiz:
+		case a.Kind == AttemptQuiz:
 			if h.quiz[a.LessonID] == nil {
 				h.quiz[a.LessonID] = map[int]QuizResult{}
 			}
