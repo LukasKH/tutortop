@@ -58,7 +58,8 @@ type App struct {
 }
 
 func New() (*App, error) {
-	a := &App{runner: runner.New(), sessions: map[threadKey]*agentSession{}, lastResults: map[threadKey]runner.Result{}, checks: map[threadKey]Gate{}, servers: map[string]*languageServer{}, startAgent: agent.Start, linkCheck: checkLinks,
+	a := &App{runner: runner.New(), sessions: map[threadKey]*agentSession{}, lastResults: map[threadKey]runner.Result{},
+		checks: map[threadKey]Gate{}, servers: map[string]*languageServer{}, startAgent: agent.Start, linkCheck: checkLinks,
 		settingsPath: filepath.Join(xdg.ConfigHome, "tutortop", "settings.yaml"), models: map[string]modelList{}}
 	// The workspaces folder: TUTORTOP_HOME, else the one chosen in the
 	// settings, else ~/Tutortop. It's fixed for the run: live sessions open
