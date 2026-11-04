@@ -45,7 +45,7 @@ func TestCreateLessonTool(t *testing.T) {
 	if role := instructions(w, thread); !strings.Contains(role, "tutor for one lesson") || !strings.Contains(role, "Errors are values") {
 		t.Fatalf("role = %s", role)
 	}
-	if c := a.contextFor(w, thread); !strings.Contains(c, "1 of 3 answered, 0 correct") || !strings.Contains(c, "question 3 wrong") {
+	if c := contextFor(w, thread); !strings.Contains(c, "1 of 3 answered, 0 correct") || !strings.Contains(c, "question 3 wrong") {
 		t.Fatalf("context = %s", c)
 	}
 }

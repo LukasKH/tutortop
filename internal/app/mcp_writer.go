@@ -81,7 +81,7 @@ func (t *threadTools) createLesson(ctx context.Context, _ *mcp.CallToolRequest, 
 	if err := t.w.ValidateLesson(spec); err != nil {
 		return nil, nil, fixAndRetry(createLessonTool, err)
 	}
-	if err := t.app.brokenLinks(ctx, createLessonTool, append(markdownLinks(spec.Body), spec.PrimarySource.URL)); err != nil {
+	if err := t.app.links.check(ctx, createLessonTool, append(markdownLinks(spec.Body), spec.PrimarySource.URL)); err != nil {
 		return nil, nil, err
 	}
 	info, err := t.w.SaveLesson(spec)

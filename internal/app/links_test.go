@@ -1,0 +1,74 @@
+package app
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"net"
+	"net/http"
+	"net/http/httptest"
+	"slices"
+	"testing"
+)
+
+// Missing pages and sites are reported; pages that refuse robots or don't
+// answer in time are not.
+func TestLinkCheckerReportsMissingPages(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/missing":
+			http.NotFound(w, r)
+		case "/gone":
+			w.WriteHeader(http.StatusGone)
+		case "/robots":
+			w.WriteHeader(http.StatusForbidden)
+		}
+	}))
+	defer srv.Close()
+	served := srv.Client().Transport
+	lc := &linkChecker{client: &http.Client{Transport: roundTripper(func(r *http.Request) (*http.Response, error) {
+		switch r.URL.Host {
+		case "nosuch.example":
+			return nil, &net.DNSError{Err: "no such host", Name: r.URL.Host, IsNotFound: true}
+		case "slow.example":
+			return nil, context.DeadlineExceeded
+		}
+		return served.RoundTrip(r)
+	})}}
+
+	got := lc.broken(context.Background(), []string{
+		srv.URL + "/ok", srv.URL + "/missing", srv.URL + "/gone", srv.URL + "/robots", srv.URL + "/missing",
+		"https://nosuch.example/page", "https://slow.example/page",
+	})
+	want := []string{
+		"https://nosuch.example/page: there's no such site",
+		srv.URL + "/gone returns 410 Gone",
+		srv.URL + "/missing returns 404 Not Found",
+	}
+	slices.Sort(want)
+	if !slices.Equal(got, want) {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+}
+
+// Offline, no link can be opened, and none is reported.
+func TestLinkCheckerReportsNothingOffline(t *testing.T) {
+	lc := &linkChecker{client: &http.Client{Transport: roundTripper(func(*http.Request) (*http.Response, error) {
+		return nil, errors.New("network is unreachable")
+	})}}
+	if got := lc.broken(context.Background(), []string{"https://go.dev/doc/", "https://go.dev/made-up"}); len(got) != 0 {
+		t.Fatalf("got %q", got)
+	}
+}
+
+// answeringLinks is a linkChecker that finds every page answering with
+// status, without the network.
+func answeringLinks(status int) *linkChecker {
+	return &linkChecker{client: &http.Client{Transport: roundTripper(func(r *http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: status, Status: fmt.Sprint(status, " ", http.StatusText(status)), Body: http.NoBody, Request: r}, nil
+	})}}
+}
+
+type roundTripper func(*http.Request) (*http.Response, error)
+
+func (f roundTripper) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }

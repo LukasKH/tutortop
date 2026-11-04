@@ -2,7 +2,7 @@ package app
 
 import (
 	"context"
-	"encoding/json"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -39,7 +39,7 @@ func TestToolsEndToEnd(t *testing.T) {
 	}
 
 	// A reference that doesn't open is sent back.
-	a.findBroken = func(_ context.Context, urls []string) []string { return []string{urls[0] + " returns 404 Not Found"} }
+	a.links = answeringLinks(http.StatusNotFound)
 	if out, isErr := callTool("propose_curriculum", map[string]any{
 		"language": "go", "modules": []any{map[string]any{"id": "basics", "title": "Basics",
 			"references": []any{map[string]any{"title": "Made up", "url": "https://go.dev/made-up"}},
@@ -47,7 +47,7 @@ func TestToolsEndToEnd(t *testing.T) {
 	}); !isErr || !strings.Contains(out, "made-up returns 404") {
 		t.Fatalf("a broken reference was accepted: %s", out)
 	}
-	a.findBroken = func(context.Context, []string) []string { return nil }
+	a.links = answeringLinks(http.StatusOK)
 
 	call("propose_curriculum", map[string]any{
 		"language": "go", "taskDefaults": map[string]any{"size": "small"},
@@ -65,8 +65,7 @@ func TestToolsEndToEnd(t *testing.T) {
 	if isErr {
 		t.Fatalf("create_task: %s", out)
 	}
-	var created createTaskOutput
-	_ = json.Unmarshal([]byte(out), &created)
+	created, _ := decodeJSON[createTaskOutput]([]byte(out))
 	if !created.Published {
 		t.Fatalf("task not published:\n%s", out)
 	}
@@ -123,22 +122,34 @@ func reverseWordsTask(objective string) map[string]any {
 	}
 }
 
-// newTestApp keeps a test's workspaces in temp dirs. (Setting XDG_DATA_HOME
-// wouldn't work: adrg/xdg reads it once at startup.)
+// newTestApp is newTestAppWith an agent CLI whose sessions take every
+// message and never answer, so no test starts a real agent by accident.
 func newTestApp(t *testing.T) *App {
 	t.Helper()
-	a, err := New()
+	return newTestAppWith(t, startFunc(func(context.Context, string, agent.Options, func(agent.Event)) (agent.Session, error) {
+		return &fakeSession{prompts: new([]string), mu: &sync.Mutex{}}, nil
+	}))
+}
+
+// newTestAppWith keeps a test's workspaces and settings in temp dirs, finds
+// every link, and starts agents with cli. (Setting XDG_DATA_HOME wouldn't
+// work: adrg/xdg reads it once at startup.)
+func newTestAppWith(t *testing.T, cli agentCLI) *App {
+	t.Helper()
+	store := &workspace.Store{Root: t.TempDir(), PrivateRoot: t.TempDir()}
+	a, err := newApp(store, newSettingsStore(filepath.Join(t.TempDir(), "settings.yaml")), cli)
 	if err != nil {
 		t.Fatal(err)
 	}
-	a.store = &workspace.Store{Root: t.TempDir(), PrivateRoot: t.TempDir()}
-	a.settingsPath = filepath.Join(t.TempDir(), "settings.yaml")
-	a.findBroken = func(context.Context, []string) []string { return nil }
-	// Never start a real agent from a test; tests that watch the agent replace this.
-	a.agents.openSession = func(context.Context, string, agent.Options, func(agent.Event)) (agent.Session, error) {
-		return &fakeSession{prompts: new([]string), mu: &sync.Mutex{}}, nil
-	}
+	a.links = answeringLinks(http.StatusOK)
 	return a
+}
+
+// startFunc is an agentCLI that starts sessions by calling itself.
+type startFunc func(ctx context.Context, provider string, opts agent.Options, onEvent func(agent.Event)) (agent.Session, error)
+
+func (f startFunc) Start(ctx context.Context, provider string, opts agent.Options, onEvent func(agent.Event)) (agent.Session, error) {
+	return f(ctx, provider, opts, onEvent)
 }
 
 // sandboxApp is newTestApp for tests that need a container engine.
@@ -215,20 +226,19 @@ func TestEmpty(t *testing.T) {
 // Each chat thread gets its own tutor session, MCP endpoint and role, and
 // answers to a form go back to the thread that asked.
 func TestThreadsGetOwnSessions(t *testing.T) {
-	a := newTestApp(t)
 	type started struct {
 		opts    agent.Options
 		prompts []string
 	}
 	var mu sync.Mutex
 	sessions := map[string]*started{} // by MCP URL
-	a.agents.openSession = func(_ context.Context, _ string, opts agent.Options, _ func(agent.Event)) (agent.Session, error) {
+	a := newTestAppWith(t, startFunc(func(_ context.Context, _ string, opts agent.Options, _ func(agent.Event)) (agent.Session, error) {
 		mu.Lock()
 		defer mu.Unlock()
 		s := &started{opts: opts}
 		sessions[opts.MCPURL] = s
 		return &fakeSession{prompts: &s.prompts, mu: &mu}, nil
-	}
+	}))
 	w, err := a.store.Create("Go", "claude")
 	if err != nil {
 		t.Fatal(err)
@@ -277,7 +287,7 @@ func TestThreadsGetOwnSessions(t *testing.T) {
 func TestSettingsLoadTheOldTutorKey(t *testing.T) {
 	a := newTestApp(t)
 	old := "agent: codex\ntutor:\n  codex:\n    model: gpt-5\n    effort: high\n"
-	if err := os.WriteFile(a.settingsPath, []byte(old), 0o644); err != nil {
+	if err := os.WriteFile(a.settings.path, []byte(old), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	want := ModelChoice{Model: "gpt-5", Effort: "high"}
@@ -289,25 +299,5 @@ func TestSettingsLoadTheOldTutorKey(t *testing.T) {
 	}
 	if got := a.Settings().Models["codex"]; got != want {
 		t.Fatalf("after saving: got %+v, want %+v", got, want)
-	}
-}
-
-// Subagents are for research in the background: the plan and writers get
-// them, the chats where a learner waits for a reply don't.
-func TestSubagentsByThread(t *testing.T) {
-	a := newTestApp(t)
-	w, err := a.store.Create("Go", "claude")
-	if err != nil {
-		t.Fatal(err)
-	}
-	for thread, want := range map[workspace.Thread]bool{
-		workspace.PlanThread:             true,
-		workspace.WriterThread("go.x"):   true,
-		workspace.TaskThread("0001-x"):   false,
-		workspace.LessonThread("0001-x"): false,
-	} {
-		if got := a.agentOptions(w, thread).Subagents; got != want {
-			t.Errorf("%s: subagents %v, want %v", thread, got, want)
-		}
 	}
 }

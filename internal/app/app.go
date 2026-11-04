@@ -8,7 +8,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sync"
 	"time"
 
 	"github.com/LukasKH/tutortop/internal/agent"
@@ -23,46 +22,33 @@ type App struct {
 	runner *runner.Runner
 	mcp    *mcpHost
 	agents *threadAgents // each thread's running agent (agents.go)
+	links  *linkChecker
 
-	// findBroken is findBrokenLinks; tests replace it so they don't need
-	// the network.
-	findBroken func(ctx context.Context, urls []string) []string
-
-	mu          sync.Mutex
-	lastResults map[taskKey]runner.Result  // latest test run per task, for tutor context
-	servers     map[string]*languageServer // running language servers by id
-
-	settingsMu   sync.Mutex
-	settingsPath string
-	models       map[string]modelList // provider -> recently listed models
+	settings *settingsStore
+	models   *modelCache
+	servers  *languageServers
 }
 
 func New() (*App, error) {
-	a := &App{runner: runner.New(), lastResults: map[taskKey]runner.Result{},
-		servers: map[string]*languageServer{}, findBroken: findBrokenLinks,
-		settingsPath: filepath.Join(xdg.ConfigHome, "tutortop", "settings.yaml"), models: map[string]modelList{}}
-	a.agents = newThreadAgents(agent.Start, func() agentConfig { return a.Settings().agentConfig() }, a.agentOptions)
+	settings := newSettingsStore(filepath.Join(xdg.ConfigHome, "tutortop", "settings.yaml"))
 	// The workspaces folder: TUTORTOP_HOME, else the one chosen in the
 	// settings, else ~/Tutortop. It's fixed for the run: running agents open
 	// their workspace by id.
-	a.store = workspace.NewStore(cmp.Or(os.Getenv("TUTORTOP_HOME"), a.loadSettings().WorkspacesFolder, workspace.DefaultRoot()))
+	store := workspace.NewStore(cmp.Or(os.Getenv("TUTORTOP_HOME"), settings.Load().WorkspacesFolder, workspace.DefaultRoot()))
+	return newApp(store, settings, installedCLI{})
+}
+
+// newApp builds the app on the workspaces in store, the settings and the
+// agent CLI it starts. Tests pass their own.
+func newApp(store *workspace.Store, settings *settingsStore, cli agentCLI) (*App, error) {
+	a := &App{store: store, settings: settings, runner: runner.New(), links: newLinkChecker(), models: newModelCache(), servers: newLanguageServers()}
 	h, err := startMCP(a)
 	if err != nil {
 		return nil, err
 	}
 	a.mcp = h
+	a.agents = newThreadAgents(settings, h, cli)
 	return a, nil
-}
-
-// agentOptions are what a thread's agent opens its CLI with, besides the
-// settings: the workspace's folder, the thread's MCP server and its
-// instructions. The plan and writers may hand research to subagents; task
-// and lesson chats answer a learner who's waiting, so they don't.
-func (a *App) agentOptions(w *workspace.Workspace, t workspace.Thread) agent.Options {
-	return agent.Options{
-		Cwd: w.Dir, MCPName: mcpName, MCPURL: a.mcp.URL(w, t), Instructions: instructions(w, t),
-		Subagents: t.Kind == workspace.PlanKind || t.Kind == workspace.WriterKind,
-	}
 }
 
 // ServiceStartup is called by Wails as the app starts. It builds the sandbox
@@ -88,11 +74,7 @@ func (a *App) ServiceStartup(context.Context, application.ServiceOptions) error 
 // and language servers.
 func (a *App) ServiceShutdown() error {
 	a.agents.endAll()
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	for _, ls := range a.servers {
-		ls.srv.Close()
-	}
+	a.servers.stopAll()
 	return nil
 }
 

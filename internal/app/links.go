@@ -14,10 +14,20 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// brokenLinks opens the links a tool call cites and returns an error naming
-// the ones that don't exist, so the tutor fixes them and calls the tool again.
-func (a *App) brokenLinks(ctx context.Context, tool *mcp.Tool, urls []string) error {
-	bad := a.findBroken(ctx, urls)
+// linkChecker opens the links a tool call cites, so a made-up reference is
+// caught before the learner sees it.
+type linkChecker struct {
+	client *http.Client
+}
+
+func newLinkChecker() *linkChecker {
+	return &linkChecker{client: &http.Client{Timeout: 10 * time.Second}}
+}
+
+// check returns an error naming the links that don't exist, so the tutor
+// fixes them and calls tool again.
+func (lc *linkChecker) check(ctx context.Context, tool *mcp.Tool, urls []string) error {
+	bad := lc.broken(ctx, urls)
 	if len(bad) == 0 {
 		return nil
 	}
@@ -28,17 +38,15 @@ func (a *App) brokenLinks(ctx context.Context, tool *mcp.Tool, urls []string) er
 	return fmt.Errorf("%sFind the right pages (open them to check), then call %s again", msg, tool.Name)
 }
 
-// findBrokenLinks opens every link and reports the ones that don't exist
-// (404 or 410, or a site that doesn't exist), so a made-up reference is
-// caught before the learner sees it. Pages that refuse robots or time out count as fine.
-// When nothing can be reached at all, the computer is probably offline, and
-// nothing is reported.
-func findBrokenLinks(ctx context.Context, urls []string) []string {
+// broken opens every link and reports the ones that don't exist (404 or
+// 410, or a site that doesn't exist). Pages that refuse robots or time out
+// count as fine. When nothing can be reached at all, the computer is
+// probably offline, and nothing is reported.
+func (lc *linkChecker) broken(ctx context.Context, urls []string) []string {
 	urls = slices.Compact(slices.Sorted(slices.Values(urls)))
 	if len(urls) == 0 {
 		return nil
 	}
-	client := &http.Client{Timeout: 10 * time.Second}
 	var (
 		mu          sync.Mutex
 		bad         []string
@@ -47,7 +55,7 @@ func findBrokenLinks(ctx context.Context, urls []string) []string {
 	)
 	for _, u := range urls {
 		wg.Go(func() {
-			problem, reached := checkLink(ctx, client, u)
+			problem, reached := checkLink(ctx, lc.client, u)
 			mu.Lock()
 			defer mu.Unlock()
 			if !reached {

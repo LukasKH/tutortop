@@ -80,12 +80,10 @@ func builtinNames() string {
 // contextFor describes what the learner has open in the thread: a task's
 // code and last check, or how a lesson's quiz went. The plan and writers get
 // none.
-func (a *App) contextFor(w *workspace.Workspace, t workspace.Thread) string {
+func contextFor(w *workspace.Workspace, t workspace.Thread) string {
 	switch t.Kind {
 	case workspace.TaskKind:
-		a.mu.Lock()
-		last, ok := a.lastResults[taskKey{w.ID, t.ID}]
-		a.mu.Unlock()
+		last, ok := w.LastRun(t.ID)
 		if !ok {
 			return taskContext(w, t.ID, nil)
 		}

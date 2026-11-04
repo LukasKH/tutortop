@@ -48,7 +48,7 @@ func (a *App) SendMessage(wsID, text, thread string) error {
 	if err != nil {
 		return err
 	}
-	a.send(w, t, message{Role: workspace.RoleUser, Shown: text, Agent: a.contextFor(w, t) + text})
+	a.send(w, t, message{Role: workspace.RoleUser, Shown: text, Agent: contextFor(w, t) + text})
 	return nil
 }
 
@@ -103,7 +103,7 @@ func (a *App) RequestHint(wsID, taskID string, level int) error {
 	names := []string{"", "a nudge", "a pointer", "a snippet", "the solution walkthrough"}
 	msg := fmt.Sprintf("Hint level %d (%s), please.", level, names[level])
 	t := workspace.TaskThread(taskID)
-	a.send(w, t, message{Role: workspace.RoleUser, Shown: msg, Agent: a.contextFor(w, t) + msg})
+	a.send(w, t, message{Role: workspace.RoleUser, Shown: msg, Agent: contextFor(w, t) + msg})
 	return nil
 }
 

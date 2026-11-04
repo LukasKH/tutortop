@@ -1,7 +1,6 @@
 package app
 
 import (
-	"encoding/json"
 	"maps"
 	"strings"
 	"testing"
@@ -96,8 +95,7 @@ func TestSetToolchainEnablesALanguage(t *testing.T) {
 			map[string]any{"name": "abs", "description": "ignores signs", "files": map[string]string{"add.mjs": "export function add(a, b) { return Math.abs(a) + Math.abs(b); }\n"}},
 		},
 	})
-	var created createTaskOutput
-	_ = json.Unmarshal([]byte(out), &created)
+	created, _ := decodeJSON[createTaskOutput]([]byte(out))
 	if !created.Published {
 		t.Fatalf("task not published:\n%s", out)
 	}

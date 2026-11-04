@@ -65,7 +65,7 @@ var proposeCurriculumTool = &mcp.Tool{
 // proposeCurriculum saves a proposal for the learner to approve. Approving
 // it is the learner's call, in the app, not the agent's.
 func (t *threadTools) proposeCurriculum(ctx context.Context, _ *mcp.CallToolRequest, in workspace.Curriculum) (*mcp.CallToolResult, any, error) {
-	if err := t.app.brokenLinks(ctx, proposeCurriculumTool, in.URLs()); err != nil {
+	if err := t.app.links.check(ctx, proposeCurriculumTool, in.URLs()); err != nil {
 		return nil, nil, err
 	}
 	if err := t.w.Propose(in); err != nil {
