@@ -20,7 +20,7 @@ afterEach(() => {
 
 /** Renders the hook on a snapshot, with the item stored from an earlier session. rerender({ ws }) passes a newer snapshot. */
 function render(ws: WorkspaceState, stored?: string) {
-  if (stored) localStorage.setItem("tutortop.task.ws", JSON.stringify(stored));
+  if (stored) localStorage.setItem("tutortop.open-item.ws", JSON.stringify(stored));
   const dismissFinishedGate = vi.fn();
   const refresh = vi.fn(async () => ws);
   const hook = renderHook((p) => useOpenItem("ws", { ws: p.ws, refresh, dismissFinishedGate }), { initialProps: { ws } });
@@ -81,6 +81,24 @@ test("the chat follows what's open: its own thread, or the plan's", () => {
   expect(result.current.thread).toBe("plan");
   act(() => result.current.open({ kind: "todo", objective: "b", part: "lesson" }));
   expect(result.current.thread).toBe("plan");
+});
+
+describe("the open item from an older version", () => {
+  // By default the first lesson would open, ahead of its task.
+  const ws = workspace({ lessons: [lesson("l1", "a"), lesson("l2", "b")], tasks: [task("t1", "a")] });
+
+  test("stays open, and is stored under the new key", () => {
+    localStorage.setItem("tutortop.task.ws", JSON.stringify("t1"));
+    const { result } = render(ws);
+    expect(result.current.item).toEqual({ kind: "task", id: "t1" });
+    expect(localStorage.getItem("tutortop.open-item.ws")).toBe(JSON.stringify("t1"));
+  });
+
+  test("gives way to one stored since", () => {
+    localStorage.setItem("tutortop.task.ws", JSON.stringify("t1"));
+    const { result } = render(ws, "lesson-l2");
+    expect(result.current.item).toEqual({ kind: "lesson", id: "l2" });
+  });
 });
 
 describe("centerOf", () => {

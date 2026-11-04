@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { AppEvents, useEvent, type LessonStatus, type Objective, type Questions, type WorkspaceState } from "@/lib/api";
 import { PLAN_THREAD } from "@/lib/workspace";
-import { useStored } from "@/hooks/use-stored";
+import { readStored, useStored } from "@/hooks/use-stored";
 import { describeItem, itemKey, parseItemKey, resolveOpen, sameItem, threadOf, type OpenItem, type Part } from "@/features/workspace/open-item";
 import type { Workspace } from "@/features/workspace/use-workspace";
 
@@ -19,8 +19,10 @@ export type NewItem = { item: OpenItem; title: string };
 export function useOpenItem(id: string, { ws, refresh, dismissFinishedGate }: Pick<Workspace, "ws" | "refresh" | "dismissFinishedGate">) {
   // Each snapshot checks the open item still exists, and what it picks
   // instead is remembered, so a default doesn't move on its own. Until the
-  // first snapshot, the stored item is unchecked.
-  const [storedKey, setStoredKey] = useStored<string | null>(`task.${id}`, null);
+  // first snapshot, the stored item is unchecked. Older versions stored it
+  // as "task.<id>", though it can be any item; that's read once, so the
+  // learner's open item survives the update.
+  const [storedKey, setStoredKey] = useStored<string | null>(`open-item.${id}`, () => readStored(`task.${id}`, null));
   const stored = parseItemKey(storedKey);
   const item = ws ? resolveOpen(ws, stored) : stored;
   if (!sameItem(item, stored)) setStoredKey(item && itemKey(item));
