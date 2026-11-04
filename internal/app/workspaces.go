@@ -73,18 +73,7 @@ func (a *App) CreateWorkspace(title, icon string) (string, error) {
 // deletes its files for good.
 func (a *App) DeleteWorkspace(id string) error {
 	a.agents.endWorkspace(id)
-	a.mu.Lock()
-	var servers []*languageServer
-	for sid, ls := range a.servers {
-		if ls.key.ws == id {
-			delete(a.servers, sid)
-			servers = append(servers, ls)
-		}
-	}
-	a.mu.Unlock()
-	for _, ls := range servers {
-		ls.srv.Close()
-	}
+	a.servers.stopWorkspace(id)
 	a.mcp.forget(id)
 	return a.store.Delete(id)
 }

@@ -56,34 +56,14 @@ func (a *App) StartLanguageServer(wsID, taskID string) (LanguageServerInfo, erro
 	}
 	ls := &languageServer{id: rand.Text(), key: taskKey{wsID, taskID}, srv: srv, started: time.Now()}
 
-	a.mu.Lock()
-	var stale []*languageServer
-	for _, other := range a.servers {
-		if other.key == ls.key {
-			stale = append(stale, other)
-		}
-	}
-	for len(a.servers)-len(stale) >= maxLanguageServers {
-		stale = append(stale, a.oldestServer(stale))
-	}
-	for _, s := range stale {
-		delete(a.servers, s.id)
-	}
-	a.servers[ls.id] = ls
-	a.mu.Unlock()
-	for _, s := range stale {
-		s.srv.Close()
-	}
-
-	go a.relay(ls)
+	a.servers.add(ls)
+	go a.servers.relay(ls)
 	return LanguageServerInfo{ID: ls.id, RootURI: "file://" + srv.Root}, nil
 }
 
 // SendLanguageServer sends one JSON-RPC message from the editor to a server.
 func (a *App) SendLanguageServer(id, message string) error {
-	a.mu.Lock()
-	ls := a.servers[id]
-	a.mu.Unlock()
+	ls := a.servers.get(id)
 	if ls == nil {
 		return errors.New("the language server has stopped")
 	}
@@ -93,20 +73,13 @@ func (a *App) SendLanguageServer(id, message string) error {
 }
 
 // StopLanguageServer stops a server the editor no longer needs.
-func (a *App) StopLanguageServer(id string) {
-	a.mu.Lock()
-	ls := a.servers[id]
-	delete(a.servers, id)
-	a.mu.Unlock()
-	if ls != nil {
-		ls.srv.Close()
-	}
-}
+func (a *App) StopLanguageServer(id string) { a.servers.stop(id) }
 
-// maxLanguageServers bounds how many run at once; starting another stops the
-// oldest. The UI shows one task at a time, so this only matters when a
-// reloaded window leaves its old server behind.
-const maxLanguageServers = 2
+// languageServers are the running language servers, by id.
+type languageServers struct {
+	mu      sync.Mutex
+	servers map[string]*languageServer
+}
 
 type languageServer struct {
 	id      string
@@ -120,11 +93,43 @@ type languageServer struct {
 // taskKey names one task of one workspace.
 type taskKey struct{ ws, task string }
 
-// oldestServer returns the longest-running server not already in skip.
-// Callers hold a.mu.
-func (a *App) oldestServer(skip []*languageServer) *languageServer {
+func newLanguageServers() *languageServers {
+	return &languageServers{servers: map[string]*languageServer{}}
+}
+
+// maxLanguageServers bounds how many run at once; starting another stops the
+// oldest. The UI shows one task at a time, so this only matters when a
+// reloaded window leaves its old server behind.
+const maxLanguageServers = 2
+
+// add keeps a started server. It stops the task's other servers, and the
+// oldest ones beyond maxLanguageServers.
+func (r *languageServers) add(ls *languageServer) {
+	r.mu.Lock()
+	var stale []*languageServer
+	for _, other := range r.servers {
+		if other.key == ls.key {
+			stale = append(stale, other)
+		}
+	}
+	for len(r.servers)-len(stale) >= maxLanguageServers {
+		stale = append(stale, r.oldest(stale))
+	}
+	for _, s := range stale {
+		delete(r.servers, s.id)
+	}
+	r.servers[ls.id] = ls
+	r.mu.Unlock()
+	for _, s := range stale {
+		s.srv.Close()
+	}
+}
+
+// oldest returns the longest-running server not already in skip. Call with
+// r.mu held.
+func (r *languageServers) oldest(skip []*languageServer) *languageServer {
 	var oldest *languageServer
-	for _, s := range a.servers {
+	for _, s := range r.servers {
 		if !slices.Contains(skip, s) && (oldest == nil || s.started.Before(oldest.started)) {
 			oldest = s
 		}
@@ -132,19 +137,62 @@ func (a *App) oldestServer(skip []*languageServer) *languageServer {
 	return oldest
 }
 
+// get returns a running server, or nil if it has stopped.
+func (r *languageServers) get(id string) *languageServer {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.servers[id]
+}
+
+// stop stops a server, if it's still running.
+func (r *languageServers) stop(id string) {
+	r.mu.Lock()
+	ls := r.servers[id]
+	delete(r.servers, id)
+	r.mu.Unlock()
+	if ls != nil {
+		ls.srv.Close()
+	}
+}
+
+// stopWorkspace stops a workspace's servers, before it's deleted.
+func (r *languageServers) stopWorkspace(wsID string) {
+	r.mu.Lock()
+	var servers []*languageServer
+	for id, ls := range r.servers {
+		if ls.key.ws == wsID {
+			delete(r.servers, id)
+			servers = append(servers, ls)
+		}
+	}
+	r.mu.Unlock()
+	for _, ls := range servers {
+		ls.srv.Close()
+	}
+}
+
+// stopAll stops every server, as the app quits.
+func (r *languageServers) stopAll() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, ls := range r.servers {
+		ls.srv.Close()
+	}
+}
+
 // relay forwards every message from the server to the editor until it stops.
-func (a *App) relay(ls *languageServer) {
-	r := bufio.NewReader(ls.srv.Stdout)
+func (r *languageServers) relay(ls *languageServer) {
+	br := bufio.NewReader(ls.srv.Stdout)
 	for {
-		msg, err := readMessage(r)
+		msg, err := readMessage(br)
 		if err != nil {
 			break
 		}
 		emit(lspMessage, LSPEvent{ID: ls.id, Message: string(msg)})
 	}
-	a.mu.Lock()
-	delete(a.servers, ls.id)
-	a.mu.Unlock()
+	r.mu.Lock()
+	delete(r.servers, ls.id)
+	r.mu.Unlock()
 	ls.srv.Close()
 	emit(lspMessage, LSPEvent{ID: ls.id, Closed: true})
 }

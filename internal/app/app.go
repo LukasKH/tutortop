@@ -8,7 +8,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sync"
 	"time"
 
 	"github.com/LukasKH/tutortop/internal/agent"
@@ -27,9 +26,7 @@ type App struct {
 
 	settings *settingsStore
 	models   *modelCache
-
-	mu      sync.Mutex
-	servers map[string]*languageServer // running language servers by id
+	servers  *languageServers
 }
 
 func New() (*App, error) {
@@ -44,7 +41,7 @@ func New() (*App, error) {
 // newApp builds the app on the workspaces in store, the settings and the
 // agent CLI it starts. Tests pass their own.
 func newApp(store *workspace.Store, settings *settingsStore, cli agentCLI) (*App, error) {
-	a := &App{store: store, settings: settings, runner: runner.New(), links: newLinkChecker(), models: newModelCache(), servers: map[string]*languageServer{}}
+	a := &App{store: store, settings: settings, runner: runner.New(), links: newLinkChecker(), models: newModelCache(), servers: newLanguageServers()}
 	h, err := startMCP(a)
 	if err != nil {
 		return nil, err
@@ -77,11 +74,7 @@ func (a *App) ServiceStartup(context.Context, application.ServiceOptions) error 
 // and language servers.
 func (a *App) ServiceShutdown() error {
 	a.agents.endAll()
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	for _, ls := range a.servers {
-		ls.srv.Close()
-	}
+	a.servers.stopAll()
 	return nil
 }
 
