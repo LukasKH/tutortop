@@ -56,7 +56,8 @@ export function WorkspaceView({ id, tutor, onSettings, onBack }: Props) {
   }
 
   const { item, view, thread } = nav;
-  const open = describeItem(ws, item);
+  // The open item's task or lesson, module and language.
+  const details = describeItem(ws, item);
   // Until the first plan is approved, everything happens in the centre. No chat beside it.
   const setup = !ws.curriculum;
 
@@ -70,7 +71,7 @@ export function WorkspaceView({ id, tutor, onSettings, onBack }: Props) {
   };
 
   // Hints are for the open exercise's own conversation, until it's solved.
-  const hintTask = open.task && thread === open.task.id && !open.task.passed ? open.task : null;
+  const hintTask = details.task && thread === details.task.id && !details.task.passed ? details.task : null;
 
   // "Change with the tutor" on the plan page: the tutor's composer, ready.
   function askTutorAboutPlan() {
@@ -123,7 +124,7 @@ export function WorkspaceView({ id, tutor, onSettings, onBack }: Props) {
         <ChatPanel
           thread={thread}
           context={thread === PLAN_THREAD ? "Plan" : item?.kind === "lesson" ? "Lesson" : "Exercise"}
-          lang={open.lang}
+          lang={details.lang}
           hint={
             hintTask && {
               level: Math.min(hintTask.hintLevel + 1, 4),
@@ -182,8 +183,8 @@ type CenterProps = {
 /** The centre pane, as centerOf decided. */
 function CenterPane({ id, center, ws, live, nav, planItems, onAskTutor }: CenterProps) {
   const { item } = nav;
-  const open = describeItem(ws, item);
-  const moduleTitle = open.module?.title ?? "";
+  const details = describeItem(ws, item);
+  const moduleTitle = details.module?.title ?? "";
   const back = () => nav.setView("item");
 
   switch (center.kind) {
@@ -194,7 +195,7 @@ function CenterPane({ id, center, ws, live, nav, planItems, onAskTutor }: Center
           busy={!!live.busy[PLAN_THREAD]}
           gate={live.gate}
           questions={live.questions}
-          lang={open.lang}
+          lang={details.lang}
           onAnswer={live.answerQuestions}
           onDismiss={live.dismissQuestions}
           onStop={() => App.StopAgent(id, PLAN_THREAD).catch(live.fail)}
@@ -256,10 +257,10 @@ function CenterPane({ id, center, ws, live, nav, planItems, onAskTutor }: Center
           lessonId={lesson.id}
           moduleTitle={moduleTitle}
           icon={ws.icon}
-          lang={open.lang}
+          lang={details.lang}
           onOpenExercise={() => nav.open(exercise)}
           exerciseWritten={exercise.kind !== "todo"}
-          references={open.module?.references}
+          references={details.module?.references}
         />
       );
     }
@@ -270,9 +271,9 @@ function CenterPane({ id, center, ws, live, nav, planItems, onAskTutor }: Center
           key={center.id}
           wsId={id}
           taskId={center.id}
-          passed={!!open.task?.passed}
+          passed={!!details.task?.passed}
           moduleTitle={moduleTitle}
-          nextTask={open.nextTask}
+          nextTask={details.nextTask}
           moreComing={ws.progress.passed < ws.progress.total}
           // "Next task" leads through the next objective's lesson if it isn't finished.
           onOpenTask={(taskId) => nav.open(viaLesson(ws, taskId))}
