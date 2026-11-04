@@ -471,7 +471,7 @@ func (t *turnState) handle(ev agent.Event) {
 		if item == nil {
 			return
 		}
-		item.Status = tool.Status
+		item.Status = string(tool.Status)
 		emit(chatMessage, ChatEvent{Workspace: w.ID, Item: *item})
 		if tool.Status != agent.ToolRunning {
 			_ = w.AppendChat(*item)
@@ -492,7 +492,7 @@ func (t *turnState) flush() {
 	t.endText()
 	for _, item := range t.tools {
 		if item != nil {
-			item.Status = agent.ToolDone
+			item.Status = string(agent.ToolDone)
 			_ = t.ws.AppendChat(*item)
 		}
 	}

@@ -1,10 +1,13 @@
 package agent
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"maps"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -20,8 +23,7 @@ import (
 type codexSession struct {
 	*process
 	rpc      *rpcConn
-	cwd      string
-	mcpName  string
+	policy   policy
 	threadID string
 	effort   string
 	onEvent  func(Event)
@@ -52,7 +54,7 @@ func startCodex(ctx context.Context, opts Options, onEvent func(Event)) (Session
 	// writable folder; checked with `codex sandbox`.
 	permissions := fmt.Sprintf(`permissions.tutortop.filesystem={":root"="read",%q="write",%q="read"}`,
 		opts.Cwd, filepath.Join(opts.Cwd, "tasks"))
-	s := &codexSession{cwd: opts.Cwd, mcpName: opts.MCPName, effort: opts.Effort, onEvent: onEvent, filePaths: map[string][]string{}}
+	s := &codexSession{policy: newPolicy(opts), effort: opts.Effort, onEvent: onEvent, filePaths: map[string][]string{}}
 	var err error
 	s.process, s.rpc, err = startCodexServer(ctx, opts.Cwd, s.notify, s.request,
 		"-c", `default_permissions="tutortop"`, "-c", permissions)
@@ -280,7 +282,8 @@ func codexTool(it codexItem) (Tool, bool) {
 }
 
 // request answers Codex's approval requests: commands are always declined,
-// file changes go through allowTool. The v1 names (execCommandApproval,
+// file changes and MCP elicitations go through the policy, and anything else
+// gets an error, which Codex takes as a refusal. The v1 names (execCommandApproval,
 // applyPatchApproval) are what older app-servers send.
 func (s *codexSession) request(method string, params json.RawMessage) (any, error) {
 	switch method {
@@ -296,7 +299,7 @@ func (s *codexSession) request(method string, params json.RawMessage) (any, erro
 		s.mu.Lock()
 		paths := s.filePaths[p.ItemID]
 		s.mu.Unlock()
-		if allowTool(s.cwd, ToolEdit, paths) != nil {
+		if s.policy.allow(Tool{Kind: ToolEdit, Paths: paths}) != nil {
 			return map[string]any{"decision": "decline"}, nil
 		}
 		return map[string]any{"decision": "accept"}, nil
@@ -304,7 +307,7 @@ func (s *codexSession) request(method string, params json.RawMessage) (any, erro
 		p, _ := decode[struct {
 			FileChanges map[string]json.RawMessage `json:"fileChanges"`
 		}](params)
-		if err := allowTool(s.cwd, ToolEdit, slices.Collect(maps.Keys(p.FileChanges))); err != nil {
+		if err := s.policy.allow(Tool{Kind: ToolEdit, Paths: slices.Collect(maps.Keys(p.FileChanges))}); err != nil {
 			return map[string]any{"decision": map[string]any{"denied": map[string]any{"rejection": err.Error()}}}, nil
 		}
 		return map[string]any{"decision": "approved"}, nil
@@ -315,7 +318,7 @@ func (s *codexSession) request(method string, params json.RawMessage) (any, erro
 			ServerName string `json:"serverName"`
 		}](params)
 		action := "decline"
-		if p.ServerName == s.mcpName {
+		if s.policy.allow(Tool{Kind: ToolOther, MCPServer: p.ServerName}) == nil {
 			action = "accept"
 		}
 		return map[string]any{"action": action, "content": nil, "_meta": nil}, nil
@@ -323,4 +326,65 @@ func (s *codexSession) request(method string, params json.RawMessage) (any, erro
 		return map[string]any{"answers": map[string]any{}}, nil
 	}
 	return nil, fmt.Errorf("tutortop doesn't handle %s", method)
+}
+
+// codexModels asks a short-lived `codex app-server` for its model list, so
+// the list follows the learner's account and CLI version.
+func codexModels(ctx context.Context) ([]Model, error) {
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	proc, rpc, err := startCodexServer(ctx, os.TempDir(), func(string, json.RawMessage) {},
+		func(string, json.RawMessage) (any, error) { return nil, errors.New("not supported") })
+	if err != nil {
+		return nil, err
+	}
+	defer proc.Close()
+
+	var out []Model
+	cursor := ""
+	for range 10 { // pages; a handful of models fits in one
+		params := map[string]any{}
+		if cursor != "" {
+			params["cursor"] = cursor
+		}
+		type modelPage struct {
+			Data []struct {
+				ID                        string `json:"id"`
+				Model                     string `json:"model"`
+				DisplayName               string `json:"displayName"`
+				Description               string `json:"description"`
+				Hidden                    bool   `json:"hidden"`
+				IsDefault                 bool   `json:"isDefault"`
+				DefaultReasoningEffort    string `json:"defaultReasoningEffort"`
+				SupportedReasoningEfforts []struct {
+					ReasoningEffort string `json:"reasoningEffort"`
+					Description     string `json:"description"`
+				} `json:"supportedReasoningEfforts"`
+			} `json:"data"`
+			NextCursor string `json:"nextCursor"`
+		}
+		res, err := rpc.Call[modelPage](ctx, "model/list", params)
+		if err != nil {
+			return nil, err
+		}
+		for _, m := range res.Data {
+			if m.Hidden {
+				continue
+			}
+			model := Model{ID: m.Model, Name: cmp.Or(m.DisplayName, m.Model), Description: m.Description, DefaultEffort: m.DefaultReasoningEffort}
+			for _, e := range m.SupportedReasoningEfforts {
+				model.Efforts = append(model.Efforts, Effort{ID: e.ReasoningEffort, Description: e.Description})
+			}
+			if m.IsDefault {
+				out = append([]Model{model}, out...)
+			} else {
+				out = append(out, model)
+			}
+		}
+		if res.NextCursor == "" {
+			break
+		}
+		cursor = res.NextCursor
+	}
+	return out, nil
 }

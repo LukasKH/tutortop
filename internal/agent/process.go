@@ -14,7 +14,10 @@ import (
 	"time"
 )
 
-// process is a long-running agent CLI with piped stdio.
+// process is a long-running agent CLI with piped stdio. Adapters embed it:
+// startProcess finds and starts the CLI, send writes one line of JSON, await
+// waits for a reply unless the process exits first, and exitError and abort
+// turn an exit into ErrStopped with the end of stderr.
 type process struct {
 	cmd    *exec.Cmd
 	stdin  io.WriteCloser
