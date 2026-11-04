@@ -3,10 +3,13 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"reflect"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
 
+	"github.com/LukasKH/tutortop/internal/runner"
 	"github.com/LukasKH/tutortop/internal/workspace"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -61,7 +64,38 @@ func TestWriterKeepsToItsObjective(t *testing.T) {
 	}
 }
 
-func TestAskUserTakesOneToFourQuestions(t *testing.T) {
+// Struct tags can't be computed and the tutor's prompt is prose, so these
+// name the built-in languages by hand. A new built-in language fails this
+// until they name it too.
+func TestWrittenOutLanguagesMatchTheBuiltins(t *testing.T) {
+	tag := func(typ reflect.Type, field string) string {
+		f, _ := typ.FieldByName(field)
+		return f.Tag.Get("jsonschema")
+	}
+	var prompt string
+	for line := range strings.Lines(tutorPrompt) {
+		if strings.Contains(line, "are built in") {
+			prompt = strings.ToLower(line)
+		}
+	}
+	texts := map[string]string{
+		"get_state's toolchains": tag(reflect.TypeFor[stateOutput](), "Toolchains"),
+		"ToolchainSpec.Language": tag(reflect.TypeFor[runner.ToolchainSpec](), "Language"),
+		"Curriculum.Language":    tag(reflect.TypeFor[workspace.Curriculum](), "Language"),
+		"tutor.md":               prompt,
+	}
+	for _, lang := range runner.BuiltinLanguages() {
+		word := regexp.MustCompile(`\b` + regexp.QuoteMeta(lang) + `\b`)
+		for where, text := range texts {
+			if !word.MatchString(text) {
+				t.Errorf("%s doesn't name %s: %q", where, lang, text)
+			}
+		}
+	}
+}
+
+// ask_user takes 2-4 questions, as its description and the tutor's prompt say.
+func TestAskUserTakesTwoToFourQuestions(t *testing.T) {
 	a := newTestApp(t)
 	w, err := a.store.Create("Go", "claude")
 	if err != nil {
@@ -75,7 +109,7 @@ func TestAskUserTakesOneToFourQuestions(t *testing.T) {
 		}
 		return map[string]any{"questions": qs}
 	}
-	for _, n := range []int{0, 5} {
+	for _, n := range []int{0, 1, 5} {
 		if out, isErr := ask("ask_user", questions(n)); !isErr {
 			t.Fatalf("%d questions were shown: %s", n, out)
 		}
@@ -163,7 +197,7 @@ func toolCaller(t *testing.T, a *App, w *workspace.Workspace, thread workspace.T
 func toolSession(t *testing.T, a *App, w *workspace.Workspace, thread workspace.Thread) *mcp.ClientSession {
 	t.Helper()
 	cs, err := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "1"}, nil).
-		Connect(context.Background(), &mcp.StreamableClientTransport{Endpoint: a.mcp.URL(w, thread.String())}, nil)
+		Connect(context.Background(), &mcp.StreamableClientTransport{Endpoint: a.mcp.URL(w, thread)}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

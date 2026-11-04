@@ -1,6 +1,9 @@
 package workspace
 
-import "strings"
+import (
+	"fmt"
+	"strings"
+)
 
 // A Thread is one conversation with the agent in a workspace. Its name
 // (String) is the chat's file name, the key of its saved agent session and
@@ -15,21 +18,23 @@ type Thread struct {
 	ID   string // the task, lesson or objective it's about; "" for the plan
 }
 
-// ParseThread reads a thread's name. "" is the plan too, as the frontend and
-// question forms leave it out for the plan. Anything else that isn't a lesson
+// ParseThread reads a thread's name. Anything that isn't the plan, a lesson
 // or a writer is a task id: task ids are numbered, so they never start with
 // "lesson-" or "write-".
-func ParseThread(name string) Thread {
+func ParseThread(name string) (Thread, error) {
+	if !validName(name) {
+		return Thread{}, fmt.Errorf("invalid chat thread %q", name)
+	}
 	if id, ok := strings.CutPrefix(name, "lesson-"); ok {
-		return LessonThread(id)
+		return LessonThread(id), nil
 	}
 	if id, ok := strings.CutPrefix(name, "write-"); ok {
-		return WriterThread(id)
+		return WriterThread(id), nil
 	}
-	if name == "plan" || name == "" {
-		return PlanThread
+	if name == "plan" {
+		return PlanThread, nil
 	}
-	return TaskThread(name)
+	return TaskThread(name), nil
 }
 
 // PlanThread is the planning conversation.

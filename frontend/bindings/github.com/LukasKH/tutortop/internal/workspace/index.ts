@@ -3,6 +3,7 @@
 
 export {
     ChatRole,
+    ChatStatus,
     ObjectiveStatus
 } from "./models.js";
 

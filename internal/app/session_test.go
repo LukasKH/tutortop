@@ -13,20 +13,21 @@ import (
 	"github.com/LukasKH/tutortop/internal/workspace"
 )
 
-// A thread is busy from the moment a message is sent, through its agent's
-// start, until every queued message is answered.
+// Sending doesn't wait for the agent to start. A thread is busy from the
+// moment a message is sent, through its agent's start, until every queued
+// message is answered.
 func TestBusyFromStartUntilQueueIsDone(t *testing.T) {
 	a, agents, w := newHeldApp(t)
 	busy := func() bool { b, _ := a.activity(w.ID); return b["plan"] }
 
 	agents.holdStart = make(chan struct{})
-	sent := make(chan error)
-	go func() { sent <- a.SendMessage(w.ID, "one", "") }()
-	eventually(t, "busy while starting", busy)
-	close(agents.holdStart)
-	if err := <-sent; err != nil {
+	if err := a.SendMessage(w.ID, "one", "plan"); err != nil {
 		t.Fatal(err)
 	}
+	if !busy() {
+		t.Fatal("idle while starting")
+	}
+	close(agents.holdStart)
 	first := agents.next(t)
 	if err := a.SendMessage(w.ID, "two", "plan"); err != nil {
 		t.Fatal(err)
@@ -59,7 +60,7 @@ func TestWriterEndsAfterItsTurn(t *testing.T) {
 	if err := a.PrepareObjective(w.ID, "go.errors"); err != nil {
 		t.Fatal(err)
 	}
-	a.writerCheck(w.ID, Gate{Objective: "go.errors", Title: "Wrap errors", Running: true})
+	a.writerCheck(w.ID, Gate{Kind: GateTask, Objective: "go.errors", Title: "Wrap errors", Running: true})
 	if st, _ := a.Workspace(w.ID); !st.Busy["write-go.errors"] || !st.Checks["go.errors"].Running {
 		t.Fatalf("busy %v, checks %v", st.Busy, st.Checks)
 	}
@@ -164,38 +165,47 @@ func TestStopPostsNoticeAfterReply(t *testing.T) {
 }
 
 // When the agent can't start or its process exits, the thread shows the
-// error and goes idle, and the next message starts a new agent.
+// error once in the chat and goes idle, and the next message starts a new
+// agent.
 func TestFailedAgentIsReplaced(t *testing.T) {
 	a, agents, w := newHeldApp(t)
+	idle := func() bool { b, _ := a.activity(w.ID); return !b["plan"] }
+	agents.holdStart = make(chan struct{})
 	agents.startErr = errors.New("claude isn't installed")
-	if err := a.SendMessage(w.ID, "one", "plan"); err == nil {
-		t.Fatal("no error")
+	for _, text := range []string{"one", "one again"} {
+		if err := a.SendMessage(w.ID, text, "plan"); err != nil {
+			t.Fatal(err)
+		}
 	}
-	if b, _ := a.activity(w.ID); b["plan"] {
-		t.Fatal("busy after a failed start")
-	}
+	close(agents.holdStart)
+	eventually(t, "idle after a failed start", idle)
 	agents.startErr = nil
 	if err := a.SendMessage(w.ID, "two", "plan"); err != nil {
 		t.Fatal(err)
 	}
 	crashed := agents.next(t)
 	crashed.end(fmt.Errorf("%w: out of memory", agent.ErrStopped))
-	eventually(t, "idle after the crash", func() bool { b, _ := a.activity(w.ID); return !b["plan"] })
+	eventually(t, "idle after the crash", idle)
 	if err := a.SendMessage(w.ID, "three", "plan"); err != nil {
 		t.Fatal(err)
 	}
 	if agents.next(t).s == crashed.s {
 		t.Fatal("queued on a stopped agent")
 	}
-	chat, _ := a.Chat(w.ID, "plan")
-	var failed int
-	for _, c := range chat {
-		if c.Status == "failed" {
-			failed++
+	// One for the failed start, though two messages waited for it, and one
+	// for the crash.
+	failures := func() (n int) {
+		chat, _ := a.Chat(w.ID, "plan")
+		for _, c := range chat {
+			if c.Status == workspace.ChatFailed {
+				n++
+			}
 		}
+		return n
 	}
-	if failed != 2 {
-		t.Fatalf("%d failures shown: %+v", failed, chat)
+	eventually(t, "failures shown", func() bool { return failures() >= 2 })
+	if n := failures(); n != 2 {
+		t.Fatalf("%d failures shown", n)
 	}
 }
 

@@ -267,7 +267,7 @@ func TestThreadsGetOwnSessions(t *testing.T) {
 	deadline := time.Now().Add(2 * time.Second)
 	for {
 		mu.Lock()
-		plan, task := sessions[a.mcp.URL(w, workspace.PlanThread.String())], sessions[a.mcp.URL(w, "0001-some-task")]
+		plan, task := sessions[a.mcp.URL(w, workspace.PlanThread)], sessions[a.mcp.URL(w, workspace.TaskThread("0001-some-task"))]
 		done := plan != nil && task != nil && len(plan.prompts) == 1 && len(task.prompts) == 2
 		mu.Unlock()
 		if done {

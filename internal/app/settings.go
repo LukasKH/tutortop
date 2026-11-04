@@ -16,7 +16,7 @@ import (
 // Settings are app-wide preferences, kept in settings.yaml in the user's
 // config folder. They apply to every workspace.
 type Settings struct {
-	// Agent is the coding agent that tutors: "claude" or "codex".
+	// Agent is the coding agent that tutors, an agent.Provider ID.
 	Agent string `yaml:"agent" json:"agent"`
 	// Tutor holds the model and reasoning effort chosen for each agent, so
 	// switching agents and back keeps both choices.
@@ -47,7 +47,7 @@ func (s Settings) tutor() tutorConfig {
 }
 
 // Settings returns the saved settings. Without a saved agent it picks the
-// first one that's installed.
+// first one that's installed, or the first one listed if none is.
 func (a *App) Settings() Settings {
 	a.settingsMu.Lock()
 	defer a.settingsMu.Unlock()
@@ -63,7 +63,7 @@ func (a *App) loadSettings() Settings {
 		s.Tutor = map[string]TutorChoice{}
 	}
 	if !knownProvider(s.Agent) {
-		s.Agent = "claude"
+		s.Agent = agent.Providers()[0].ID
 		for _, p := range agent.Providers() {
 			if _, err := exec.LookPath(p.Binary); err == nil {
 				s.Agent = p.ID

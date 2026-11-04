@@ -18,13 +18,22 @@ const (
 
 // ChatItem is one entry in the conversation shown in the UI.
 type ChatItem struct {
-	ID     string    `json:"id"`
-	Thread string    `json:"thread"`
-	Role   ChatRole  `json:"role"`
-	Text   string    `json:"text"`
-	Status string    `json:"status,omitempty"` // for tools: running | done | failed
-	At     time.Time `json:"at"`
+	ID     string     `json:"id"`
+	Thread string     `json:"thread"`
+	Role   ChatRole   `json:"role"`
+	Text   string     `json:"text"`
+	Status ChatStatus `json:"status,omitempty"` // tools always have one; notices only ChatFailed
+	At     time.Time  `json:"at"`
 }
+
+// ChatStatus is how a tool's call went, or marks a notice as a failure.
+type ChatStatus string
+
+const (
+	ChatRunning ChatStatus = "running" // a tool call still at work
+	ChatDone    ChatStatus = "done"
+	ChatFailed  ChatStatus = "failed" // a tool call that failed, or a notice about a problem
+)
 
 func (w *Workspace) AppendChat(item ChatItem) error {
 	if !validName(item.Thread) {
@@ -48,7 +57,13 @@ func (w *Workspace) Chat(thread string) ([]ChatItem, error) {
 	if !validName(thread) {
 		return nil, fmt.Errorf("invalid chat thread %q", thread)
 	}
-	return readJSONL[ChatItem](w.path(".tutortop", "chat", thread+".jsonl"))
+	items, err := readJSONL[ChatItem](w.path(".tutortop", "chat", thread+".jsonl"))
+	// Every item in the file is the thread's. Older files may leave Thread
+	// empty for the plan.
+	for i := range items {
+		items[i].Thread = thread
+	}
+	return items, err
 }
 
 type Question struct {
@@ -60,9 +75,9 @@ type Question struct {
 
 // Questions is a form from the tutor that waits for the learner's answers.
 type Questions struct {
-	Thread    string     `json:"thread,omitempty" jsonschema:"set by the app; leave out"`
-	Intro     string     `json:"intro,omitempty" jsonschema:"one sentence shown above the questions"`
-	Questions []Question `json:"questions" jsonschema:"2-4 focused questions"`
+	Thread    string     `json:"thread"` // the thread that asked, which gets the answers
+	Intro     string     `json:"intro,omitempty"`
+	Questions []Question `json:"questions"`
 }
 
 func (w *Workspace) SetQuestions(q *Questions) error {
@@ -78,6 +93,10 @@ func (w *Workspace) PendingQuestions() *Questions {
 	q, err := readJSON[Questions](w.path(".tutortop", "questions.json"))
 	if err != nil {
 		return nil
+	}
+	// Older forms left Thread out for the plan.
+	if q.Thread == "" {
+		q.Thread = PlanThread.String()
 	}
 	return &q
 }

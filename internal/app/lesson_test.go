@@ -23,7 +23,7 @@ func TestCreateLessonTool(t *testing.T) {
 	}
 	ctx := context.Background()
 	cs, err := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "1"}, nil).
-		Connect(ctx, &mcp.StreamableClientTransport{Endpoint: a.mcp.URL(w, workspace.WriterThread("go.errors").String())}, nil)
+		Connect(ctx, &mcp.StreamableClientTransport{Endpoint: a.mcp.URL(w, workspace.WriterThread("go.errors"))}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

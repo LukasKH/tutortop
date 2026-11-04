@@ -54,9 +54,9 @@ export interface ChatItem {
     "text": string;
 
     /**
-     * for tools: running | done | failed
+     * tools always have one; notices only ChatFailed
      */
-    "status"?: string;
+    "status"?: ChatStatus;
     "at": string;
 }
 
@@ -88,6 +88,27 @@ export enum ChatRole {
      * an app event, e.g. "Stopped" or "You passed …"
      */
     RoleNotice = "notice",
+};
+
+/**
+ * ChatStatus is how a tool's call went, or marks a notice as a failure.
+ */
+export enum ChatStatus {
+    /**
+     * The Go zero value for the underlying type of the enum.
+     */
+    $zero = "",
+
+    /**
+     * a tool call still at work
+     */
+    ChatRunning = "running",
+    ChatDone = "done",
+
+    /**
+     * a tool call that failed, or a notice about a problem
+     */
+    ChatFailed = "failed",
 };
 
 /**
@@ -226,7 +247,10 @@ export interface Question {
  * Questions is a form from the tutor that waits for the learner's answers.
  */
 export interface Questions {
-    "thread"?: string;
+    /**
+     * the thread that asked, which gets the answers
+     */
+    "thread": string;
     "intro"?: string;
     "questions": Question[] | null;
 }

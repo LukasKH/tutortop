@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { ChatRole, type ChatItem } from "@/lib/api";
+import { ChatRole, ChatStatus, type ChatItem } from "@/lib/api";
 import { afterSetup, mergeChat, showThinking, upsertChat } from "@/lib/chat";
 
 const item = (id: string, over: Partial<ChatItem> = {}): ChatItem => ({ id, thread: "plan", role: ChatRole.RoleAssistant, text: id, at: "", ...over });
@@ -19,15 +19,15 @@ test("loading a transcript keeps live messages that aren't saved yet", () => {
 
 test("thinking shows while the tutor works, unless a reply streams or a tool call runs", () => {
   const asked = item("q", { role: ChatRole.RoleUser });
-  const tool = (id: string, status: string) => item(id, { role: ChatRole.RoleTool, status });
+  const tool = (id: string, status: ChatStatus) => item(id, { role: ChatRole.RoleTool, status });
   expect(showThinking([asked], true)).toBe(true);
   expect(showThinking([], true)).toBe(true);
   expect(showThinking([asked], false)).toBe(false);
   expect(showThinking([asked, item("reply")], true)).toBe(false);
   // Calls at the end run together: an earlier one still running is still moving.
-  expect(showThinking([asked, tool("a", "running"), tool("b", "done")], true)).toBe(false);
-  expect(showThinking([asked, tool("a", "done"), tool("b", "failed")], true)).toBe(true);
-  expect(showThinking([tool("a", "running"), item("reply"), item("n", { role: ChatRole.RoleNotice })], true)).toBe(true);
+  expect(showThinking([asked, tool("a", ChatStatus.ChatRunning), tool("b", ChatStatus.ChatDone)], true)).toBe(false);
+  expect(showThinking([asked, tool("a", ChatStatus.ChatDone), tool("b", ChatStatus.ChatFailed)], true)).toBe(true);
+  expect(showThinking([tool("a", ChatStatus.ChatRunning), item("reply"), item("n", { role: ChatRole.RoleNotice })], true)).toBe(true);
 });
 
 test("the setup interview is hidden up to the plan's approval", () => {

@@ -4,13 +4,15 @@
 //
 //	MISSION.md, NOTES.md, GLOSSARY.md, RESOURCES.md, learning-records/   written by the agent
 //	curriculum.yaml                                                         the approved plan
+//	lessons/0001-slug/{lesson.yaml,README.md}                               lessons, the theory before a task
 //	tasks/0001-slug/{task.yaml,README.md,starter/,tests/,work/}             tasks; work/ is the learner's code
 //	.tutortop/{workspace.json,attempts.jsonl,proposal.yaml,questions.json}  app state
-//	.tutortop/toolchains/<language>.yaml                                    languages the tutor set up (beyond Go and Python)
+//	.tutortop/toolchains/<language>.yaml                                    languages the tutor set up (beyond the built-in ones)
 //	.tutortop/chat/<thread>.jsonl                                           one chat per thread, by its name (Thread)
 //
 // Private files the learner and tutor shouldn't see (reference solutions,
-// hidden tests, mutants) live outside the workspace in the app data dir.
+// hidden tests, mutants, quiz answers) live outside the workspace in the app
+// data dir.
 //
 // Progress is never stored. The app alone appends to attempts.jsonl
 // (attempts.go), and progress and activity are derived from it, so nothing
@@ -160,7 +162,7 @@ type Meta struct {
 	Title string `json:"title"`
 	// Icon names the workspace's picture, one of Icons; "" until one is picked.
 	Icon string `json:"icon,omitempty"`
-	// Provider is the agent the saved sessions belong to: "claude" or "codex".
+	// Provider is the agent the saved sessions belong to, an agent.Provider ID.
 	// The agent in use comes from the app settings.
 	Provider string `json:"provider"`
 	// Sessions maps a chat thread to the agent's session id, so each thread

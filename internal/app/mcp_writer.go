@@ -57,7 +57,7 @@ func (t *threadTools) createTask(ctx context.Context, _ *mcp.CallToolRequest, sp
 // gate runs a task's quality gate, showing it on the objective's page while
 // it runs and after.
 func (t *threadTools) gate(ctx context.Context, spec workspace.TaskSpec, tc runner.Toolchain) (runner.GateReport, error) {
-	status := Gate{Objective: spec.ObjectiveID, Title: spec.Title, Running: true}
+	status := Gate{Kind: GateTask, Objective: spec.ObjectiveID, Title: spec.Title, Running: true}
 	t.app.writerCheck(t.w.ID, status)
 	rep, err := t.app.runner.Gate(ctx, runner.GateInput{
 		Toolchain: tc, Starter: spec.Starter, Reference: spec.Reference,
@@ -94,8 +94,8 @@ func (t *threadTools) createLesson(ctx context.Context, _ *mcp.CallToolRequest, 
 
 // ownObjective refuses work on another objective, which has its own writer.
 func (t *threadTools) ownObjective(id string) error {
-	if id != t.objective {
-		return fmt.Errorf("you write for the objective %q only, not %q", t.objective, id)
+	if id != t.thread.ID {
+		return fmt.Errorf("you write for the objective %q only, not %q", t.thread.ID, id)
 	}
 	return nil
 }

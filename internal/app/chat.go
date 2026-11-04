@@ -30,8 +30,11 @@ func (a *App) Chat(wsID, thread string) ([]workspace.ChatItem, error) {
 	return w.Chat(thread)
 }
 
-// SendMessage sends the learner's chat message to a thread ("" for the plan).
-// In a task's or lesson's thread the app adds a [context] block about it.
+// SendMessage sends the learner's chat message to a thread, by its name
+// ("plan", a task id, ...). In a task's or lesson's thread the app adds a
+// [context] block about it. It returns once the message is queued; the
+// reply, or why the agent couldn't answer, arrives in the chat. An error
+// means the message wasn't sent at all.
 func (a *App) SendMessage(wsID, text, thread string) error {
 	text = strings.TrimSpace(text)
 	if text == "" {
@@ -41,8 +44,12 @@ func (a *App) SendMessage(wsID, text, thread string) error {
 	if err != nil {
 		return err
 	}
-	t := workspace.ParseThread(thread)
-	return a.send(w, t, message{Role: workspace.RoleUser, Shown: text, Agent: a.contextFor(w, t) + text})
+	t, err := workspace.ParseThread(thread)
+	if err != nil {
+		return err
+	}
+	a.send(w, t, message{Role: workspace.RoleUser, Shown: text, Agent: a.contextFor(w, t) + text})
+	return nil
 }
 
 // AnswerQuestions sends the learner's answers to the thread that asked.
@@ -55,7 +62,9 @@ func (a *App) AnswerQuestions(wsID string, answers map[string]string) error {
 	var b strings.Builder
 	b.WriteString("My answers:\n")
 	if q := w.PendingQuestions(); q != nil {
-		t = workspace.ParseThread(q.Thread)
+		if t, err = workspace.ParseThread(q.Thread); err != nil {
+			return err
+		}
 		for _, qu := range q.Questions {
 			fmt.Fprintf(&b, "- %s\n  → %s\n", qu.Question, answers[qu.ID])
 		}
@@ -67,7 +76,8 @@ func (a *App) AnswerQuestions(wsID string, answers map[string]string) error {
 	if err := w.SetQuestions(nil); err != nil {
 		return err
 	}
-	return a.send(w, t, message{Role: workspace.RoleUser, Shown: b.String(), Agent: b.String()})
+	a.send(w, t, message{Role: workspace.RoleUser, Shown: b.String(), Agent: b.String()})
+	return nil
 }
 
 // DismissQuestions drops the pending form without answering.
@@ -93,7 +103,8 @@ func (a *App) RequestHint(wsID, taskID string, level int) error {
 	names := []string{"", "a nudge", "a pointer", "a snippet", "the solution walkthrough"}
 	msg := fmt.Sprintf("Hint level %d (%s), please.", level, names[level])
 	t := workspace.TaskThread(taskID)
-	return a.send(w, t, message{Role: workspace.RoleUser, Shown: msg, Agent: a.contextFor(w, t) + msg})
+	a.send(w, t, message{Role: workspace.RoleUser, Shown: msg, Agent: a.contextFor(w, t) + msg})
+	return nil
 }
 
 // StopAgent interrupts the current turn in a thread. The session posts a
@@ -120,14 +131,13 @@ type message struct {
 }
 
 // send records the message in a thread's chat and queues it for that
-// thread's agent.
-func (a *App) send(w *workspace.Workspace, t workspace.Thread, m message) error {
+// thread's agent, without waiting for the agent to start. Once the message
+// is in the chat, whatever goes wrong with it is posted there too.
+func (a *App) send(w *workspace.Workspace, t workspace.Thread, m message) {
 	a.post(w, workspace.ChatItem{Thread: t.String(), Role: m.Role, Text: m.Shown})
 	if err := a.enqueue(w, t, m.Agent, false); err != nil {
 		a.postFailure(w, t.String(), err.Error())
-		return err
 	}
-	return nil
 }
 
 // post saves a chat item and shows it in the UI.
@@ -139,7 +149,7 @@ func (a *App) post(w *workspace.Workspace, item workspace.ChatItem) {
 
 // postFailure shows a problem in a thread as a red notice.
 func (a *App) postFailure(w *workspace.Workspace, thread, msg string) {
-	a.post(w, workspace.ChatItem{Thread: thread, Role: workspace.RoleNotice, Status: "failed", Text: msg})
+	a.post(w, workspace.ChatItem{Thread: thread, Role: workspace.RoleNotice, Status: workspace.ChatFailed, Text: msg})
 }
 
 // transcript turns one session's agent events into chat items. Streaming
@@ -185,12 +195,19 @@ func (t *transcript) handle(ev agent.Event) {
 		if item == nil {
 			return
 		}
-		item.Status = string(tool.Status)
+		item.Status = chatStatus[tool.Status]
 		emit(chatMessage, ChatEvent{Workspace: w.ID, Item: *item})
 		if tool.Status != agent.ToolRunning {
 			_ = w.AppendChat(*item)
 		}
 	}
+}
+
+// chatStatus is how a tool call's status shows in the chat.
+var chatStatus = map[agent.ToolStatus]workspace.ChatStatus{
+	agent.ToolRunning: workspace.ChatRunning,
+	agent.ToolDone:    workspace.ChatDone,
+	agent.ToolFailed:  workspace.ChatFailed,
 }
 
 func (t *transcript) endText() {
@@ -208,7 +225,7 @@ func (t *transcript) endTurn() {
 	t.endText()
 	for _, item := range t.tools {
 		if item != nil {
-			item.Status = string(agent.ToolDone)
+			item.Status = workspace.ChatDone
 			_ = t.ws.AppendChat(*item)
 		}
 	}

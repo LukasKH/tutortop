@@ -9,10 +9,10 @@ The contract is in code. `agent.go` has the types and their doc comments, and `p
 An adapter is one file, like `claude.go` or `codex.go`. It has three parts:
 
 - `startX(ctx, opts, onEvent) (Session, error)`, which starts the CLI and returns a `Session`;
-- `xModels(ctx) ([]Model, error)`, which lists the models it offers;
+- `xModels(ctx) ([]Model, error)`, which lists the models it offers, the CLI's default first, each with the reasoning efforts it takes. Claude's list is fixed, because the CLI takes aliases that follow each release. Codex's is asked live from the CLI. The app caches the answer for a few minutes;
 - an entry in `Providers()` with an id, a display name and the binary to look up on `PATH`.
 
-That's all the app needs. Settings list `Providers()` and show the ones that aren't installed as missing. Workspaces save session ids per provider id. The frontend takes the display name from `App.Environment()`, so it needs no change.
+That's all the app needs. Settings list `Providers()` and show the ones that aren't installed as missing. Workspaces save session ids per provider id. The frontend gets each provider's display name from `App.Environment`, so a new agent needs no frontend change.
 
 ## The contract
 
@@ -119,6 +119,10 @@ The Agent Client Protocol is JSON-RPC over stdio. It maps onto this package clos
 | `EventText` | `session/update` with `agent_message_chunk` (skip `agent_thought_chunk`) |
 | `EventTool` | `tool_call` (full: kind, title, locations → `Paths`) and `tool_call_update`; status `pending`/`in_progress` → running, `completed` → done, `failed` → failed |
 | `policy.allow` | `session/request_permission`: describe the tool call, then pick an allow-once or reject-once option |
-| `Instructions` | agent-specific (a flag, a config file or the first prompt), since ACP has no system-prompt field |
+| `xModels` | the session's config options (`configOptions` in the `NewSession` reply): the select with category `model` gives the models, the one with category `thought_level` the efforts. ACP reports them per session only, so start the binary in a temporary folder, `Initialize`, `NewSession`, read the options and `Close`, as `codexModels` does with Codex |
+| `Model`, `Effort` | after `NewSession` or `LoadSession`, `session/set_config_option` with the option's `id` and the chosen value; leave an empty one alone |
+| `Instructions` | the agent's own way to add to its system prompt: a flag, an environment variable or a config file it reads at start. ACP's stable schema has no system-prompt field; a proposed `systemPrompt` on `session/new` (mode `append`) fits exactly, so use it if the agent advertises it |
+
+An agent that has no model or thought-level option returns a single `Model` with an empty `ID` and no efforts, which tells the app to leave the choice to the CLI. Don't fall back to sending the instructions as the first prompt: a resumed session would get them twice, and the agent may drop them when it compacts its context.
 
 Don't offer the terminal capability. If you offer file access, put each read and write through the policy too. Pass the SDK's connection the `process` pipes, so `ErrStopped`, stderr and `Close` work the same as for the other adapters.

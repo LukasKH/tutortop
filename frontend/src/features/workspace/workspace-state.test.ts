@@ -1,11 +1,11 @@
 import { describe, expect, test } from "vitest";
-import { ChatRole, type ChatItem, type Gate } from "@/lib/api";
+import { ChatRole, ChatStatus, GateKind, type ChatItem, type Gate } from "@/lib/api";
 import { initialWorkspace, reduceWorkspace, writingObjectives, type Action, type LiveWorkspace } from "@/features/workspace/workspace-state";
 import { workspace } from "@/features/workspace/fixtures";
 
 const run = (...actions: Action[]): LiveWorkspace => actions.reduce(reduceWorkspace, initialWorkspace);
 
-const check = (objective: string, running: boolean): Gate => ({ objective, title: "Task", running, passed: false });
+const check = (objective: string, running: boolean): Gate => ({ kind: GateKind.GateTask, objective, title: "Task", running, passed: false });
 
 describe("snapshots and events", () => {
   test("a writer that finishes during a refetch doesn't spin forever", () => {
@@ -41,7 +41,7 @@ describe("snapshots and events", () => {
 });
 
 describe("writers", () => {
-  const failed: ChatItem = { id: "1", thread: "write-a", role: ChatRole.RoleNotice, text: "Agent crashed", status: "failed", at: "" };
+  const failed: ChatItem = { id: "1", thread: "write-a", role: ChatRole.RoleNotice, text: "Agent crashed", status: ChatStatus.ChatFailed, at: "" };
 
   test("a failed writer is remembered until it starts again, and its check starts afresh", () => {
     let s = run({ type: "gate", gate: check("a", false), at: 1 }, { type: "chat", item: failed });
@@ -52,13 +52,13 @@ describe("writers", () => {
   });
 
   test("other chat messages don't count as writer failures", () => {
-    const s = run({ type: "chat", item: { ...failed, thread: "plan" } }, { type: "chat", item: { ...failed, status: "done" } });
+    const s = run({ type: "chat", item: { ...failed, thread: "plan" } }, { type: "chat", item: { ...failed, status: ChatStatus.ChatDone } });
     expect(s.writeFailed).toEqual({});
   });
 });
 
 describe("the planning tutor's sandbox check", () => {
-  const toolchain = (running: boolean): Gate => ({ kind: "toolchain", title: "Go", running, passed: !running });
+  const toolchain = (running: boolean): Gate => ({ kind: GateKind.GateToolchain, title: "Go", running, passed: !running });
 
   test("a finished check clears once the plan thread stops; a running one stays", () => {
     expect(run({ type: "gate", gate: toolchain(false), at: 1 }, { type: "busy", thread: "plan", busy: false, at: 2 }).gate).toBeNull();

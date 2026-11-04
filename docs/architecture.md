@@ -120,27 +120,33 @@ Writers have no chat window. They prepare an objective's lesson and exercise in 
 
 A thread's agent process runs in a session (`internal/app/session.go`), which answers the thread's messages one turn at a time, in order. When the learner sends a message, `SendMessage` adds a `[context]` block about the open task or lesson (`prompts.go`), posts the message to the chat and queues it with `enqueue`. That starts the session if the thread has none. The session's loop hands each message to the agent, and its `transcript` streams the reply into the chat as `chat:message` events.
 
-- A session starts with the first message for its thread. Chats resume their saved conversation; a writer starts fresh.
+- A session starts with the first message for its thread, in the background. Chats resume their saved conversation; a writer starts fresh.
 - The thread is busy (`thread:busy`) from the moment a message is queued until every queued message is answered, including while the process starts. The session's count of pending messages is the only source of this state.
 - When the settings change, an idle session restarts with the next message. A busy one finishes its queue first.
 - A session ends when its process exits, its workspace is deleted or the app quits. A writer also ends as soon as it's idle, and starting any thread but the plan ends the workspace's idle task and lesson sessions.
 
-To add a kind of thread, add it and its name to `internal/workspace/thread.go`, give it a role in `prompts.go` (and `prompts/`), decide in `session.go` whether it resumes and when it ends, and give it its tools in `mcp.go`'s `newServer`.
+The calls that message an agent (`SendMessage`, `AnswerQuestions`, `RequestHint`, `PrepareObjective`) return once the message is queued. They don't wait for the process to start. Their error means the message wasn't sent at all, for example because the thread name is invalid. Once a message is in the chat, anything that goes wrong with it is posted in that thread as a notice with status `failed`, and nowhere else:
+
+- If the agent doesn't start (the CLI is missing or not signed in), the session posts why once, however many messages were waiting. It drops them and ends, so the thread turns idle and the next message tries a fresh start.
+- If a turn fails, its error is posted and the session takes the next message. If the process exits, its error is posted, the queued messages are dropped and the next message starts a new process.
+- A writer has no chat, so the objective's page shows its failure.
+
+To add a kind of thread, add it and its name to `internal/workspace/thread.go`, give it a role in `prompts.go` (and `prompts/`), decide in `session.go` whether it resumes and when it ends, and add the kind to the tools it gets in `mcp.go`'s `mcpTools`.
 
 The agent changes the app's state only through MCP tools, built on the [official Go SDK](https://github.com/modelcontextprotocol/go-sdk). `App` serves them over HTTP on `127.0.0.1`, with a random token in each thread's URL, so a thread can only reach its own workspace. The tool handlers write to the workspace and emit events.
 
-`newServer` in `internal/app/mcp.go` decides which thread gets which tool:
+`mcpTools` in `internal/app/mcp.go` lists every tool with the kinds of thread that get it:
 
-- Every thread gets `get_state`.
-- Chat threads also get `ask_user`, `set_icon`, `propose_curriculum` and `set_toolchain` (`mcp_chat.go`).
+- Every kind gets `get_state`.
+- The chats (plan, task and lesson threads) also get `ask_user`, `set_icon`, `propose_curriculum` and `set_toolchain` (`mcp_chat.go`).
 - Writers also get `create_task` and `create_lesson` (`mcp_writer.go`), for their own objective only.
 
-Each tool is a `*mcp.Tool` with its name and description, a handler method on `threadTools`, and its input and output types, kept together. The SDK derives the input schema from the input type's `json` and `jsonschema` tags and rejects calls that don't match it. A handler that returns an error sends the error's text back to the agent, which fixes its call and tries again. To add a tool, write those pieces next to the others and register the tool in `newServer` under the threads that need it.
+Each tool is a `*mcp.Tool` with its name and description, a handler method on `threadTools`, and its input and output types, kept together. The SDK derives the input schema from the input type's `json` and `jsonschema` tags and rejects calls that don't match it. A handler that returns an error sends the error's text back to the agent, which fixes its call and tries again. To add a tool, write those pieces next to the others and add a line to `mcpTools` with the kinds that get it. A tool for the plan only is a line with `workspace.PlanKind`.
 
 `create_task` publishes a task only after it passes the quality gate in the sandbox. The reference solution has to pass three times in shuffled order, the starter code has to fail, and the tests have to catch at least two wrong solutions.
 
 ## Checks and the editor
 
-**Run** and **Submit** call `App.RunChecks`. It saves the learner's code, runs the visible tests (plus the hidden ones on submit) in the sandbox and records the attempt.
+**Run** and **Submit** call `App.RunChecks`. It saves the learner's code, runs the visible tests (plus the hidden ones on submit) in the sandbox and records the attempt. The sandbox images are built ahead, in the background, so the first check is fast: when the app starts (`ServiceStartup`, for every workspace's plan language) and when the learner approves a plan. Reading a workspace never starts a build, since the frontend repeats reads freely.
 
 The editor's completions and errors come from a language server running in the task's sandbox image. Go doesn't read the LSP messages. It relays them between the server's stdio and the frontend, sending them out as `lsp:message` events and taking them in through `App.SendLanguageServer`.

@@ -100,7 +100,8 @@ export function Models(provider: string): $CancellablePromise<agent$0.Model[] | 
 /**
  * PrepareObjective has a writer write an objective's lesson and task now,
  * because the learner opened it ahead of the suggested order. It returns
- * once the writer has started; the lesson and task arrive as events.
+ * once the writer is asked; the lesson and task arrive as events, and a
+ * writer that fails posts why in its thread.
  */
 export function PrepareObjective(wsID: string, objectiveID: string): $CancellablePromise<void> {
     return $Call.ByID(3889623002, wsID, objectiveID);
@@ -160,8 +161,11 @@ export function SendLanguageServer(id: string, message: string): $CancellablePro
 }
 
 /**
- * SendMessage sends the learner's chat message to a thread ("" for the plan).
- * In a task's or lesson's thread the app adds a [context] block about it.
+ * SendMessage sends the learner's chat message to a thread, by its name
+ * ("plan", a task id, ...). In a task's or lesson's thread the app adds a
+ * [context] block about it. It returns once the message is queued; the
+ * reply, or why the agent couldn't answer, arrives in the chat. An error
+ * means the message wasn't sent at all.
  */
 export function SendMessage(wsID: string, text: string, thread: string): $CancellablePromise<void> {
     return $Call.ByID(1296577745, wsID, text, thread);
@@ -169,7 +173,7 @@ export function SendMessage(wsID: string, text: string, thread: string): $Cancel
 
 /**
  * Settings returns the saved settings. Without a saved agent it picks the
- * first one that's installed.
+ * first one that's installed, or the first one listed if none is.
  */
 export function Settings(): $CancellablePromise<$models.Settings> {
     return $Call.ByID(3796473721);
