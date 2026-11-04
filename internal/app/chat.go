@@ -209,7 +209,7 @@ func (s *agentSession) close() {
 // the open task as context, and its own instructions to the tutor are shown
 // as short notices.
 type message struct {
-	Role  string // workspace.RoleUser for the learner's words, RoleNotice for app events
+	Role  workspace.ChatRole // workspace.RoleUser for the learner's words, RoleNotice for app events
 	Shown string
 	Agent string
 }

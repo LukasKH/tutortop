@@ -382,19 +382,21 @@ func (w *Workspace) commit(msg string) {
 
 // ---- chat transcript ----
 
-// Chat item roles.
+// ChatRole is who or what a chat item comes from.
+type ChatRole string
+
 const (
-	RoleUser      = "user"      // the learner's words
-	RoleAssistant = "assistant" // the tutor's reply
-	RoleTool      = "tool"      // a tutor action worth showing, e.g. "Updated your mission"
-	RoleNotice    = "notice"    // an app event, e.g. "Stopped" or "You passed …"
+	RoleUser      ChatRole = "user"      // the learner's words
+	RoleAssistant ChatRole = "assistant" // the tutor's reply
+	RoleTool      ChatRole = "tool"      // a tutor action worth showing, e.g. "Updated your mission"
+	RoleNotice    ChatRole = "notice"    // an app event, e.g. "Stopped" or "You passed …"
 )
 
 // ChatItem is one entry in the conversation shown in the UI.
 type ChatItem struct {
 	ID     string    `json:"id"`
 	Thread string    `json:"thread"`
-	Role   string    `json:"role"` // user | assistant | tool | notice
+	Role   ChatRole  `json:"role"`
 	Text   string    `json:"text"`
 	Status string    `json:"status,omitempty"` // for tools: running | done | failed
 	At     time.Time `json:"at"`

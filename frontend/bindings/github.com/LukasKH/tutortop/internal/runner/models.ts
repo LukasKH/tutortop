@@ -7,11 +7,36 @@
 export type Files = { [_ in string]?: string } | null;
 
 export interface Result {
-    "status": string;
+    "status": Status;
     "tests": TestResult[] | null;
     "output": string;
     "durationMs": number;
 }
+
+/**
+ * Status is how a check run ended.
+ */
+export enum Status {
+    /**
+     * The Go zero value for the underlying type of the enum.
+     */
+    $zero = "",
+
+    /**
+     * compiled and every test passed
+     */
+    StatusPassed = "passed",
+
+    /**
+     * compiled, at least one test failed
+     */
+    StatusFailed = "failed",
+
+    /**
+     * didn't compile, timed out, or the sandbox broke
+     */
+    StatusError = "error",
+};
 
 export interface TestResult {
     "name": string;

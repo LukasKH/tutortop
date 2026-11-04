@@ -7,26 +7,28 @@ import (
 	"github.com/LukasKH/tutortop/internal/runner"
 )
 
-// Attempt kinds.
+// AttemptKind is what the learner did.
+type AttemptKind string
+
 const (
-	KindRun    = "run"    // checked the visible tests
-	KindSubmit = "submit" // checked every test; only a passed submit is progress
-	KindHint   = "hint"
-	KindQuiz   = "quiz" // answered a lesson's quiz question
+	KindRun    AttemptKind = "run"    // checked the visible tests
+	KindSubmit AttemptKind = "submit" // checked every test; only a passed submit is progress
+	KindHint   AttemptKind = "hint"
+	KindQuiz   AttemptKind = "quiz" // answered a lesson's quiz question
 )
 
 // Attempt is one learner action on a task or lesson, written by the app only.
 type Attempt struct {
-	TaskID    string    `json:"taskId,omitempty"`
-	Kind      string    `json:"kind"`
-	LessonID  string    `json:"lessonId,omitempty"`
-	Question  int       `json:"question,omitempty"` // quiz: question index
-	Choice    int       `json:"choice,omitempty"`   // quiz: option picked
-	Status    string    `json:"status,omitempty"`
-	Passed    int       `json:"passed,omitempty"` // tests passed; quiz: 1 if correct
-	Total     int       `json:"total,omitempty"`
-	HintLevel int       `json:"hintLevel,omitempty"`
-	At        time.Time `json:"at"`
+	TaskID    string        `json:"taskId,omitempty"`
+	Kind      AttemptKind   `json:"kind"`
+	LessonID  string        `json:"lessonId,omitempty"`
+	Question  int           `json:"question,omitempty"` // quiz: question index
+	Choice    int           `json:"choice,omitempty"`   // quiz: option picked
+	Status    runner.Status `json:"status,omitempty"`   // run and submit: how the check ended
+	Passed    int           `json:"passed,omitempty"`   // tests passed; quiz: 1 if correct
+	Total     int           `json:"total,omitempty"`
+	HintLevel int           `json:"hintLevel,omitempty"`
+	At        time.Time     `json:"at"`
 }
 
 func (w *Workspace) RecordAttempt(a Attempt) error {
@@ -65,17 +67,19 @@ func (w *Workspace) TaskStatuses() ([]TaskStatus, error) {
 	return out, nil
 }
 
-// Objective status values.
+// ObjectiveStatus is how far the learner got with an objective.
+type ObjectiveStatus string
+
 const (
-	ObjectivePlanned    = "planned"     // no task yet
-	ObjectiveInProgress = "in_progress" // has a task, none passed
-	ObjectivePassed     = "passed"      // a task for it passed on submit
+	ObjectivePlanned    ObjectiveStatus = "planned"     // no task yet
+	ObjectiveInProgress ObjectiveStatus = "in_progress" // has a task, none passed
+	ObjectivePassed     ObjectiveStatus = "passed"      // a task for it passed on submit
 )
 
 type ObjectiveProgress struct {
-	ID     string   `json:"id"`
-	Status string   `json:"status"`
-	Tasks  []string `json:"tasks"`
+	ID     string          `json:"id"`
+	Status ObjectiveStatus `json:"status"`
+	Tasks  []string        `json:"tasks"`
 }
 
 type Progress struct {

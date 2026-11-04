@@ -18,7 +18,7 @@ func TestRunGo(t *testing.T) {
 		hiddenTests string // added as a hidden test file when set
 		names       TestNames
 		repeat      int
-		status      string
+		status      Status
 		want        []TestResult // Message is matched as a substring
 	}{
 		{

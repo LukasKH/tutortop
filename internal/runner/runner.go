@@ -24,11 +24,13 @@ import (
 	"github.com/LukasKH/tutortop/internal/text"
 )
 
-// Status of a check run.
+// Status is how a check run ended.
+type Status string
+
 const (
-	StatusPassed = "passed" // compiled and every test passed
-	StatusFailed = "failed" // compiled, at least one test failed
-	StatusError  = "error"  // didn't compile, timed out, or the sandbox broke
+	StatusPassed Status = "passed" // compiled and every test passed
+	StatusFailed Status = "failed" // compiled, at least one test failed
+	StatusError  Status = "error"  // didn't compile, timed out, or the sandbox broke
 )
 
 type TestResult struct {
@@ -40,7 +42,7 @@ type TestResult struct {
 }
 
 type Result struct {
-	Status     string       `json:"status"`
+	Status     Status       `json:"status"`
 	Tests      []TestResult `json:"tests"`
 	Output     string       `json:"output"`
 	DurationMs int64        `json:"durationMs"`

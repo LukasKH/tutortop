@@ -32,7 +32,7 @@ func TestProgressCountsOnlyPassedSubmissions(t *testing.T) {
 	if p.Passed != 1 || p.Total != 4 || p.PassedEver != 1 {
 		t.Fatalf("passed %d of %d, ever %d; want 1 of 4, ever 1", p.Passed, p.Total, p.PassedEver)
 	}
-	want := map[string]string{"a": workspace.ObjectivePassed, "b": workspace.ObjectiveInProgress, "c": workspace.ObjectiveInProgress, "d": workspace.ObjectivePlanned}
+	want := map[string]workspace.ObjectiveStatus{"a": workspace.ObjectivePassed, "b": workspace.ObjectiveInProgress, "c": workspace.ObjectiveInProgress, "d": workspace.ObjectivePlanned}
 	for id, status := range want {
 		if got := p.Objectives[id].Status; got != status {
 			t.Errorf("objective %s is %q, want %q", id, got, status)

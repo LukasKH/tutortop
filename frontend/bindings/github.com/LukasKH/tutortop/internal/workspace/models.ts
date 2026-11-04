@@ -50,11 +50,7 @@ export interface ActivityDay {
 export interface ChatItem {
     "id": string;
     "thread": string;
-
-    /**
-     * user | assistant | tool | notice
-     */
-    "role": string;
+    "role": ChatRole;
     "text": string;
 
     /**
@@ -63,6 +59,36 @@ export interface ChatItem {
     "status"?: string;
     "at": string;
 }
+
+/**
+ * ChatRole is who or what a chat item comes from.
+ */
+export enum ChatRole {
+    /**
+     * The Go zero value for the underlying type of the enum.
+     */
+    $zero = "",
+
+    /**
+     * the learner's words
+     */
+    RoleUser = "user",
+
+    /**
+     * the tutor's reply
+     */
+    RoleAssistant = "assistant",
+
+    /**
+     * a tutor action worth showing, e.g. "Updated your mission"
+     */
+    RoleTool = "tool",
+
+    /**
+     * an app event, e.g. "Stopped" or "You passed …"
+     */
+    RoleNotice = "notice",
+};
 
 /**
  * Curriculum is the plan: an ordered list of modules, each with objectives.
@@ -148,9 +174,34 @@ export interface Objective {
 
 export interface ObjectiveProgress {
     "id": string;
-    "status": string;
+    "status": ObjectiveStatus;
     "tasks": string[] | null;
 }
+
+/**
+ * ObjectiveStatus is how far the learner got with an objective.
+ */
+export enum ObjectiveStatus {
+    /**
+     * The Go zero value for the underlying type of the enum.
+     */
+    $zero = "",
+
+    /**
+     * no task yet
+     */
+    ObjectivePlanned = "planned",
+
+    /**
+     * has a task, none passed
+     */
+    ObjectiveInProgress = "in_progress",
+
+    /**
+     * a task for it passed on submit
+     */
+    ObjectivePassed = "passed",
+};
 
 export interface Progress {
     "passed": number;
