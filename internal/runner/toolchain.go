@@ -122,8 +122,8 @@ func parseGoTestJSON(stdout string, hidden map[string]bool) ([]TestResult, bool)
 	sawEvents, packageFailed := false, false
 
 	for line := range strings.Lines(stdout) {
-		var ev goTestEvent
-		if json.Unmarshal([]byte(line), &ev) != nil {
+		ev, err := decode[goTestEvent](json.Unmarshal, line)
+		if err != nil {
 			continue
 		}
 		if ev.Test == "" {
@@ -178,8 +178,7 @@ func parseGoTestJSON(stdout string, hidden map[string]bool) ([]TestResult, bool)
 func humanGoOutput(s string) string {
 	var b bytes.Buffer
 	for line := range strings.Lines(s) {
-		var ev goTestEvent
-		if json.Unmarshal([]byte(line), &ev) == nil && ev.Action != "" {
+		if ev, err := decode[goTestEvent](json.Unmarshal, line); err == nil && ev.Action != "" {
 			if ev.Action == "output" || ev.Action == "build-output" {
 				b.WriteString(ev.Output)
 			}
@@ -279,8 +278,8 @@ func parseJUnitRuns(stdout string, hidden map[string]bool) ([]TestResult, bool) 
 		rest = after
 		runs++
 
-		var doc junitNode
-		if xml.Unmarshal([]byte(strings.TrimSpace(report)), &doc) != nil {
+		doc, err := decode[junitNode](xml.Unmarshal, strings.TrimSpace(report))
+		if err != nil {
 			return nil, false
 		}
 		cases := doc.cases()
@@ -336,4 +335,12 @@ func stripJUnit(s string) string {
 
 func trimMessage(s string) string {
 	return text.Truncate(strings.TrimSpace(s), 2000)
+}
+
+// decode reads one JSON or XML document into a T, with unmarshal as
+// json.Unmarshal or xml.Unmarshal.
+func decode[T any](unmarshal func([]byte, any) error, s string) (T, error) {
+	var v T
+	err := unmarshal([]byte(s), &v)
+	return v, err
 }
