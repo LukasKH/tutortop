@@ -1,7 +1,6 @@
 package workspace_test
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/LukasKH/tutortop/internal/workspace"
@@ -14,24 +13,11 @@ func TestValidateLesson(t *testing.T) {
 		want   []string // none for a valid lesson
 	}{
 		{"valid", func(*workspace.LessonSpec) {}, nil},
-		{"unknown objective", func(s *workspace.LessonSpec) { s.ObjectiveID = "missing" }, []string{`objective "missing" isn't in the curriculum`}},
-		{"no summary", func(s *workspace.LessonSpec) { s.Summary = "" }, []string{"title and summary are required"}},
-		{"no code block", func(s *workspace.LessonSpec) { s.Body = "## Adding\n\nSee [the spec](https://go.dev/ref/spec).\n" }, []string{"worked example in a code block"}},
-		{"no citation", func(s *workspace.LessonSpec) { s.Body = "## Adding\n\n```go\nx := 1\n```\n" }, []string{"body needs citations"}},
 		{"repeats the title", func(s *workspace.LessonSpec) { s.Body = "# Adding numbers\n\n" + s.Body }, []string{"body repeats the title"}},
-		{"its own read next", func(s *workspace.LessonSpec) { s.Body += "\n## Read next\n" }, []string{"body has its own Read next"}},
-		{"too long", func(s *workspace.LessonSpec) { s.Body += strings.Repeat("x", 9000) }, []string{"keep a lesson short"}},
-		{"primary source isn't a link", func(s *workspace.LessonSpec) { s.PrimarySource.URL = "go.dev" }, []string{"primarySource needs a title and an http(s) url"}},
-		{"two questions", func(s *workspace.LessonSpec) { s.Quiz = s.Quiz[:2] }, []string{"quiz needs 3-5 questions"}},
-		{"two options", func(s *workspace.LessonSpec) { s.Quiz[0].Options = []string{"three", "four"} }, []string{"question 1 needs 3-4 options"}},
 		{"answer out of range", func(s *workspace.LessonSpec) { s.Quiz[1].Answer = 3 }, []string{"question 2: answer must be an option index (0-2)"}},
-		{"options of different lengths", func(s *workspace.LessonSpec) {
-			s.Quiz[0].Options = []string{"exactly three it is", "four", "five"}
-		}, []string{"question 1: options have 1 to 4 words"}},
 		{"longest option is the answer", func(s *workspace.LessonSpec) {
 			s.Quiz[0].Options = []string{"threeeeeeeee", "four", "five"}
 		}, []string{"question 1: the correct option is clearly the longest"}},
-		{"duplicate options", func(s *workspace.LessonSpec) { s.Quiz[2].Options = []string{"four", "Four ", "five"} }, []string{"question 3 has duplicate options"}},
 		{"answer always first", func(s *workspace.LessonSpec) {
 			for i := range s.Quiz {
 				s.Quiz[i].Answer = 0

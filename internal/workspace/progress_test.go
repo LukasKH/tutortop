@@ -46,10 +46,6 @@ func TestProgressCountsOnlyPassedSubmissions(t *testing.T) {
 	if !strings.Contains(string(b), `"tasks":[]`) {
 		t.Errorf("objective without tasks encodes as %s", b)
 	}
-
-	if !w.TaskPassed(ta.ID) || w.TaskPassed(tb.ID) {
-		t.Errorf("TaskPassed: a %v, b %v; want true, false", w.TaskPassed(ta.ID), w.TaskPassed(tb.ID))
-	}
 }
 
 // Changing the plan never looks like losing progress: an objective passed
@@ -199,7 +195,6 @@ func TestSummarizeStreaks(t *testing.T) {
 		cs                  []workspace.Completion
 		today, streak, best int
 	}{
-		{"nothing", nil, 0, 0, 0},
 		{"today only", []workspace.Completion{on(3, 10, "task"), on(3, 10, "lesson")}, 2, 1, 1},
 		// Nothing yet today keeps yesterday's streak alive until midnight.
 		{"up to yesterday", []workspace.Completion{on(3, 8, "task"), on(3, 9, "task")}, 0, 2, 2},

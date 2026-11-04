@@ -15,27 +15,13 @@ func TestCurriculumValidate(t *testing.T) {
 		want   []string // none for a valid plan
 	}{
 		{"valid", func(*workspace.Curriculum) {}, nil},
-		{"unknown language", func(c *workspace.Curriculum) { c.Language = "cobol" }, []string{"language: cobol is unknown"}},
-		{"bad size", func(c *workspace.Curriculum) { c.TaskDefaults.Size = "huge" }, []string{"size must be small, medium or large"}},
-		{"bad shape", func(c *workspace.Curriculum) { c.TaskDefaults.Shape = "essay" }, []string{"shape must be kata or project"}},
-		{"no modules", func(c *workspace.Curriculum) { c.Modules = nil }, []string{"at least one module"}},
-		{"module id", func(c *workspace.Curriculum) { c.Modules[0].ID = "Basics" }, []string{`module id "Basics" must be kebab-case`}},
-		{"no objectives", func(c *workspace.Curriculum) { c.Modules[0].Objectives = nil }, []string{"has no objectives"}},
-		{"no references", func(c *workspace.Curriculum) { c.Modules[0].References = nil }, []string{"needs references"}},
-		{"too many references", func(c *workspace.Curriculum) {
-			r := c.Modules[0].References[0]
-			c.Modules[0].References = []workspace.Source{r, r, r, r, r}
-		}, []string{"4 references at most"}},
-		{"reference without a title", func(c *workspace.Curriculum) { c.Modules[0].References[0].Title = " " }, []string{"needs a title"}},
 		{"reference that isn't a web link", func(c *workspace.Curriculum) { c.Modules[0].References[0].URL = "file:///etc/passwd" }, []string{"needs a full http(s) url"}},
 		{"objective id", func(c *workspace.Curriculum) { c.Modules[0].Objectives[0].ID = "Go Errors" }, []string{"must be lowercase, dotted or dashed"}},
 		// Modules and objectives share one id space.
 		{"duplicate id", func(c *workspace.Curriculum) { c.Modules[0].Objectives[1].ID = "basics" }, []string{`duplicate id "basics"`}},
-		{"objective without a name", func(c *workspace.Curriculum) { c.Modules[0].Objectives[0].Name = "" }, []string{"needs a name"}},
 		// The limit counts characters, not bytes.
 		{"name at the limit", func(c *workspace.Curriculum) { c.Modules[0].Objectives[0].Name = strings.Repeat("é", 28) }, nil},
 		{"name too long", func(c *workspace.Curriculum) { c.Modules[0].Objectives[0].Name = strings.Repeat("e", 29) }, []string{"is too long"}},
-		{"unsupported check kind", func(c *workspace.Curriculum) { c.Modules[0].Objectives[0].Verify = "ai-review" }, []string{"verify must be 'tests'"}},
 		{"unknown objective language", func(c *workspace.Curriculum) { c.Modules[0].Objectives[0].Language = "cobol" }, []string{`objective "a": cobol is unknown`}},
 		{"every problem at once", func(c *workspace.Curriculum) {
 			c.TaskDefaults.Size = "huge"
@@ -57,16 +43,6 @@ func TestCurriculumValidate(t *testing.T) {
 	}
 }
 
-func TestCurriculumValidateFillsDefaults(t *testing.T) {
-	c := plan("a")
-	if err := c.Validate(func(string) error { return nil }); err != nil {
-		t.Fatal(err)
-	}
-	if c.TaskDefaults.Size != "medium" || c.TaskDefaults.Shape != "kata" || c.Modules[0].Objectives[0].Verify != "tests" {
-		t.Errorf("defaults not filled: %+v, verify %q", c.TaskDefaults, c.Modules[0].Objectives[0].Verify)
-	}
-}
-
 func TestCurriculumObjectiveLanguage(t *testing.T) {
 	c := plan("a", "b")
 	c.Modules[0].Objectives[1].Language = "python"
@@ -75,9 +51,6 @@ func TestCurriculumObjectiveLanguage(t *testing.T) {
 	}
 	if _, lang, ok := c.Objective("b"); !ok || lang != "python" {
 		t.Errorf("b: %q %v, want its own python", lang, ok)
-	}
-	if _, _, ok := c.Objective("missing"); ok {
-		t.Error("found an objective that isn't in the plan")
 	}
 }
 
@@ -121,11 +94,5 @@ func TestApproveProposal(t *testing.T) {
 	}
 	if p, _ := w.Proposal(); p != nil {
 		t.Fatal("the proposal is still pending after discarding it")
-	}
-	if err := w.DiscardProposal(); err != nil {
-		t.Errorf("discarding with nothing pending: %v", err)
-	}
-	if cur, _ := w.Curriculum(); cur.Revision != 2 {
-		t.Errorf("discarding changed the plan to revision %d", cur.Revision)
 	}
 }

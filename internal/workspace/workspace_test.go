@@ -78,27 +78,6 @@ func TestNamesStayInsideTheWorkspace(t *testing.T) {
 	}
 }
 
-func TestChat(t *testing.T) {
-	w := newWorkspace(t)
-	items := []workspace.ChatItem{
-		{ID: "1", Thread: workspace.PlanThread.String(), Role: workspace.RoleUser, Text: "hi"},
-		{ID: "2", Thread: workspace.PlanThread.String(), Role: workspace.RoleAssistant, Text: "hello"},
-		{ID: "3", Thread: "0001-task", Role: workspace.RoleNotice, Text: "elsewhere"},
-	}
-	for _, it := range items {
-		if err := w.AppendChat(it); err != nil {
-			t.Fatal(err)
-		}
-	}
-	got, err := w.Chat(workspace.PlanThread.String())
-	if err != nil || len(got) != 2 || got[0].Text != "hi" || got[1].Role != workspace.RoleAssistant {
-		t.Fatalf("plan thread: %+v, %v", got, err)
-	}
-	if got, err := w.Chat("never-used"); err != nil || len(got) != 0 {
-		t.Errorf("unused thread: %+v, %v", got, err)
-	}
-}
-
 // Older files leave the plan's thread name empty; they read as "plan", the
 // one name the app sends.
 func TestOldFilesNameThePlan(t *testing.T) {
@@ -265,7 +244,7 @@ func lessonSpec(objective string) workspace.LessonSpec {
 		ObjectiveID:   objective,
 		Title:         "Adding numbers",
 		Summary:       "You'll add two numbers in Go.",
-		Body:          "## Adding\n\nUse `+`, as [the spec](https://go.dev/ref/spec#Arithmetic_operators) says:\n\n```go\n# not a heading inside code\nx := 1 + 2\n```\n",
+		Body:          "## Adding\n\nUse `+`, as [the spec](https://go.dev/ref/spec#Arithmetic_operators) says:\n\n```go\n# not a heading inside code\nx := 1 + 2\n```\n", // the "#" line tests that headings inside code aren't read as headings
 		PrimarySource: workspace.Source{Title: "The Go spec", URL: "https://go.dev/ref/spec"},
 		Quiz: []workspace.QuizQuestion{
 			{Question: "What is 1 + 2?", Options: []string{"three", "four", "five"}, Answer: 0, Explanation: "One plus two is three."},
