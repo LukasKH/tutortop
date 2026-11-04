@@ -77,7 +77,7 @@ func (t *threadTools) proposeCurriculum(ctx context.Context, _ *mcp.CallToolRequ
 
 var setToolchainTool = &mcp.Tool{
 	Name: "set_toolchain",
-	Description: "Set up a programming language the app doesn't ship (it ships " + strings.Join(runner.BuiltinLanguages(), " and ") + "), or change one you set up before, so the curriculum and tasks can use it. " +
+	Description: "Set up a programming language the app doesn't ship (it ships " + text.List(runner.BuiltinLanguages()) + "), or change one you set up before, so the curriculum and tasks can use it. " +
 		"The app builds the sandbox image (this can take several minutes) and runs the example's tests, which must all pass. Only then is the language saved. " +
 		"If something fails, fix the toolchain using the report and call set_toolchain again. A language server that doesn't answer isn't a failure: the language is saved without it. " +
 		"Changing a language affects its existing tasks, so keep the test command compatible.",

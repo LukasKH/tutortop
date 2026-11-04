@@ -1,7 +1,18 @@
 // Package text has small string helpers shared across packages.
 package text
 
-import "unicode/utf8"
+import (
+	"strings"
+	"unicode/utf8"
+)
+
+// List joins items as prose: "a", "a and b", "a, b and c".
+func List(items []string) string {
+	if len(items) < 2 {
+		return strings.Join(items, "")
+	}
+	return strings.Join(items[:len(items)-1], ", ") + " and " + items[len(items)-1]
+}
 
 // Truncate shortens s to at most n bytes, cutting at a rune boundary and
 // adding "…" when something was removed.

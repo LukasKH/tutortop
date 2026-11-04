@@ -31,8 +31,12 @@ var (
 	writerRole string
 )
 
-// instructions are the shared rules plus the agent's role in the thread. A
-// title that can't be read falls back to the id.
+// instructions are the shared rules plus the agent's role in the thread.
+// The prompts' placeholders are filled from the code, so they can't drift
+// from it: {{tools}} lists the MCP tools the thread gets (mcpTools),
+// {{builtins}} the languages the app ships (runner.BuiltinLanguages), and
+// {{id}} and {{title}} name the thread's task, lesson or objective. A title
+// that can't be read falls back to the id.
 func instructions(w *workspace.Workspace, t workspace.Thread) string {
 	var role, title string
 	switch t.Kind {
@@ -51,7 +55,26 @@ func instructions(w *workspace.Workspace, t workspace.Thread) string {
 			title = o.Title
 		}
 	}
-	return sharedPrompt + "\n\n" + strings.NewReplacer("{{id}}", t.ID, "{{title}}", cmp.Or(title, t.ID)).Replace(role)
+	var tools []string
+	for _, tool := range toolsFor(t.Kind) {
+		tools = append(tools, "`"+tool.name+"`")
+	}
+	return strings.NewReplacer(
+		"{{tools}}", text.List(tools),
+		"{{builtins}}", builtinNames(),
+		"{{id}}", t.ID,
+		"{{title}}", cmp.Or(title, t.ID),
+	).Replace(sharedPrompt + "\n\n" + role)
+}
+
+// builtinNames lists the languages the app ships by name: "Go and Python".
+func builtinNames() string {
+	var names []string
+	for _, lang := range runner.BuiltinLanguages() {
+		tc, _ := runner.Builtin(lang)
+		names = append(names, tc.Name)
+	}
+	return text.List(names)
 }
 
 // contextFor describes what the learner has open in the thread: a task's
