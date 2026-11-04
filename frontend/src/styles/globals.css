@@ -144,6 +144,18 @@
   ::-webkit-scrollbar-thumb:hover {
     background-color: rgb(255 255 255 / 0.18);
   }
+  /* Fades and moves stop for learners who ask for less motion; spinners keep turning. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      transition-duration: 1ms !important;
+    }
+    .animate-in,
+    .animate-out {
+      animation-duration: 1ms !important;
+    }
+  }
   /* While a Splitter is dragged, the whole page shows its cursor. */
   body.is-resizing-x,
   body.is-resizing-x * {

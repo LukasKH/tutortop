@@ -92,7 +92,7 @@ export function ChatPanel(p: Props) {
           {p.questions}
           {p.busy && (
             <div className="flex items-center gap-2 text-sm text-muted-foreground" role="status">
-              <Spinner className="size-[12px]" /> Thinking…
+              <Spinner className="size-[12px]" aria-hidden /> Thinking…
             </div>
           )}
         </div>
@@ -118,7 +118,7 @@ export function ChatPanel(p: Props) {
         />
         <Button
           size="icon-sm"
-          className="font-normal hover:border-primary hover:bg-primary disabled:border-input disabled:bg-input disabled:opacity-100"
+          className="font-normal hover:not-disabled:border-primary hover:not-disabled:bg-primary disabled:border-input disabled:bg-input disabled:opacity-100"
           onClick={send}
           disabled={!p.draft.trim()}
           aria-label="Send"
@@ -129,7 +129,7 @@ export function ChatPanel(p: Props) {
       </div>
       <Button
         variant="ghost"
-        className="mx-3 mb-2 h-auto max-w-[calc(100%-24px)] flex-none justify-start rounded-sm px-1 py-0.5 text-xs font-normal text-faint hover:bg-transparent hover:text-foreground"
+        className="mx-3 mb-2 h-auto max-w-[calc(100%-24px)] flex-none justify-start rounded-sm px-1 py-0.5 text-xs font-normal text-faint hover:not-disabled:bg-transparent hover:not-disabled:text-foreground"
         onClick={p.onSettings}
         title="Change the tutor's agent, model and reasoning"
       >
@@ -151,7 +151,7 @@ function HintPill({ level, busy, onHint }: { level: number; busy: boolean; onHin
     <Button
       variant="outline"
       className={cn(
-        "absolute right-4 bottom-3 z-3 h-auto rounded-full bg-muted px-3.5 py-1.5 font-semibold shadow-[0_6px_20px_rgba(0,0,0,0.45)] hover:border-soft-foreground hover:bg-accent disabled:pointer-events-auto",
+        "absolute right-4 bottom-3 z-3 h-auto rounded-full bg-muted px-3.5 py-1.5 font-semibold shadow-[0_6px_20px_rgba(0,0,0,0.45)] hover:not-disabled:border-soft-foreground hover:not-disabled:bg-accent",
         armed && "border-fail text-fail",
       )}
       disabled={busy}
@@ -173,7 +173,7 @@ export function ChatRail({ attention, busy, onExpand }: { attention: boolean; bu
       <Button
         variant="ghost"
         className={cn(
-          "h-auto rounded-none p-0 text-xs font-normal text-muted-foreground [writing-mode:vertical-rl] hover:bg-transparent hover:text-foreground",
+          "h-auto rounded-none p-0 text-xs font-normal text-muted-foreground [writing-mode:vertical-rl] hover:not-disabled:bg-transparent hover:not-disabled:text-foreground",
           attention && "font-semibold text-foreground",
         )}
         onClick={onExpand}

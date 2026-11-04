@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type KeyboardEvent } from "react";
 import { cn } from "cn";
 import { type Question, type QuestionForm } from "@/lib/api";
 import { AutoTextarea } from "@/components/auto-textarea";
@@ -98,7 +98,7 @@ function Choices({ question: q, picked, onChoose }: { question: Question; picked
       <div className="flex flex-col">
         {options.map((o) => (
           <Label key={o} className={CHOICE}>
-            <Checkbox checked={picked.includes(o)} onCheckedChange={(on) => onChoose(o, on === true)} />
+            <Checkbox checked={picked.includes(o)} onCheckedChange={(on) => onChoose(o, on === true)} onKeyDown={submitOnEnter} />
             <span>{o}</span>
           </Label>
         ))}
@@ -112,10 +112,16 @@ function Choices({ question: q, picked, onChoose }: { question: Question; picked
             value={o}
             // A picked radio doesn't untick on click; a second click does it here.
             onClick={() => picked.includes(o) && onChoose(o, false)}
+            onKeyDown={submitOnEnter}
           />
           <span>{o}</span>
         </Label>
       ))}
     </RadioGroup>
   );
+}
+
+/** Radix radios and checkboxes ignore Enter; in a form it should send the answers, as it does from a text field. */
+function submitOnEnter(e: KeyboardEvent<HTMLButtonElement>) {
+  if (e.key === "Enter") e.currentTarget.form?.requestSubmit();
 }

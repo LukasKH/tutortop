@@ -58,14 +58,15 @@ let hide = 0;
 function show(level: number, auto: boolean) {
   if (!toast) {
     toast = document.createElement("div");
-    toast.className = "zoom-toast";
+    toast.className =
+      "pointer-events-none fixed top-4 left-1/2 z-100 -translate-x-1/2 rounded-lg border border-input bg-muted px-3 py-1.5 text-sm font-medium text-foreground tabular-nums opacity-0 transition-opacity duration-120 data-shown:opacity-100";
     toast.setAttribute("role", "status");
     document.body.append(toast);
   }
   toast.textContent = `${Math.round(level * 100)}%${auto ? " · automatic" : ""}`;
-  toast.classList.add("is-shown");
+  toast.dataset.shown = "";
   clearTimeout(hide);
-  hide = window.setTimeout(() => toast?.classList.remove("is-shown"), 1200);
+  hide = window.setTimeout(() => toast && delete toast.dataset.shown, 1200);
 }
 
 export async function startZoom() {

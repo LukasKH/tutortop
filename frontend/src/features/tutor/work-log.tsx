@@ -69,7 +69,7 @@ export function WorkLog({ items, busy, gate, lang, onStop }: Props) {
       )}
       {busy && gate?.running && (
         <div className="flex min-w-0 items-center gap-2 text-sm text-muted-foreground">
-          <Spinner className="size-[12px]" />
+          <Spinner className="size-[12px]" aria-hidden />
           {gate.kind === "toolchain"
             ? `Setting up ${gate.title} in the sandbox. The first time can take a few minutes…`
             : `Checking “${gate.title}” in the sandbox…`}
@@ -77,7 +77,7 @@ export function WorkLog({ items, busy, gate, lang, onStop }: Props) {
       )}
       {busy && !moving && !gate?.running && (
         <div className="flex min-w-0 items-center gap-2 text-sm text-muted-foreground">
-          <Spinner className="size-[12px]" /> Thinking…
+          <Spinner className="size-[12px]" aria-hidden /> Thinking…
         </div>
       )}
     </section>
