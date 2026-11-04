@@ -20,7 +20,7 @@ Tutortop is a Go program with a React frontend, shipped as one desktop app by [W
 - `internal/workspace` stores one topic as plain files in `~/Tutortop/<id>`, plus private files (hidden tests, reference solutions) under the XDG data dir. It knows nothing about agents or Wails.
 - `internal/agent` starts the Claude Code or Codex CLI, streams its output as text and tool events, and decides which tool calls to allow. The agent may change files in the workspace, except under `tasks/`, and may not run commands.
 - `internal/runner` runs tests in a Docker or Podman container built for the task's toolchain. It also runs the quality gate for new tasks.
-- `frontend/src/lib/api.ts` is the only frontend file that talks to Wails. Components import from it. The frontend's own layout is described under [Frontend](#frontend).
+- `frontend/src/lib/api.ts` wraps the generated bindings and events; components import from it. A few modules use the Wails runtime directly: links open in the browser, the settings pick a folder, the window zooms, and the language client listens to its event outside React. The frontend's own layout is described under [Frontend](#frontend).
 
 ## How Wails fits in
 
@@ -36,7 +36,7 @@ The bindings are generated, and committed. After changing an exported method or 
 
 Some things start on the Go side. The agent streams a reply, a writer publishes a task, a sandbox check finishes, a language server answers. Go emits an event for each one, and the frontend listens.
 
-All events live in `internal/app/events.go`. Each has a payload struct, a name constant in `namespace:name` form whose type names the payload (`chatMessage event[ChatEvent] = "chat:message"`), and an `application.RegisterEvent[Payload](string(name))` call in `init()`. Registering does two things. The binding generator writes the names to `frontend/bindings/events` and types each event's data in TypeScript, and Wails refuses to send an event whose data has the wrong type.
+All events live in `internal/app/events.go`. Each has a payload struct, a name constant in `namespace:name` form whose type names the payload (`chatMessage event[ChatEvent] = "chat:message"`), and an `application.RegisterEvent[Payload](string(name))` call in `init()`. Registering does two things. The binding generator writes the names to `frontend/bindings/events` and types each event's data in TypeScript, and Wails drops an event whose data has the wrong type. It only logs that, and release builds discard the log, so a mistake fails silently: `TestEventsRegistered` checks that every name constant is registered with its payload type.
 
 | Event | Payload | Sent when |
 | --- | --- | --- |

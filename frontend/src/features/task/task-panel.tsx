@@ -96,20 +96,12 @@ export function TaskPanel({ wsId, taskId, passed, moduleTitle, nextTask, moreCom
         <Tabs
           value={tab}
           onValueChange={(v) => setTab(v as typeof tab)}
-          className="flex min-h-0 min-w-[260px] flex-none flex-col gap-0 @max-[640px]:h-2/5 @max-[640px]:w-auto! @max-[640px]:min-w-0 @max-[640px]:border-b"
+          className="min-h-0 min-w-[260px] flex-none @max-[640px]:h-2/5 @max-[640px]:w-auto! @max-[640px]:min-w-0 @max-[640px]:border-b"
           style={{ width: `${split * 100}%` }}
         >
-          <TabsList
-            variant="line"
-            aria-label="Exercise"
-            className="flex w-full flex-none items-stretch justify-start gap-[18px] border-b px-[22px] py-0 group-data-horizontal/tabs:h-10"
-          >
-            <TabsTrigger value="statement" className={TAB}>
-              Exercise
-            </TabsTrigger>
-            <TabsTrigger value="tests" className={TAB}>
-              Tests
-            </TabsTrigger>
+          <TabsList aria-label="Exercise" className="px-[22px]">
+            <TabsTrigger value="statement">Exercise</TabsTrigger>
+            <TabsTrigger value="tests">Tests</TabsTrigger>
           </TabsList>
           <TabsContent value="statement" className="flex-1 overflow-auto text-base">
             <Markdown text={detail.statement} className="prose px-[26px] pt-[22px] pb-10" foldExamples lang={detail.editorLanguage} />
@@ -202,10 +194,6 @@ export function TaskPanel({ wsId, taskId, passed, moduleTitle, nextTask, moreCom
     </Page>
   );
 }
-
-/** The Exercise | Tests underline tabs. */
-const TAB =
-  "-mb-px h-auto flex-none rounded-none border-0 border-b-2 border-transparent px-0 py-0 text-muted-foreground transition-colors hover:text-foreground data-active:border-foreground data-active:text-foreground";
 
 const EDITOR_HOST = "min-h-0 flex-1 overflow-hidden bg-card";
 

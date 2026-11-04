@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -9,6 +10,7 @@ import (
 	"os/exec"
 	"strings"
 	"sync"
+	"time"
 )
 
 // process is a long-running agent CLI with piped stdio.
@@ -19,6 +21,7 @@ type process struct {
 	stderr tailBuffer
 	done   chan struct{}
 	err    error
+	cancel context.CancelFunc // stops the process: SIGTERM, then a kill after WaitDelay
 
 	wmu sync.Mutex // one message per line on stdin, from any goroutine
 }
@@ -63,22 +66,30 @@ func startProcess(ctx context.Context, cwd string, env []string, binary string, 
 	if err != nil {
 		return nil, fmt.Errorf("%s isn't installed or isn't on PATH", binary)
 	}
+	ctx, cancel := context.WithCancel(ctx)
 	cmd := exec.CommandContext(ctx, path, args...)
 	cmd.Dir = cwd
 	cmd.Env = append(os.Environ(), env...)
-	p := &process{cmd: cmd, done: make(chan struct{})}
+	// Ask the CLI to stop first, so it can save its session.
+	cmd.Cancel = func() error { return cmd.Process.Signal(os.Interrupt) }
+	cmd.WaitDelay = 5 * time.Second
+	p := &process{cmd: cmd, done: make(chan struct{}), cancel: cancel}
 	cmd.Stderr = &p.stderr
 	if p.stdin, err = cmd.StdinPipe(); err != nil {
+		cancel()
 		return nil, err
 	}
-	if p.stdout, err = cmd.StdoutPipe(); err != nil {
-		return nil, err
-	}
+	// An io.Pipe rather than StdoutPipe, so Wait can run while we still read.
+	stdout, w := io.Pipe()
+	p.stdout, cmd.Stdout = stdout, w
 	if err := cmd.Start(); err != nil {
+		cancel()
 		return nil, fmt.Errorf("starting %s: %w", binary, err)
 	}
 	go func() {
 		p.err = cmd.Wait()
+		_ = w.CloseWithError(cmp.Or(p.err, io.EOF))
+		cancel()
 		close(p.done)
 	}()
 	return p, nil
@@ -95,17 +106,17 @@ func (p *process) Closed() bool {
 
 func (p *process) Close() error {
 	_ = p.stdin.Close()
-	if !p.Closed() && p.cmd.Process != nil {
-		_ = p.cmd.Process.Kill()
-	}
+	p.cancel()
 	<-p.done
 	return nil
 }
 
 // exitError explains why the process stopped, using the tail of stderr.
+// A failed write can call it while the process is still exiting, so it reads
+// the exit status only once Wait has set it.
 func (p *process) exitError() error {
 	msg := strings.TrimSpace(p.stderr.String())
-	if msg == "" && p.err != nil {
+	if msg == "" && p.Closed() && p.err != nil {
 		msg = p.err.Error()
 	}
 	if msg == "" {

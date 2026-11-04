@@ -69,7 +69,7 @@ export function NotWritten({ wsId, objective, part, moduleTitle, writing, check,
           {writing || starting ? (
             <>
               <p className="flex flex-wrap items-center gap-2">
-                <Spinner className="size-3.5" /> {status(part, check, !other)}
+                <Spinner className="size-3.5" aria-hidden /> {status(part, check, !other)}
               </p>
               <p className="text-sm text-muted-foreground">
                 It opens here when it's ready. Writing runs in the background, so you can open something else meanwhile.
