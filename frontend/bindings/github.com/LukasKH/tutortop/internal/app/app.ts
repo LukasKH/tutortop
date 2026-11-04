@@ -173,7 +173,7 @@ export function SendMessage(wsID: string, text: string, thread: string): $Cancel
 
 /**
  * Settings returns the saved settings. Without a saved agent it picks the
- * first one that's installed.
+ * first one that's installed, or the first one listed if none is.
  */
 export function Settings(): $CancellablePromise<$models.Settings> {
     return $Call.ByID(3796473721);

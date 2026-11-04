@@ -131,7 +131,7 @@ export interface QuestionsEvent {
  */
 export interface Settings {
     /**
-     * Agent is the coding agent that tutors: "claude" or "codex".
+     * Agent is the coding agent that tutors, an agent.Provider ID.
      */
     "agent": string;
 

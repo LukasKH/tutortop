@@ -154,7 +154,7 @@ const (
 // Provider is one coding agent CLI. Adding an agent means adding it to
 // [Providers].
 type Provider struct {
-	ID     string // saved in settings and workspaces: "claude" | "codex"
+	ID     string // saved in settings and workspaces, e.g. "claude"
 	Name   string // shown to people
 	Binary string // looked up on PATH; the app reports it missing
 	start  func(ctx context.Context, opts Options, onEvent func(Event)) (Session, error)
