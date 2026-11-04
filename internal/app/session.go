@@ -237,9 +237,9 @@ func (a *App) end(s *session) {
 	s.close()
 }
 
-// activity returns which of a workspace's threads are busy, and its writers'
-// latest sandbox checks by objective.
-func (a *App) activity(wsID string) (busy map[string]bool, checks map[string]SandboxCheck) {
+// sessionState returns what the workspace's sessions are doing: which threads
+// are busy, and the writers' latest sandbox checks by objective.
+func (a *App) sessionState(wsID string) (busy map[string]bool, checks map[string]SandboxCheck) {
 	busy, checks = map[string]bool{}, map[string]SandboxCheck{}
 	a.mu.Lock()
 	defer a.mu.Unlock()

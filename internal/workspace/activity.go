@@ -29,12 +29,12 @@ func (w *Workspace) Completions() ([]Completion, error) {
 	answered := map[string]map[int]bool{}
 	for _, a := range attempts {
 		switch a.Kind {
-		case KindSubmit:
+		case AttemptSubmit:
 			if a.passedTask() && !passed[a.TaskID] {
 				passed[a.TaskID] = true
 				out = append(out, Completion{Kind: "task", At: a.At})
 			}
-		case KindQuiz:
+		case AttemptQuiz:
 			qs := answered[a.LessonID]
 			if qs == nil {
 				qs = map[int]bool{}

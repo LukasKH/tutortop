@@ -21,11 +21,11 @@ func TestProgressCountsOnlyPassedSubmissions(t *testing.T) {
 	tc := addTask(t, w, "c")
 
 	record(t, w,
-		workspace.Attempt{TaskID: ta.ID, Kind: workspace.KindSubmit, Status: runner.StatusPassed},
-		workspace.Attempt{TaskID: ta.ID, Kind: workspace.KindSubmit, Status: runner.StatusFailed}, // a later failure doesn't undo it
-		workspace.Attempt{TaskID: tb.ID, Kind: workspace.KindRun, Status: runner.StatusPassed},
-		workspace.Attempt{TaskID: tb.ID, Kind: workspace.KindHint, HintLevel: 2},
-		workspace.Attempt{TaskID: tc.ID, Kind: workspace.KindSubmit, Status: runner.StatusError},
+		workspace.Attempt{TaskID: ta.ID, Kind: workspace.AttemptSubmit, Status: runner.StatusPassed},
+		workspace.Attempt{TaskID: ta.ID, Kind: workspace.AttemptSubmit, Status: runner.StatusFailed}, // a later failure doesn't undo it
+		workspace.Attempt{TaskID: tb.ID, Kind: workspace.AttemptRun, Status: runner.StatusPassed},
+		workspace.Attempt{TaskID: tb.ID, Kind: workspace.AttemptHint, HintLevel: 2},
+		workspace.Attempt{TaskID: tc.ID, Kind: workspace.AttemptSubmit, Status: runner.StatusError},
 	)
 
 	p := w.Progress()
@@ -60,8 +60,8 @@ func TestProgressSurvivesPlanChanges(t *testing.T) {
 	ta := addTask(t, w, "a")
 	tb := addTask(t, w, "b")
 	record(t, w,
-		workspace.Attempt{TaskID: ta.ID, Kind: workspace.KindSubmit, Status: runner.StatusPassed},
-		workspace.Attempt{TaskID: tb.ID, Kind: workspace.KindSubmit, Status: runner.StatusPassed},
+		workspace.Attempt{TaskID: ta.ID, Kind: workspace.AttemptSubmit, Status: runner.StatusPassed},
+		workspace.Attempt{TaskID: tb.ID, Kind: workspace.AttemptSubmit, Status: runner.StatusPassed},
 	)
 
 	approve(t, w, "b", "c") // a is dropped, b kept
@@ -92,9 +92,9 @@ func TestTaskStatusesAndHints(t *testing.T) {
 	ta := addTask(t, w, "a")
 	tb := addTask(t, w, "b")
 	record(t, w,
-		workspace.Attempt{TaskID: ta.ID, Kind: workspace.KindHint, HintLevel: 2},
-		workspace.Attempt{TaskID: ta.ID, Kind: workspace.KindHint, HintLevel: 1},
-		workspace.Attempt{TaskID: ta.ID, Kind: workspace.KindSubmit, Status: runner.StatusPassed},
+		workspace.Attempt{TaskID: ta.ID, Kind: workspace.AttemptHint, HintLevel: 2},
+		workspace.Attempt{TaskID: ta.ID, Kind: workspace.AttemptHint, HintLevel: 1},
+		workspace.Attempt{TaskID: ta.ID, Kind: workspace.AttemptSubmit, Status: runner.StatusPassed},
 	)
 
 	statuses, err := w.TaskStatuses()
@@ -136,7 +136,7 @@ func TestNeedsWriting(t *testing.T) {
 		}, 1, []string{"a"}},
 		{"passed objective is skipped", func(t *testing.T, w *workspace.Workspace) {
 			ta := addTask(t, w, "a")
-			record(t, w, workspace.Attempt{TaskID: ta.ID, Kind: workspace.KindSubmit, Status: runner.StatusPassed})
+			record(t, w, workspace.Attempt{TaskID: ta.ID, Kind: workspace.AttemptSubmit, Status: runner.StatusPassed})
 		}, 2, []string{"b", "c"}},
 	}
 	for _, c := range cases {
@@ -171,12 +171,12 @@ func TestCompletions(t *testing.T) {
 	day := time.Date(2026, 3, 2, 9, 0, 0, 0, time.UTC)
 	at := func(h int) time.Time { return day.Add(time.Duration(h) * time.Hour) }
 	record(t, w,
-		workspace.Attempt{TaskID: ta.ID, Kind: workspace.KindSubmit, Status: runner.StatusPassed, At: at(1)},
-		workspace.Attempt{TaskID: ta.ID, Kind: workspace.KindSubmit, Status: runner.StatusPassed, At: at(2)},
-		workspace.Attempt{LessonID: lesson.ID, Kind: workspace.KindQuiz, Question: 0, At: at(3)},
-		workspace.Attempt{LessonID: lesson.ID, Kind: workspace.KindQuiz, Question: 0, At: at(4)},
-		workspace.Attempt{LessonID: lesson.ID, Kind: workspace.KindQuiz, Question: 1, At: at(5)},
-		workspace.Attempt{LessonID: lesson.ID, Kind: workspace.KindQuiz, Question: 2, At: at(6)},
+		workspace.Attempt{TaskID: ta.ID, Kind: workspace.AttemptSubmit, Status: runner.StatusPassed, At: at(1)},
+		workspace.Attempt{TaskID: ta.ID, Kind: workspace.AttemptSubmit, Status: runner.StatusPassed, At: at(2)},
+		workspace.Attempt{LessonID: lesson.ID, Kind: workspace.AttemptQuiz, Question: 0, At: at(3)},
+		workspace.Attempt{LessonID: lesson.ID, Kind: workspace.AttemptQuiz, Question: 0, At: at(4)},
+		workspace.Attempt{LessonID: lesson.ID, Kind: workspace.AttemptQuiz, Question: 1, At: at(5)},
+		workspace.Attempt{LessonID: lesson.ID, Kind: workspace.AttemptQuiz, Question: 2, At: at(6)},
 	)
 
 	cs, err := w.Completions()

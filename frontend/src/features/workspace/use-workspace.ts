@@ -71,4 +71,5 @@ export function useWorkspace(id: string) {
   };
 }
 
-export type Workspace = ReturnType<typeof useWorkspace>;
+/** What useWorkspace returns: the LiveWorkspace, kept current, and the calls that change it. Not workspace.Workspace or WorkspaceState. */
+export type UseWorkspaceResult = ReturnType<typeof useWorkspace>;

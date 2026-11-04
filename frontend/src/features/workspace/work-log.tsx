@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { plural } from "@/lib/format";
 import { type ChatItem, type SandboxCheck } from "@/lib/api";
 import { ChevronDownIcon } from "lucide-react";
-import { Thinking } from "@/features/tutor/thinking";
+import { Thinking } from "@/features/chat/thinking";
 import { Spinner } from "@/components/ui/spinner";
 import { Markdown } from "@/components/markdown";
 import { Button } from "@/components/ui/button";

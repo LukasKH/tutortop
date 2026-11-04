@@ -99,7 +99,7 @@ func (a *App) RequestHint(wsID, taskID string, level int) error {
 	if err != nil {
 		return err
 	}
-	_ = w.RecordAttempt(workspace.Attempt{TaskID: taskID, Kind: workspace.KindHint, HintLevel: level})
+	_ = w.RecordAttempt(workspace.Attempt{TaskID: taskID, Kind: workspace.AttemptHint, HintLevel: level})
 	names := []string{"", "a nudge", "a pointer", "a snippet", "the solution walkthrough"}
 	msg := fmt.Sprintf("Hint level %d (%s), please.", level, names[level])
 	t := workspace.TaskThread(taskID)

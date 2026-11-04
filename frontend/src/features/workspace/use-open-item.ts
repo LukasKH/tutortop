@@ -3,7 +3,7 @@ import { AppEvents, useEvent, type LessonStatus, type Objective, type Questions,
 import { PLAN_THREAD } from "@/lib/workspace";
 import { readStored, useStored } from "@/hooks/use-stored";
 import { describeItem, itemKey, parseItemKey, resolveOpen, sameItem, threadOf, type OpenItem, type Part } from "@/features/workspace/open-item";
-import type { Workspace } from "@/features/workspace/use-workspace";
+import type { UseWorkspaceResult } from "@/features/workspace/use-workspace";
 
 /** The centre pane shows the open item, or one of the plan's pages. */
 export type CenterView = "item" | "plan" | "proposal";
@@ -16,7 +16,7 @@ export type NewItem = { item: OpenItem; title: string };
  * workspace), the centre's view, and the chat thread that goes with them.
  * New lessons and exercises open, or are pointed out, as they're published.
  */
-export function useOpenItem(id: string, { ws, refresh, dismissFinishedCheck }: Pick<Workspace, "ws" | "refresh" | "dismissFinishedCheck">) {
+export function useOpenItem(id: string, { ws, refresh, dismissFinishedCheck }: Pick<UseWorkspaceResult, "ws" | "refresh" | "dismissFinishedCheck">) {
   // Each snapshot checks the open item still exists, and what it picks
   // instead is remembered, so a default doesn't move on its own. Until the
   // first snapshot, the stored item is unchecked. Older versions stored it

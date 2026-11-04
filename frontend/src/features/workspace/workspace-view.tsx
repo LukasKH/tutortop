@@ -7,15 +7,15 @@ import { describeItem, exerciseOf, itemKey, lessonOf, viaLesson } from "@/featur
 import { useChatPanel } from "@/features/workspace/use-chat-panel";
 import { useChatThreads } from "@/features/workspace/use-chat-threads";
 import { centerOf, questionsInCenter, useOpenItem, type Center } from "@/features/workspace/use-open-item";
-import { useWorkspace, type Workspace } from "@/features/workspace/use-workspace";
+import { useWorkspace, type UseWorkspaceResult } from "@/features/workspace/use-workspace";
 import { Sidebar } from "@/features/workspace/sidebar";
 import { TaskPanel } from "@/features/task/task-panel";
 import { LessonPanel } from "@/features/lesson/lesson-panel";
 import { NotWritten } from "@/features/workspace/not-written";
 import { PlanView } from "@/features/workspace/plan-view";
 import { ProposalView } from "@/features/workspace/proposal-view";
-import { ChatPanel, ChatRail, StatusLine, type Attention } from "@/features/tutor/chat-panel";
-import { useComposer } from "@/features/tutor/use-composer";
+import { ChatPanel, ChatRail, StatusLine, type Attention } from "@/features/chat/chat-panel";
+import { useComposer } from "@/features/chat/use-composer";
 import { Markdown } from "@/components/markdown";
 import { QuestionsForm } from "@/features/workspace/questions";
 import { Setup } from "@/features/workspace/setup";
@@ -38,7 +38,7 @@ export function WorkspaceView({ id, tutor, onSettings, onBack }: Props) {
   const live = useWorkspace(id);
   // What the learner has open, and the chat thread that goes with it (use-open-item.ts).
   const nav = useOpenItem(id, live);
-  // The tutor panel: open or folded into its rail, its width, and its message box.
+  // The chat panel: open or folded into its rail, its width, and its message box.
   const chat = useChatPanel();
   const composer = useComposer();
   // Conversations by thread, loaded for the shown thread and streamed in by event.
@@ -81,7 +81,7 @@ export function WorkspaceView({ id, tutor, onSettings, onBack }: Props) {
 
   return (
     <div
-      // Curriculum rail, centre, tutor panel (folded into a 44px rail when collapsed).
+      // Curriculum rail, centre, chat panel (folded into a 44px rail when collapsed).
       className={cn("relative grid h-full", setup ? "grid-cols-[236px_minmax(0,1fr)]" : "grid-cols-[236px_minmax(0,1fr)_var(--chat-w)]")}
       style={setup ? undefined : ({ "--chat-w": chat.open ? `min(${chat.width}px, 50vw)` : "44px" } as CSSProperties)}
     >
@@ -131,7 +131,7 @@ export function WorkspaceView({ id, tutor, onSettings, onBack }: Props) {
               onHint: (level) => App.RequestHint(id, hintTask.id, level).then(live.refresh).catch(fail),
             }
           }
-          // The setup interview stays out of the tutor panel.
+          // The setup interview stays out of the chat panel.
           items={thread === PLAN_THREAD ? afterSetup(threads[PLAN_THREAD] ?? []) : (threads[thread] ?? [])}
           busy={!!busy[thread]}
           questions={
@@ -162,7 +162,7 @@ export function WorkspaceView({ id, tutor, onSettings, onBack }: Props) {
         <ChatRail attention={Object.values(unread).some(Boolean) || questionsWaiting} busy={live.tutorBusy} onExpand={() => chat.setOpen(true)} />
       )}
       {!setup && (
-        // The handle sits on the tutor panel's left border, in the shell, so one
+        // The handle sits on the chat panel's left border, in the shell, so one
         // drag can fold the panel into its rail and pull it back out.
         <Splitter
           axis="x"
@@ -181,7 +181,7 @@ type CenterProps = {
   id: string;
   center: Center;
   ws: WorkspaceState;
-  live: Workspace;
+  live: UseWorkspaceResult;
   nav: ReturnType<typeof useOpenItem>;
   /** The planning conversation, which setup shows in the centre. */
   planItems: ChatItem[];
@@ -215,7 +215,7 @@ function CenterPane({ id, center, ws, live, nav, planItems, onAskTutor }: Center
       return <ProposalView wsId={id} proposal={center.proposal} current={ws.curriculum} progress={ws.progress} mission={ws.mission} />;
 
     case "plan":
-      // Before the first plan there's no tutor panel to ask; after it, "Back" needs something open.
+      // Before the first plan there's no chat panel to ask; after it, "Back" needs something open.
       return ws.curriculum ? (
         <PlanView wsId={id} ws={ws} onClose={item ? back : undefined} onAskTutor={onAskTutor} />
       ) : (

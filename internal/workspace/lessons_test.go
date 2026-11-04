@@ -116,8 +116,8 @@ func TestQuizFirstLoggedAnswerWins(t *testing.T) {
 	approve(t, w, "a")
 	l := addLesson(t, w, "a")
 	record(t, w,
-		workspace.Attempt{LessonID: l.ID, Kind: workspace.KindQuiz, Question: 0, Choice: 1},
-		workspace.Attempt{LessonID: l.ID, Kind: workspace.KindQuiz, Question: 0, Choice: 0, Passed: 1},
+		workspace.Attempt{LessonID: l.ID, Kind: workspace.AttemptQuiz, Question: 0, Choice: 1},
+		workspace.Attempt{LessonID: l.ID, Kind: workspace.AttemptQuiz, Question: 0, Choice: 0, Passed: 1},
 	)
 	d, err := w.Lesson(l.ID)
 	if err != nil {

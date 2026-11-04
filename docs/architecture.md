@@ -67,7 +67,7 @@ React 19 with Vite, styled with [Tailwind CSS v4](https://tailwindcss.com) and [
 ```
 frontend/src/
   main.tsx, app.tsx     entry point and the top-level screen switch
-  features/<area>/      one folder per screen area: home, settings, workspace, lesson, task, tutor
+  features/<area>/      one folder per screen area: home, settings, workspace, lesson, task, chat
   components/ui/        shadcn primitives (Button, Dialog, Tabs, ...), restyled to the app's look
   components/           the app's shared components: Markdown, Page and PageHeader, Splitter, ...
   hooks/                shared React hooks
@@ -81,14 +81,14 @@ A feature's state and its backend calls live in hooks next to its components. Th
 
 ### The workspace screen
 
-`features/workspace/workspace-view.tsx` lays out the curriculum rail, the centre pane and the tutor panel. Its state comes from these hooks:
+`features/workspace/workspace-view.tsx` lays out the curriculum rail, the centre pane and the chat panel (labelled "Tutor"). Its state comes from these hooks:
 
 | Hook | State | Comes from |
 | --- | --- | --- |
 | `use-workspace.ts` | the snapshot (`App.Workspace`), busy threads, writers' checks and failures, a chat's toolchain check, open questions, the last error | refetched on `workspace:changed`, `task:published` and `lesson:published`; `thread:busy`, `check:status`, `chat:message` and `questions:asked` update it directly |
 | `use-open-item.ts` | the open item, the centre's view (item, plan or proposal), the chat thread that goes with them, new work to point out | the learner, remembered per workspace; `task:published`, `lesson:published` and `curriculum:proposed` |
 | `use-chat-threads.ts` | conversations by thread, and which are unread | `App.Chat` for the shown thread; `chat:message` |
-| `use-chat-panel.ts`, `tutor/use-composer.ts` | the tutor panel's width and whether it's folded; the message draft | the learner |
+| `use-chat-panel.ts`, `chat/use-composer.ts` | the chat panel's width and whether it's folded; the message draft | the learner |
 
 `use-workspace.ts` sends every change through one pure reducer, `workspace-state.ts`. Events arrive faster than refetches, so the reducer keeps what an event set after a snapshot was asked for. A writer that finishes during a refetch then stops spinning.
 
@@ -112,7 +112,7 @@ Components are styled with utility classes in their markup. The one exception is
 
 ## The agent and its tools
 
-The tutor is the learner's own CLI, signed in already. `App` starts one agent process per thread, a conversation with its own chat. `workspace.Thread` names the four kinds, and its name is the chat's file name and what the frontend sends: `plan` for the mission and curriculum, the task id for a task, `lesson-<id>` for a lesson, and `write-<objective>` for an objective's writer.
+The agent is the learner's own CLI, signed in already. In a chat thread it's the tutor; in a writer's thread, it's that writer. `App` starts one agent process per thread, a conversation with its own chat. `workspace.Thread` names the four kinds, and its name is the chat's file name and what the frontend sends: `plan` for the mission and curriculum, the task id for a task, `lesson-<id>` for a lesson, and `write-<objective>` for an objective's writer.
 
 Writers have no chat window. They prepare an objective's lesson and exercise in the background, and the app keeps the next two unpassed objectives written so the learner doesn't wait.
 

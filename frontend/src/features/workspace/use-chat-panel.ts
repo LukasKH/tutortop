@@ -2,7 +2,7 @@ import { clamp } from "@/lib/math";
 import { useStored } from "@/hooks/use-stored";
 
 /**
- * The tutor panel beside the workspace: open, or folded into its rail, and its
+ * The chat panel beside the workspace: open, or folded into its rail, and its
  * width. Both are remembered. Dragging keeps it between CHAT_MIN and half the
  * window; dragging well below the minimum folds it.
  */
