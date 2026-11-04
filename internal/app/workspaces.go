@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/LukasKH/tutortop/internal/agent/threads"
 	"github.com/LukasKH/tutortop/internal/editor"
 	"github.com/LukasKH/tutortop/internal/events"
 	"github.com/LukasKH/tutortop/internal/sandbox"
@@ -23,14 +24,14 @@ type WorkspaceService struct {
 	store    *workspace.Store
 	settings *settings.Store // the agent a new workspace starts with
 	runner   *sandbox.Runner
-	agents   *threadAgents // a new workspace's interview, the plan's notices, and ending a deleted workspace's agents
-	writers  *writers      // write objectives once the plan is approved or opened ahead
+	agents   *threads.Agents  // a new workspace's interview, the plan's notices, and ending a deleted workspace's agents
+	writers  *threads.Writers // write objectives once the plan is approved or opened ahead
 	servers  *editor.Servers
 }
 
 var _ application.ServiceStartup = (*WorkspaceService)(nil)
 
-func newWorkspaceService(store *workspace.Store, settingsStore *settings.Store, runner *sandbox.Runner, agents *threadAgents, writers *writers, servers *editor.Servers) *WorkspaceService {
+func newWorkspaceService(store *workspace.Store, settingsStore *settings.Store, runner *sandbox.Runner, agents *threads.Agents, writers *threads.Writers, servers *editor.Servers) *WorkspaceService {
 	return &WorkspaceService{store: store, settings: settingsStore, runner: runner, agents: agents, writers: writers, servers: servers}
 }
 
@@ -100,7 +101,7 @@ func (s *WorkspaceService) CreateWorkspace(title, icon string) (string, error) {
 		return "", err
 	}
 	// The tutor starts the interview right away.
-	s.agents.send(w, workspace.PlanThread, message{
+	s.agents.Send(w, workspace.PlanThread, threads.Message{
 		Role:  workspace.RoleNotice,
 		Shown: "Workspace created. Your tutor is getting started.",
 		Agent: fmt.Sprintf("[app] I want to learn: %s. This is a new workspace; start the interview.", title),
@@ -111,7 +112,7 @@ func (s *WorkspaceService) CreateWorkspace(title, icon string) (string, error) {
 // DeleteWorkspace stops the workspace's agents and language servers, then
 // deletes its files for good.
 func (s *WorkspaceService) DeleteWorkspace(id string) error {
-	s.agents.endWorkspace(id)
+	s.agents.EndWorkspace(id)
 	s.servers.StopWorkspace(id)
 	return s.store.Delete(id)
 }
@@ -150,7 +151,7 @@ func (s *WorkspaceService) Workspace(id string) (WorkspaceSnapshot, error) {
 	st.Tasks, _ = w.TaskStatuses()
 	st.Lessons, _ = w.LessonStatuses()
 	st.Questions = w.PendingQuestions()
-	st.Busy, st.Checks, st.Seq = s.agents.state(id)
+	st.Busy, st.Checks, st.Seq = s.agents.State(id)
 	return st, nil
 }
 
@@ -165,11 +166,11 @@ func (s *WorkspaceService) ApproveProposal(wsID string) error {
 	}
 	events.Emit(events.WorkspaceChanged, events.Workspace{Workspace: wsID})
 	s.prepareImage(w, c.Language)
-	post(w, workspace.ChatItem{
+	threads.Post(w, workspace.ChatItem{
 		Thread: workspace.PlanThread.String(), Role: workspace.RoleNotice, Mark: workspace.MarkPlanApproved,
 		Text: fmt.Sprintf("You approved the plan (revision %d).", c.Revision),
 	})
-	s.writers.keepReady(w, "The learner just approved the plan.")
+	s.writers.KeepReady(w, "The learner just approved the plan.")
 	return nil
 }
 
@@ -195,7 +196,7 @@ func (s *WorkspaceService) SaveMission(wsID, mission string) error {
 		return err
 	}
 	events.Emit(events.WorkspaceChanged, events.Workspace{Workspace: wsID})
-	s.agents.send(w, workspace.PlanThread, message{
+	s.agents.Send(w, workspace.PlanThread, threads.Message{
 		Role:  workspace.RoleNotice,
 		Shown: "You edited your mission.",
 		Agent: "[app] I edited my mission by hand. Read it; it's mine now, so don't change it back. " +
@@ -214,7 +215,7 @@ func (s *WorkspaceService) RejectProposal(wsID, feedback string) error {
 	}
 	events.Emit(events.WorkspaceChanged, events.Workspace{Workspace: wsID})
 	text := "I'd like changes to the proposed curriculum: " + feedback
-	s.agents.send(w, workspace.PlanThread, message{Role: workspace.RoleUser, Shown: text, Agent: text})
+	s.agents.Send(w, workspace.PlanThread, threads.Message{Role: workspace.RoleUser, Shown: text, Agent: text})
 	return nil
 }
 
@@ -238,6 +239,6 @@ func (s *WorkspaceService) WriteObjectiveNow(wsID, objectiveID string) error {
 	if !ok {
 		return fmt.Errorf("%q isn't in the plan", objectiveID)
 	}
-	s.writers.write(w, o, "The learner opened it and is waiting for it, so be quick. Write the lesson first, as they read it first.")
+	s.writers.Write(w, o, "The learner opened it and is waiting for it, so be quick. Write the lesson first, as they read it first.")
 	return nil
 }

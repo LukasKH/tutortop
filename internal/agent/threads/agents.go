@@ -1,4 +1,8 @@
-package app
+// Package threads runs each thread's agent: the chats' tutors and the
+// background writers (Agents, Writers). It turns their replies into chat
+// transcripts, tells them what to do (prompts/), and serves the chats to the
+// frontend (ChatService).
+package threads
 
 import (
 	"context"
@@ -14,11 +18,11 @@ import (
 	"github.com/LukasKH/tutortop/internal/workspace"
 )
 
-// threadAgents runs each thread's agent, at most one per thread. Its methods
-// are all the rest of the app uses: queue a message for a thread (or send
-// one, which also posts it in the chat), stop a thread's turn, show a
-// sandbox check, read what the agents are doing, and end a workspace's
-// agents or all of them.
+// Agents runs each thread's agent, at most one per thread. The app sends a
+// thread a message (Send), reads what the agents are doing (State) and ends
+// a deleted workspace's agents (EndWorkspace); the MCP tools show sandbox
+// checks (Show). Inside this package, the writers queue messages, and the
+// chats stop a thread's turn and end all agents as the app quits.
 //
 // A thread's agent (threadAgent):
 //
@@ -42,21 +46,26 @@ import (
 // Each verb here means one thing: a thread agent starts and ends, its CLI
 // session opens and closes, a message is queued and then answered, and stop
 // interrupts the current turn.
-type threadAgents struct {
+type Agents struct {
 	settings *settings.Store // the agent, model and effort, read for every message
 	mcp      *mcp.Server
-	cli      agentCLI
+	cli      CLI
 
 	mu     sync.Mutex
 	agents map[threadKey]*threadAgent
 	seq    uint64 // numbers busy and check changes and snapshots in order
 }
 
-func newThreadAgents(settingsStore *settings.Store, tools *mcp.Server, cli agentCLI) *threadAgents {
-	return &threadAgents{settings: settingsStore, mcp: tools, cli: cli, agents: map[threadKey]*threadAgent{}, seq: firstSeq()}
+var _ mcp.Checks = (*Agents)(nil)
+
+// NewAgents runs thread agents on the agent, model and effort in the
+// settings, opening their CLI sessions with cli. Each thread's tools are
+// served by tools.
+func NewAgents(settingsStore *settings.Store, tools *mcp.Server, cli CLI) *Agents {
+	return &Agents{settings: settingsStore, mcp: tools, cli: cli, agents: map[threadKey]*threadAgent{}, seq: firstSeq()}
 }
 
-// firstSeq is where threadAgents.seq starts. Counting from the time in
+// firstSeq is where Agents.seq starts. Counting from the time in
 // microseconds keeps the numbers rising across a restart, for a page that
 // outlives one in server mode.
 func firstSeq() uint64 {
@@ -77,16 +86,16 @@ func configOf(s settings.Settings) agentConfig {
 	return agentConfig{Provider: s.Provider, Model: c.Model, Effort: c.Effort}
 }
 
-// agentCLI opens a session with an agent's CLI. installedCLI opens the
+// CLI opens a session with an agent's CLI. InstalledCLI opens the
 // learner's own; tests fake it.
-type agentCLI interface {
+type CLI interface {
 	Start(ctx context.Context, provider string, opts agent.Options, onEvent func(agent.Event)) (agent.Session, error)
 }
 
-// installedCLI starts the agent CLI installed on the computer.
-type installedCLI struct{}
+// InstalledCLI starts the agent CLI installed on the computer.
+type InstalledCLI struct{}
 
-func (installedCLI) Start(ctx context.Context, provider string, opts agent.Options, onEvent func(agent.Event)) (agent.Session, error) {
+func (InstalledCLI) Start(ctx context.Context, provider string, opts agent.Options, onEvent func(agent.Event)) (agent.Session, error) {
 	return agent.Start(ctx, provider, opts, onEvent)
 }
 
@@ -94,7 +103,7 @@ func (installedCLI) Start(ctx context.Context, provider string, opts agent.Optio
 // isn't running. It doesn't wait for the start: the CLI opens in the
 // background, and if it doesn't, one notice is posted in the thread's chat.
 // It fails only if too many messages are already waiting.
-func (ag *threadAgents) queue(w *workspace.Workspace, t workspace.Thread, msg string) error {
+func (ag *Agents) queue(w *workspace.Workspace, t workspace.Thread, msg string) error {
 	key := threadKey{w.ID, t.String()}
 	cfg := configOf(ag.settings.Load())
 	ag.mu.Lock()
@@ -123,21 +132,21 @@ func (ag *threadAgents) queue(w *workspace.Workspace, t workspace.Thread, msg st
 	return nil
 }
 
-// send posts a message in a thread's chat and queues it for that thread's
+// Send posts a message in a thread's chat and queues it for that thread's
 // agent, without waiting for the agent to start. Once the message is in the
 // chat, whatever goes wrong with it is posted there too.
-func (ag *threadAgents) send(w *workspace.Workspace, t workspace.Thread, m message) {
-	post(w, workspace.ChatItem{Thread: t.String(), Role: m.Role, Text: m.Shown})
+func (ag *Agents) Send(w *workspace.Workspace, t workspace.Thread, m Message) {
+	Post(w, workspace.ChatItem{Thread: t.String(), Role: m.Role, Text: m.Shown})
 	if err := ag.queue(w, t, m.Agent); err != nil {
 		postFailure(w, t.String(), err.Error())
 	}
 }
 
-// message is one thing sent to the tutor. What the learner sees in the chat
+// Message is one thing sent to the tutor. What the learner sees in the chat
 // (Shown) can differ from what the tutor receives (Agent): the app attaches
 // the open task as context, and its own instructions to the tutor are shown
 // as short notices.
-type message struct {
+type Message struct {
 	Role  workspace.ChatRole // workspace.RoleUser for the learner's words, RoleNotice for app events
 	Shown string
 	Agent string
@@ -145,7 +154,7 @@ type message struct {
 
 // stop interrupts the current turn in a thread. Its agent posts a notice
 // once the cut-off reply is saved, and takes the next message as usual.
-func (ag *threadAgents) stop(wsID, thread string) {
+func (ag *Agents) stop(wsID, thread string) {
 	ag.mu.Lock()
 	ta := ag.agents[threadKey{wsID, thread}]
 	ag.mu.Unlock()
@@ -157,15 +166,15 @@ func (ag *threadAgents) stop(wsID, thread string) {
 }
 
 // The UI learns which threads are busy, and how writers' sandbox checks go,
-// from both snapshots (state) and events (setPending, Show). All three
+// from both snapshots (State) and events (setPending, Show). All three
 // take the next number from ag.seq under ag.mu, so the numbers order them
 // exactly as they happened: the frontend keeps whichever is newer, and a
 // snapshot read before an event doesn't undo it.
 
-// Show tells the UI how a sandbox check is going. A writer's is also
-// kept on its threadAgent, so the objective's page shows it even after the
-// learner looks away; it goes when the writer does.
-func (ag *threadAgents) Show(wsID string, c events.SandboxCheck) {
+// Show tells the UI how a sandbox check is going (mcp.Checks). A writer's
+// is also kept on its threadAgent, so the objective's page shows it even
+// after the learner looks away; it goes when the writer does.
+func (ag *Agents) Show(wsID string, c events.SandboxCheck) {
 	ag.mu.Lock()
 	defer ag.mu.Unlock()
 	if ta := ag.agents[threadKey{wsID, c.Thread}]; ta != nil && c.Kind == events.CheckTask {
@@ -175,10 +184,10 @@ func (ag *threadAgents) Show(wsID string, c events.SandboxCheck) {
 	events.Emit(events.CheckStatus, events.Check{Workspace: wsID, Check: c, Seq: ag.seq})
 }
 
-// state returns what the workspace's agents are doing: which threads are
+// State returns what the workspace's agents are doing: which threads are
 // busy, and the writers' latest sandbox checks by objective. Its seq also
 // orders snapshots among themselves.
-func (ag *threadAgents) state(wsID string) (busy map[string]bool, checks map[string]events.SandboxCheck, seq uint64) {
+func (ag *Agents) State(wsID string) (busy map[string]bool, checks map[string]events.SandboxCheck, seq uint64) {
 	busy, checks = map[string]bool{}, map[string]events.SandboxCheck{}
 	ag.mu.Lock()
 	defer ag.mu.Unlock()
@@ -197,9 +206,9 @@ func (ag *threadAgents) state(wsID string) (busy map[string]bool, checks map[str
 	return busy, checks, ag.seq
 }
 
-// endWorkspace ends a workspace's agents and drops their MCP servers,
+// EndWorkspace ends a workspace's agents and drops their MCP servers,
 // before it's deleted.
-func (ag *threadAgents) endWorkspace(wsID string) {
+func (ag *Agents) EndWorkspace(wsID string) {
 	ag.mu.Lock()
 	defer ag.mu.Unlock()
 	for key, ta := range ag.agents {
@@ -211,7 +220,7 @@ func (ag *threadAgents) endWorkspace(wsID string) {
 }
 
 // endAll ends every agent, as the app quits.
-func (ag *threadAgents) endAll() {
+func (ag *Agents) endAll() {
 	ag.mu.Lock()
 	defer ag.mu.Unlock()
 	for _, ta := range ag.agents {
@@ -233,7 +242,7 @@ type threadAgent struct {
 	ready chan struct{} // closed once the CLI has opened, or failed to
 	cli   agent.Session // set before ready is closed; nil if it didn't open
 
-	// Guarded by threadAgents.mu.
+	// Guarded by Agents.mu.
 	pending int                  // messages queued or being answered; the thread is busy while it's above 0
 	check   *events.SandboxCheck // a writer's latest sandbox check of its task
 }
@@ -262,7 +271,7 @@ func (ta *threadAgent) close() {
 type threadKey struct{ ws, name string }
 
 // start starts a thread's agent. Call with ag.mu held.
-func (ag *threadAgents) start(w *workspace.Workspace, t workspace.Thread, cfg agentConfig) *threadAgent {
+func (ag *Agents) start(w *workspace.Workspace, t workspace.Thread, cfg agentConfig) *threadAgent {
 	ctx, cancel := context.WithCancel(context.Background())
 	ta := &threadAgent{key: threadKey{w.ID, t.String()}, thread: t, cfg: cfg, queue: make(chan string, 32), cancel: cancel, ready: make(chan struct{})}
 	ag.agents[ta.key] = ta
@@ -280,7 +289,7 @@ func (ag *threadAgents) start(w *workspace.Workspace, t workspace.Thread, cfg ag
 
 // loop opens the agent's CLI, then hands it the queued messages one turn at
 // a time until the agent ends.
-func (ag *threadAgents) loop(ctx context.Context, w *workspace.Workspace, ta *threadAgent) {
+func (ag *Agents) loop(ctx context.Context, w *workspace.Workspace, ta *threadAgent) {
 	defer func() {
 		ag.mu.Lock()
 		ag.end(ta)
@@ -315,7 +324,7 @@ func (ag *threadAgents) loop(ctx context.Context, w *workspace.Workspace, ta *th
 			tr.endTurn()
 			if ta.stopped.Swap(false) {
 				// After endTurn, so the notice follows the cut-off reply.
-				post(w, workspace.ChatItem{Thread: ta.key.name, Role: workspace.RoleNotice, Text: "Stopped. Send a message to continue."})
+				Post(w, workspace.ChatItem{Thread: ta.key.name, Role: workspace.RoleNotice, Text: "Stopped. Send a message to continue."})
 			}
 			ended := ag.answered(ta, errors.Is(err, agent.ErrExited))
 			if err != nil && ctx.Err() == nil {
@@ -329,7 +338,7 @@ func (ag *threadAgents) loop(ctx context.Context, w *workspace.Workspace, ta *th
 }
 
 // open opens the CLI session for a thread's agent.
-func (ag *threadAgents) open(ctx context.Context, w *workspace.Workspace, ta *threadAgent, onEvent func(agent.Event)) (agent.Session, error) {
+func (ag *Agents) open(ctx context.Context, w *workspace.Workspace, ta *threadAgent, onEvent func(agent.Event)) (agent.Session, error) {
 	// This also switches the workspace to the agent in the settings, which
 	// forgets the other agent's saved conversations.
 	saved, err := w.UseProvider(ta.cfg.Provider)
@@ -366,7 +375,7 @@ func usesSubagents(kind workspace.ThreadKind) bool {
 // writer's ends once it's idle. An ending agent leaves the agents before its
 // thread shows idle, so the next message starts a new one instead of
 // queueing on this one. It reports whether the agent ended.
-func (ag *threadAgents) answered(ta *threadAgent, exited bool) bool {
+func (ag *Agents) answered(ta *threadAgent, exited bool) bool {
 	ag.mu.Lock()
 	defer ag.mu.Unlock()
 	n := ta.pending - 1
@@ -383,7 +392,7 @@ func (ag *threadAgents) answered(ta *threadAgent, exited bool) bool {
 
 // setPending sets how many messages an agent has left, and tells the UI
 // when its thread turns busy or idle. Call with ag.mu held.
-func (ag *threadAgents) setPending(ta *threadAgent, n int) {
+func (ag *Agents) setPending(ta *threadAgent, n int) {
 	was := ta.pending > 0
 	ta.pending = n
 	if busy := n > 0; busy != was {
@@ -393,7 +402,7 @@ func (ag *threadAgents) setPending(ta *threadAgent, n int) {
 }
 
 // end removes a thread's agent and closes its CLI. Call with ag.mu held.
-func (ag *threadAgents) end(ta *threadAgent) {
+func (ag *Agents) end(ta *threadAgent) {
 	if ag.agents[ta.key] == ta {
 		delete(ag.agents, ta.key)
 	}

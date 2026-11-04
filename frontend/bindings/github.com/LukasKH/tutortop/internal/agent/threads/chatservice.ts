@@ -6,9 +6,9 @@
  * which answers in the thread's chat as chat:message events. It owns the
  * thread agents' lifetime: it ends them all as the app quits.
  * 
- * threadAgents.send posts a message in the thread's chat and queues it for
- * the thread's agent (agents.go); a transcript (below) streams the reply into
- * the chat as it arrives.
+ * Agents.Send posts a message in the thread's chat and queues it for the
+ * thread's agent (agents.go); a transcript (transcript.go) streams the reply
+ * into the chat as it arrives.
  * @module
  */
 
@@ -18,27 +18,27 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
-import * as workspace$0 from "../workspace/models.js";
+import * as workspace$0 from "../../workspace/models.js";
 
 /**
  * AnswerQuestions sends the learner's answers to the thread that asked.
  */
 export function AnswerQuestions(wsID: string, answers: { [_ in string]?: string } | null): $CancellablePromise<void> {
-    return $Call.ByID(3710851201, wsID, answers);
+    return $Call.ByID(260777821, wsID, answers);
 }
 
 /**
  * Chat returns one thread's chat.
  */
 export function Chat(wsID: string, thread: string): $CancellablePromise<workspace$0.ChatItem[] | null> {
-    return $Call.ByID(349257084, wsID, thread);
+    return $Call.ByID(4289958136, wsID, thread);
 }
 
 /**
  * DismissQuestions drops the pending form without answering.
  */
 export function DismissQuestions(wsID: string): $CancellablePromise<void> {
-    return $Call.ByID(3735661695, wsID);
+    return $Call.ByID(2072769147, wsID);
 }
 
 /**
@@ -46,7 +46,7 @@ export function DismissQuestions(wsID: string): $CancellablePromise<void> {
  * task's tutor for it.
  */
 export function RequestHint(wsID: string, taskID: string, level: number): $CancellablePromise<void> {
-    return $Call.ByID(1542558462, wsID, taskID, level);
+    return $Call.ByID(2002611466, wsID, taskID, level);
 }
 
 /**
@@ -57,7 +57,7 @@ export function RequestHint(wsID: string, taskID: string, level: number): $Cance
  * means the message wasn't sent at all.
  */
 export function SendMessage(wsID: string, text: string, thread: string): $CancellablePromise<void> {
-    return $Call.ByID(4095745959, wsID, text, thread);
+    return $Call.ByID(154037275, wsID, text, thread);
 }
 
 /**
@@ -65,5 +65,5 @@ export function SendMessage(wsID: string, text: string, thread: string): $Cancel
  * notice once the cut-off reply is saved.
  */
 export function StopAgent(wsID: string, thread: string): $CancellablePromise<void> {
-    return $Call.ByID(2385706991, wsID, thread);
+    return $Call.ByID(3019346811, wsID, thread);
 }

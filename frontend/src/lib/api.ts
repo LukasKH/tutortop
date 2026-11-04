@@ -1,8 +1,11 @@
 import { useEffect, useEffectEvent } from "react";
 import { Events } from "@wailsio/runtime";
-import * as Bindings from "@bindings/github.com/LukasKH/tutortop/internal/app";
+// The generated bindings, one module per Go package. Services and types are
+// re-exported below under the names components use.
+import * as app from "@bindings/github.com/LukasKH/tutortop/internal/app";
+import * as threads from "@bindings/github.com/LukasKH/tutortop/internal/agent/threads";
+import * as settings from "@bindings/github.com/LukasKH/tutortop/internal/settings";
 import type { WorkspaceSnapshot } from "@bindings/github.com/LukasKH/tutortop/internal/app";
-import * as SettingsBindings from "@bindings/github.com/LukasKH/tutortop/internal/settings";
 import type { Environment, ProviderStatus, Settings } from "@bindings/github.com/LukasKH/tutortop/internal/settings";
 import type { SandboxCheck } from "@bindings/github.com/LukasKH/tutortop/internal/events";
 import type { Model } from "@bindings/github.com/LukasKH/tutortop/internal/agent";
@@ -60,27 +63,27 @@ export type {
 // change something fail at once, so nothing is done twice.
 
 export const WorkspaceService = {
-  ...Bindings.WorkspaceService,
-  ListWorkspaces: patiently(Bindings.WorkspaceService.ListWorkspaces),
-  Activity: patiently(Bindings.WorkspaceService.Activity),
-  Workspace: patiently(Bindings.WorkspaceService.Workspace),
+  ...app.WorkspaceService,
+  ListWorkspaces: patiently(app.WorkspaceService.ListWorkspaces),
+  Activity: patiently(app.WorkspaceService.Activity),
+  Workspace: patiently(app.WorkspaceService.Workspace),
 };
 
 export const TaskService = {
-  ...Bindings.TaskService,
-  Task: patiently(Bindings.TaskService.Task),
-  SaveWork: patiently(Bindings.TaskService.SaveWork),
+  ...app.TaskService,
+  Task: patiently(app.TaskService.Task),
+  SaveWork: patiently(app.TaskService.SaveWork),
 };
 
-export const LessonService = { ...Bindings.LessonService, Lesson: patiently(Bindings.LessonService.Lesson) };
+export const LessonService = { ...app.LessonService, Lesson: patiently(app.LessonService.Lesson) };
 
-export const ChatService = { ...Bindings.ChatService, Chat: patiently(Bindings.ChatService.Chat) };
+export const ChatService = { ...threads.ChatService, Chat: patiently(threads.ChatService.Chat) };
 
 export const SettingsService = {
-  ...SettingsBindings.Service,
-  Settings: patiently(SettingsBindings.Service.Settings),
-  Models: patiently(SettingsBindings.Service.Models),
-  Environment: patiently(SettingsBindings.Service.Environment),
+  ...settings.Service,
+  Settings: patiently(settings.Service.Settings),
+  Models: patiently(settings.Service.Models),
+  Environment: patiently(settings.Service.Environment),
 };
 
 export { Service as EditorService } from "@bindings/github.com/LukasKH/tutortop/internal/editor";

@@ -1,4 +1,4 @@
-package app
+package threads
 
 import (
 	"fmt"
@@ -17,32 +17,33 @@ import (
 // while it's busy, it ends once it has nothing left to do, and its MCP tools
 // publish lessons and tasks (internal/mcp).
 
-// writers start objectives' writers, on the thread agents.
-type writers struct {
-	agents *threadAgents
+// Writers start objectives' writers, on the thread agents.
+type Writers struct {
+	agents *Agents
 }
 
-func newWriters(agents *threadAgents) *writers {
-	return &writers{agents: agents}
+// NewWriters starts writers on the thread agents.
+func NewWriters(agents *Agents) *Writers {
+	return &Writers{agents: agents}
 }
 
-// readyAhead is how many unpassed objectives, in plan order, keepReady keeps
+// readyAhead is how many unpassed objectives, in plan order, KeepReady keeps
 // written, so the learner never waits for the next one.
 const readyAhead = 2
 
-// keepReady starts writers for the next unpassed objectives in plan order
+// KeepReady starts writers for the next unpassed objectives in plan order
 // that are missing a lesson or an unsolved exercise.
-func (wr *writers) keepReady(w *workspace.Workspace, why string) {
+func (wr *Writers) KeepReady(w *workspace.Workspace, why string) {
 	for _, o := range w.NeedsWriting(readyAhead) {
-		wr.write(w, o, why)
+		wr.Write(w, o, why)
 	}
 }
 
-// write starts a writer for one objective, unless one is already at work on
+// Write starts a writer for one objective, unless one is already at work on
 // it. why tells the writer what prompted it. Like a chat message, it doesn't
 // wait for the start; a failure is posted in the writer's thread, which the
 // objective's page shows.
-func (wr *writers) write(w *workspace.Workspace, o workspace.Objective, why string) {
+func (wr *Writers) Write(w *workspace.Workspace, o workspace.Objective, why string) {
 	t := workspace.WriterThread(o.ID)
 	msg := fmt.Sprintf("[app] Write for the objective “%s” (%s). %s", o.Title, o.ID, why)
 	if err := wr.agents.queue(w, t, msg); err != nil {

@@ -1,9 +1,10 @@
-package app
+package threads
 
 import (
 	"context"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -11,7 +12,9 @@ import (
 
 	"github.com/LukasKH/tutortop/internal/agent"
 	"github.com/LukasKH/tutortop/internal/events"
+	"github.com/LukasKH/tutortop/internal/mcp"
 	"github.com/LukasKH/tutortop/internal/mcp/mcptest"
+	"github.com/LukasKH/tutortop/internal/sandbox"
 	"github.com/LukasKH/tutortop/internal/settings"
 	"github.com/LukasKH/tutortop/internal/workspace"
 )
@@ -21,7 +24,7 @@ import (
 // message is answered.
 func TestBusyFromStartUntilQueueIsDone(t *testing.T) {
 	ag, fake, w := newHeldAgents(t)
-	busy := func() bool { b, _, _ := ag.state(w.ID); return b["plan"] }
+	busy := func() bool { b, _, _ := ag.State(w.ID); return b["plan"] }
 
 	fake.holdStart = make(chan struct{})
 	queue(t, ag, w, workspace.PlanThread, "one")
@@ -56,12 +59,12 @@ func TestWriterEndsAfterItsTurn(t *testing.T) {
 	}
 	queue(t, ag, w, writer, "write again")
 	ag.Show(w.ID, events.SandboxCheck{Kind: events.CheckTask, Thread: writer.String(), Title: "Wrap errors", Running: true})
-	if busy, checks, _ := ag.state(w.ID); !busy[writer.String()] || !checks["go.errors"].Running {
+	if busy, checks, _ := ag.State(w.ID); !busy[writer.String()] || !checks["go.errors"].Running {
 		t.Fatalf("busy %v, checks %v", busy, checks)
 	}
 	turn.end(nil)
 	eventually(t, "writer gone", func() bool {
-		busy, checks, _ := ag.state(w.ID)
+		busy, checks, _ := ag.State(w.ID)
 		return len(busy) == 0 && len(checks) == 0 && turn.s.closed.Load()
 	})
 	if saved, _ := w.UseProvider("claude"); len(saved) != 0 {
@@ -90,7 +93,7 @@ func TestSettingsRestartIdleSession(t *testing.T) {
 		t.Fatal("restarted a busy session")
 	}
 	second.end(nil)
-	eventually(t, "idle", func() bool { b, _, _ := ag.state(w.ID); return !b["plan"] })
+	eventually(t, "idle", func() bool { b, _, _ := ag.State(w.ID); return !b["plan"] })
 
 	queue(t, ag, w, workspace.PlanThread, "three")
 	third := fake.next(t)
@@ -113,7 +116,7 @@ func TestIdleTutorsCloseWhenAnotherStarts(t *testing.T) {
 	answer := func(thread workspace.Thread, s *heldSession) {
 		t.Helper()
 		s.turn <- nil
-		eventually(t, thread.String()+" idle", func() bool { b, _, _ := ag.state(w.ID); return !b[thread.String()] })
+		eventually(t, thread.String()+" idle", func() bool { b, _, _ := ag.State(w.ID); return !b[thread.String()] })
 	}
 	busyTask := open(workspace.TaskThread("0001-busy"))
 	idleTask := open(workspace.TaskThread("0002-idle"))
@@ -150,7 +153,7 @@ func TestStopPostsNoticeAfterReply(t *testing.T) {
 // agent.
 func TestFailedAgentIsReplaced(t *testing.T) {
 	ag, fake, w := newHeldAgents(t)
-	idle := func() bool { b, _, _ := ag.state(w.ID); return !b["plan"] }
+	idle := func() bool { b, _, _ := ag.State(w.ID); return !b["plan"] }
 	fake.holdStart = make(chan struct{})
 	fake.startErr = errors.New("claude isn't installed")
 	queue(t, ag, w, workspace.PlanThread, "one")
@@ -205,23 +208,51 @@ func TestSubagentsByThread(t *testing.T) {
 
 // newHeldAgents is a workspace's thread agents whose turns last until the
 // test ends them.
-func newHeldAgents(t *testing.T) (*threadAgents, *heldAgents, *workspace.Workspace) {
+func newHeldAgents(t *testing.T) (*Agents, *heldAgents, *workspace.Workspace) {
 	t.Helper()
 	fake := &heldAgents{turns: make(chan heldTurn, 8)}
-	a := newTestAppWith(t, fake, mcptest.Links())
-	t.Cleanup(a.agents.endAll)
-	if err := a.Settings.SaveSettings(settings.Settings{Provider: "claude"}); err != nil {
+	ag, store := newTestAgents(t, fake)
+	if err := ag.settings.Save(settings.Settings{Provider: "claude"}); err != nil {
 		t.Fatal(err)
 	}
-	w, err := a.store.Create("Go", "claude")
+	w, err := store.Create("Go", "claude")
 	if err != nil {
 		t.Fatal(err)
 	}
-	return a.agents, fake, w
+	return ag, fake, w
+}
+
+// newTestAgents runs thread agents on cli, with the settings and the
+// workspaces in store in temp dirs, and links that all open. They end with
+// the test.
+func newTestAgents(t *testing.T, cli CLI) (*Agents, *workspace.Store) {
+	t.Helper()
+	tools, err := mcp.Start(sandbox.New(), mcptest.Links())
+	if err != nil {
+		t.Fatal(err)
+	}
+	ag := NewAgents(settings.NewStore(filepath.Join(t.TempDir(), "settings.yaml")), tools, cli)
+	t.Cleanup(ag.endAll)
+	return ag, newTestStore(t)
+}
+
+// newTestStore keeps a test's workspaces in temp dirs.
+func newTestStore(t *testing.T) *workspace.Store {
+	return &workspace.Store{Root: t.TempDir(), PrivateRoot: t.TempDir()}
+}
+
+// newTestWorkspace is a new workspace in a newTestStore.
+func newTestWorkspace(t *testing.T) *workspace.Workspace {
+	t.Helper()
+	w, err := newTestStore(t).Create("Go", "claude")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return w
 }
 
 // queue queues a message for a thread's agent.
-func queue(t *testing.T, ag *threadAgents, w *workspace.Workspace, thread workspace.Thread, msg string) {
+func queue(t *testing.T, ag *Agents, w *workspace.Workspace, thread workspace.Thread, msg string) {
 	t.Helper()
 	if err := ag.queue(w, thread, msg); err != nil {
 		t.Fatal(err)

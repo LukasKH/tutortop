@@ -4,11 +4,10 @@ import (
 	"context"
 	"path/filepath"
 	"strings"
-	"sync"
 	"testing"
-	"time"
 
-	"github.com/LukasKH/tutortop/internal/agent"
+	"github.com/LukasKH/tutortop/internal/agent/threads"
+	"github.com/LukasKH/tutortop/internal/agent/threads/threadstest"
 	"github.com/LukasKH/tutortop/internal/decode"
 	"github.com/LukasKH/tutortop/internal/mcp"
 	"github.com/LukasKH/tutortop/internal/mcp/mcptest"
@@ -21,7 +20,7 @@ import (
 // AI: propose → approve → create_task (quality gate) → learner submits.
 // Set TUTORTOP_RUNNER=local to run without Docker.
 func TestToolsEndToEnd(t *testing.T) {
-	a := newTestAppWith(t, quietCLI(), mcptest.Links("https://go.dev/made-up"))
+	a := newTestAppWith(t, mcptest.Links("https://go.dev/made-up"))
 	if err := a.runner.Available(context.Background()); err != nil {
 		t.Skip(err)
 	}
@@ -108,7 +107,7 @@ type testApp struct {
 	*Services
 	store  *workspace.Store
 	runner *sandbox.Runner
-	agents *threadAgents
+	agents *threads.Agents
 	mcp    *mcp.Server
 }
 
@@ -119,41 +118,27 @@ func (a *testApp) caller(t *testing.T, w *workspace.Workspace, thread workspace.
 	return mcptest.Caller(t, a.mcp.URL(w, thread, a.agents))
 }
 
-// newTestApp is newTestAppWith an agent CLI whose sessions take every
-// message and never answer, so no test starts a real agent by accident, and
-// links that all open.
+// newTestApp is newTestAppWith links that all open.
 func newTestApp(t *testing.T) *testApp {
 	t.Helper()
-	return newTestAppWith(t, quietCLI(), mcptest.Links())
-}
-
-// quietCLI is an agentCLI whose sessions take every message and never answer.
-func quietCLI() agentCLI {
-	return startFunc(func(context.Context, string, agent.Options, func(agent.Event)) (agent.Session, error) {
-		return &fakeSession{prompts: new([]string), mu: &sync.Mutex{}}, nil
-	})
+	return newTestAppWith(t, mcptest.Links())
 }
 
 // newTestAppWith keeps a test's workspaces and settings in temp dirs, checks
-// links with links, and starts agents with cli. (Setting XDG_DATA_HOME
-// wouldn't work: adrg/xdg reads it once at startup.)
-func newTestAppWith(t *testing.T, cli agentCLI, links *mcp.LinkChecker) *testApp {
+// links with links, and starts agents whose sessions take every message and
+// never answer, so no test starts a real agent by accident. (Setting
+// XDG_DATA_HOME wouldn't work: adrg/xdg reads it once at startup.)
+func newTestAppWith(t *testing.T, links *mcp.LinkChecker) *testApp {
 	t.Helper()
 	store := &workspace.Store{Root: t.TempDir(), PrivateRoot: t.TempDir()}
 	settingsStore := settings.NewStore(filepath.Join(t.TempDir(), "settings.yaml"))
 	runner := sandbox.New()
-	s, err := newServices(store, settingsStore, runner, links, cli)
+	tools, err := mcp.Start(runner, links)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &testApp{Services: s, store: store, runner: runner, agents: s.Chat.agents, mcp: s.Chat.agents.mcp}
-}
-
-// startFunc is an agentCLI that starts sessions by calling itself.
-type startFunc func(ctx context.Context, provider string, opts agent.Options, onEvent func(agent.Event)) (agent.Session, error)
-
-func (f startFunc) Start(ctx context.Context, provider string, opts agent.Options, onEvent func(agent.Event)) (agent.Session, error) {
-	return f(ctx, provider, opts, onEvent)
+	agents := threads.NewAgents(settingsStore, tools, threadstest.Quiet())
+	return &testApp{Services: newServices(store, settingsStore, runner, agents), store: store, runner: runner, agents: agents, mcp: tools}
 }
 
 // sandboxApp is newTestApp for tests that need a container engine.
@@ -167,79 +152,4 @@ func sandboxApp(t *testing.T) *testApp {
 		t.Skip("needs a container engine")
 	}
 	return a
-}
-
-type fakeSession struct {
-	prompts *[]string
-	mu      *sync.Mutex // guards prompts when the test reads them concurrently
-}
-
-func (f *fakeSession) Prompt(_ context.Context, text string) error {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	*f.prompts = append(*f.prompts, text)
-	return nil
-}
-func (f *fakeSession) ID() string   { return "" }
-func (f *fakeSession) Cancel()      {}
-func (f *fakeSession) Close() error { return nil }
-
-// Each chat thread gets its own tutor session, MCP endpoint and role, and
-// answers to a form go back to the thread that asked.
-func TestThreadsGetOwnSessions(t *testing.T) {
-	type started struct {
-		opts    agent.Options
-		prompts []string
-	}
-	var mu sync.Mutex
-	sessions := map[string]*started{} // by MCP URL
-	a := newTestAppWith(t, startFunc(func(_ context.Context, _ string, opts agent.Options, _ func(agent.Event)) (agent.Session, error) {
-		mu.Lock()
-		defer mu.Unlock()
-		s := &started{opts: opts}
-		sessions[opts.MCPURL] = s
-		return &fakeSession{prompts: &s.prompts, mu: &mu}, nil
-	}), mcptest.Links())
-	w, err := a.store.Create("Go", "claude")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := a.Chat.SendMessage(w.ID, "hello plan", workspace.PlanThread.String()); err != nil {
-		t.Fatal(err)
-	}
-	if err := a.Chat.SendMessage(w.ID, "hello task", "0001-some-task"); err != nil {
-		t.Fatal(err)
-	}
-	if err := w.SetQuestions(&workspace.Questions{Thread: "0001-some-task", Questions: []workspace.Question{{ID: "q", Question: "Which?"}}}); err != nil {
-		t.Fatal(err)
-	}
-	if err := a.Chat.AnswerQuestions(w.ID, map[string]string{"q": "this one"}); err != nil {
-		t.Fatal(err)
-	}
-
-	deadline := time.Now().Add(2 * time.Second)
-	for {
-		mu.Lock()
-		plan, task := sessions[a.mcp.URL(w, workspace.PlanThread, a.agents)], sessions[a.mcp.URL(w, workspace.TaskThread("0001-some-task"), a.agents)]
-		done := plan != nil && task != nil && len(plan.prompts) == 1 && len(task.prompts) == 2
-		mu.Unlock()
-		if done {
-			if !strings.Contains(plan.opts.Instructions, "planner") || !strings.Contains(task.opts.Instructions, "tutor for one task") {
-				t.Fatal("threads didn't get their role instructions")
-			}
-			if !strings.Contains(task.prompts[1], "this one") {
-				t.Fatalf("answers went elsewhere: %q", task.prompts)
-			}
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("sessions: %d", len(sessions))
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-	plan, _ := a.Chat.Chat(w.ID, workspace.PlanThread.String())
-	task, _ := a.Chat.Chat(w.ID, "0001-some-task")
-	if len(plan) != 1 || len(task) != 2 {
-		t.Fatalf("plan chat %d items, task chat %d items", len(plan), len(task))
-	}
 }

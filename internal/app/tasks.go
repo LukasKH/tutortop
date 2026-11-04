@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/LukasKH/tutortop/internal/agent/threads"
 	"github.com/LukasKH/tutortop/internal/events"
 	"github.com/LukasKH/tutortop/internal/sandbox"
 	"github.com/LukasKH/tutortop/internal/workspace"
@@ -14,11 +15,11 @@ import (
 type TaskService struct {
 	store   *workspace.Store
 	runner  *sandbox.Runner
-	agents  *threadAgents // tells the plan's tutor about a first pass
-	writers *writers      // keep the next objectives written after a pass
+	agents  *threads.Agents  // tells the plan's tutor about a first pass
+	writers *threads.Writers // keep the next objectives written after a pass
 }
 
-func newTaskService(store *workspace.Store, runner *sandbox.Runner, agents *threadAgents, writers *writers) *TaskService {
+func newTaskService(store *workspace.Store, runner *sandbox.Runner, agents *threads.Agents, writers *threads.Writers) *TaskService {
 	return &TaskService{store: store, runner: runner, agents: agents, writers: writers}
 }
 
@@ -78,11 +79,11 @@ func (s *TaskService) RunTests(wsID, taskID string, files sandbox.Files, submit 
 		w.Commit("Pass " + taskID)
 		d, _ := w.Task(taskID)
 		shown := fmt.Sprintf("You passed “%s” (%d/%d tests).", d.Title, p, t)
-		post(w, workspace.ChatItem{Thread: taskID, Role: workspace.RoleNotice, Text: shown})
+		threads.Post(w, workspace.ChatItem{Thread: taskID, Role: workspace.RoleNotice, Text: shown})
 		// Writers keep the next objectives ready, so the learner never waits;
 		// the planning tutor records what was learned.
-		s.writers.keepReady(w, fmt.Sprintf("The learner just passed “%s”.", d.Title))
-		s.agents.send(w, workspace.PlanThread, message{
+		s.writers.KeepReady(w, fmt.Sprintf("The learner just passed “%s”.", d.Title))
+		s.agents.Send(w, workspace.PlanThread, threads.Message{
 			Role:  workspace.RoleNotice,
 			Shown: shown,
 			Agent: fmt.Sprintf("[app] I passed task %s on submit (%d/%d tests). %s Record what I learned if there's evidence worth recording. Writers are preparing what comes next, so don't write lessons or tasks. Reply in one sentence at most.", taskID, p, t, hintSummary(w, taskID)),
