@@ -160,8 +160,9 @@ export function SendLanguageServer(id: string, message: string): $CancellablePro
 }
 
 /**
- * SendMessage sends the learner's chat message to a thread ("" for the plan).
- * In a task's or lesson's thread the app adds a [context] block about it.
+ * SendMessage sends the learner's chat message to a thread, by its name
+ * ("plan", a task id, ...). In a task's or lesson's thread the app adds a
+ * [context] block about it.
  */
 export function SendMessage(wsID: string, text: string, thread: string): $CancellablePromise<void> {
     return $Call.ByID(1296577745, wsID, text, thread);

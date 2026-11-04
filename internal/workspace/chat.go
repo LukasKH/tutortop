@@ -48,7 +48,13 @@ func (w *Workspace) Chat(thread string) ([]ChatItem, error) {
 	if !validName(thread) {
 		return nil, fmt.Errorf("invalid chat thread %q", thread)
 	}
-	return readJSONL[ChatItem](w.path(".tutortop", "chat", thread+".jsonl"))
+	items, err := readJSONL[ChatItem](w.path(".tutortop", "chat", thread+".jsonl"))
+	// Every item in the file is the thread's. Older files may leave Thread
+	// empty for the plan.
+	for i := range items {
+		items[i].Thread = thread
+	}
+	return items, err
 }
 
 type Question struct {
@@ -60,9 +66,9 @@ type Question struct {
 
 // Questions is a form from the tutor that waits for the learner's answers.
 type Questions struct {
-	Thread    string     `json:"thread,omitempty" jsonschema:"set by the app; leave out"`
-	Intro     string     `json:"intro,omitempty" jsonschema:"one sentence shown above the questions"`
-	Questions []Question `json:"questions" jsonschema:"2-4 focused questions"`
+	Thread    string     `json:"thread"` // the thread that asked, which gets the answers
+	Intro     string     `json:"intro,omitempty"`
+	Questions []Question `json:"questions"`
 }
 
 func (w *Workspace) SetQuestions(q *Questions) error {
@@ -78,6 +84,10 @@ func (w *Workspace) PendingQuestions() *Questions {
 	q, err := readJSON[Questions](w.path(".tutortop", "questions.json"))
 	if err != nil {
 		return nil
+	}
+	// Older forms left Thread out for the plan.
+	if q.Thread == "" {
+		q.Thread = PlanThread.String()
 	}
 	return &q
 }

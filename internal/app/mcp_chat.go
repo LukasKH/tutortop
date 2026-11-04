@@ -20,17 +20,22 @@ var askUserTool = &mcp.Tool{
 	Description: "Show the learner 2-4 focused questions as a form in the app. End your turn after calling this; the answers arrive as the next user message.",
 }
 
+type askUserInput struct {
+	Intro     string               `json:"intro,omitempty" jsonschema:"one sentence shown above the questions"`
+	Questions []workspace.Question `json:"questions" jsonschema:"2-4 focused questions"`
+}
+
 // askUser shows a form in this thread. The answers come back to this thread,
 // so the form remembers which one asked.
-func (t *threadTools) askUser(_ context.Context, _ *mcp.CallToolRequest, in workspace.Questions) (*mcp.CallToolResult, any, error) {
+func (t *threadTools) askUser(_ context.Context, _ *mcp.CallToolRequest, in askUserInput) (*mcp.CallToolResult, any, error) {
 	if len(in.Questions) == 0 || len(in.Questions) > 4 {
 		return nil, nil, errors.New("ask 1-4 questions")
 	}
-	in.Thread = t.thread
-	if err := t.w.SetQuestions(&in); err != nil {
+	q := workspace.Questions{Thread: t.thread.String(), Intro: in.Intro, Questions: in.Questions}
+	if err := t.w.SetQuestions(&q); err != nil {
 		return nil, nil, err
 	}
-	emit(questionsAsked, QuestionsEvent{Workspace: t.w.ID, Questions: in})
+	emit(questionsAsked, QuestionsEvent{Workspace: t.w.ID, Questions: q})
 	return textResult("The learner can see the questions now. End your turn; the answers will arrive as the next message."), nil, nil
 }
 

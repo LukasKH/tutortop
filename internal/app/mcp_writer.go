@@ -94,8 +94,8 @@ func (t *threadTools) createLesson(ctx context.Context, _ *mcp.CallToolRequest, 
 
 // ownObjective refuses work on another objective, which has its own writer.
 func (t *threadTools) ownObjective(id string) error {
-	if id != t.objective {
-		return fmt.Errorf("you write for the objective %q only, not %q", t.objective, id)
+	if id != t.thread.ID {
+		return fmt.Errorf("you write for the objective %q only, not %q", t.thread.ID, id)
 	}
 	return nil
 }

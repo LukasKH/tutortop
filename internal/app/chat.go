@@ -30,8 +30,9 @@ func (a *App) Chat(wsID, thread string) ([]workspace.ChatItem, error) {
 	return w.Chat(thread)
 }
 
-// SendMessage sends the learner's chat message to a thread ("" for the plan).
-// In a task's or lesson's thread the app adds a [context] block about it.
+// SendMessage sends the learner's chat message to a thread, by its name
+// ("plan", a task id, ...). In a task's or lesson's thread the app adds a
+// [context] block about it.
 func (a *App) SendMessage(wsID, text, thread string) error {
 	text = strings.TrimSpace(text)
 	if text == "" {
@@ -41,7 +42,10 @@ func (a *App) SendMessage(wsID, text, thread string) error {
 	if err != nil {
 		return err
 	}
-	t := workspace.ParseThread(thread)
+	t, err := workspace.ParseThread(thread)
+	if err != nil {
+		return err
+	}
 	return a.send(w, t, message{Role: workspace.RoleUser, Shown: text, Agent: a.contextFor(w, t) + text})
 }
 
@@ -55,7 +59,9 @@ func (a *App) AnswerQuestions(wsID string, answers map[string]string) error {
 	var b strings.Builder
 	b.WriteString("My answers:\n")
 	if q := w.PendingQuestions(); q != nil {
-		t = workspace.ParseThread(q.Thread)
+		if t, err = workspace.ParseThread(q.Thread); err != nil {
+			return err
+		}
 		for _, qu := range q.Questions {
 			fmt.Fprintf(&b, "- %s\n  → %s\n", qu.Question, answers[qu.ID])
 		}

@@ -226,7 +226,10 @@ export interface Question {
  * Questions is a form from the tutor that waits for the learner's answers.
  */
 export interface Questions {
-    "thread"?: string;
+    /**
+     * the thread that asked, which gets the answers
+     */
+    "thread": string;
     "intro"?: string;
     "questions": Question[] | null;
 }

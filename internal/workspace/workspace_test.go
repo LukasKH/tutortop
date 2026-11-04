@@ -66,6 +66,9 @@ func TestNamesStayInsideTheWorkspace(t *testing.T) {
 		if err := w.AppendChat(workspace.ChatItem{Thread: bad, Role: workspace.RoleUser}); err == nil {
 			t.Errorf("AppendChat to %q succeeded", bad)
 		}
+		if _, err := workspace.ParseThread(bad); err == nil {
+			t.Errorf("ParseThread(%q) succeeded", bad)
+		}
 		if _, err := w.Toolchain(bad); err == nil {
 			t.Errorf("Toolchain(%q) succeeded", bad)
 		}
@@ -93,6 +96,29 @@ func TestChat(t *testing.T) {
 	}
 	if got, err := w.Chat("never-used"); err != nil || len(got) != 0 {
 		t.Errorf("unused thread: %+v, %v", got, err)
+	}
+}
+
+// Older files leave the plan's thread name empty; they read as "plan", the
+// one name the app sends.
+func TestOldFilesNameThePlan(t *testing.T) {
+	w := newWorkspace(t)
+	if err := os.MkdirAll(filepath.Join(w.Dir, ".tutortop", "chat"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for name, content := range map[string]string{
+		"chat/plan.jsonl": `{"id":"1","role":"user","text":"hi"}` + "\n",
+		"questions.json":  `{"questions":[{"id":"q","question":"Why?"}]}`,
+	} {
+		if err := os.WriteFile(filepath.Join(w.Dir, ".tutortop", name), []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if chat, err := w.Chat("plan"); err != nil || len(chat) != 1 || chat[0].Thread != "plan" {
+		t.Errorf("chat = %+v, %v", chat, err)
+	}
+	if q := w.PendingQuestions(); q == nil || q.Thread != "plan" {
+		t.Errorf("questions = %+v", q)
 	}
 }
 

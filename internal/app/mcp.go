@@ -54,11 +54,11 @@ func startMCP(a *App) (*mcpHost, error) {
 	return h, nil
 }
 
-// URL returns the MCP endpoint for one chat thread, creating its server on first use.
-func (h *mcpHost) URL(w *workspace.Workspace, thread string) string {
+// URL returns the MCP endpoint for one thread, creating its server on first use.
+func (h *mcpHost) URL(w *workspace.Workspace, thread workspace.Thread) string {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	key := threadKey{w.ID, thread}
+	key := threadKey{w.ID, thread.String()}
 	token, ok := h.tokens[key]
 	if !ok {
 		token = rand.Text()
@@ -81,15 +81,14 @@ func (h *mcpHost) forget(wsID string) {
 }
 
 // newServer builds the tools for one thread.
-func (h *mcpHost) newServer(w *workspace.Workspace, thread string) *mcp.Server {
+func (h *mcpHost) newServer(w *workspace.Workspace, thread workspace.Thread) *mcp.Server {
 	t := &threadTools{app: h.app, w: w, thread: thread}
 	s := mcp.NewServer(&mcp.Implementation{Name: "tutortop", Version: "0.1.1"}, nil)
 	mcp.AddTool(s, getStateTool, t.getState)
 
 	// Only an objective's writer publishes its lesson and task, so the
 	// tutoring and planning chats stay about the learner.
-	if th := workspace.ParseThread(thread); th.Kind == workspace.WriterKind {
-		t.objective = th.ID
+	if thread.Kind == workspace.WriterKind {
 		mcp.AddTool(s, createTaskTool, t.createTask)
 		mcp.AddTool(s, createLessonTool, t.createLesson)
 		return s
@@ -110,10 +109,9 @@ func (h *mcpHost) newServer(w *workspace.Workspace, thread string) *mcp.Server {
 // error's text back as an error result, which the agent reads and acts on. So
 // errors here are written for the agent, and say what to do next.
 type threadTools struct {
-	app       *App
-	w         *workspace.Workspace
-	thread    string
-	objective string // a writer's objective; empty in chats
+	app    *App
+	w      *workspace.Workspace
+	thread workspace.Thread
 }
 
 var getStateTool = &mcp.Tool{

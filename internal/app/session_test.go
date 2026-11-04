@@ -21,7 +21,7 @@ func TestBusyFromStartUntilQueueIsDone(t *testing.T) {
 
 	agents.holdStart = make(chan struct{})
 	sent := make(chan error)
-	go func() { sent <- a.SendMessage(w.ID, "one", "") }()
+	go func() { sent <- a.SendMessage(w.ID, "one", "plan") }()
 	eventually(t, "busy while starting", busy)
 	close(agents.holdStart)
 	if err := <-sent; err != nil {

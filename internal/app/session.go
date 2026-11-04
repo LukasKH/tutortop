@@ -180,7 +180,7 @@ func (a *App) launch(ctx context.Context, w *workspace.Workspace, s *session, on
 	opts := agent.Options{
 		Cwd:          w.Dir,
 		MCPName:      mcpName,
-		MCPURL:       a.mcp.URL(w, s.key.name),
+		MCPURL:       a.mcp.URL(w, s.thread),
 		Instructions: instructions(w, s.thread),
 		Model:        s.cfg.Model,
 		Effort:       s.cfg.Effort,

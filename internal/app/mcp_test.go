@@ -163,7 +163,7 @@ func toolCaller(t *testing.T, a *App, w *workspace.Workspace, thread workspace.T
 func toolSession(t *testing.T, a *App, w *workspace.Workspace, thread workspace.Thread) *mcp.ClientSession {
 	t.Helper()
 	cs, err := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "1"}, nil).
-		Connect(context.Background(), &mcp.StreamableClientTransport{Endpoint: a.mcp.URL(w, thread.String())}, nil)
+		Connect(context.Background(), &mcp.StreamableClientTransport{Endpoint: a.mcp.URL(w, thread)}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
