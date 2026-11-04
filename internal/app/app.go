@@ -25,9 +25,8 @@ type App struct {
 	agents *threadAgents // each thread's running agent (agents.go)
 	links  *linkChecker
 
-	mu          sync.Mutex
-	lastResults map[taskKey]runner.Result  // latest test run per task, for tutor context
-	servers     map[string]*languageServer // running language servers by id
+	mu      sync.Mutex
+	servers map[string]*languageServer // running language servers by id
 
 	settingsMu   sync.Mutex
 	settingsPath string
@@ -35,7 +34,7 @@ type App struct {
 }
 
 func New() (*App, error) {
-	a := &App{runner: runner.New(), lastResults: map[taskKey]runner.Result{},
+	a := &App{runner: runner.New(),
 		servers: map[string]*languageServer{}, links: newLinkChecker(),
 		settingsPath: filepath.Join(xdg.ConfigHome, "tutortop", "settings.yaml"), models: map[string]modelList{}}
 	a.agents = newThreadAgents(agent.Start, func() agentConfig { return a.Settings().agentConfig() }, a.agentOptions)

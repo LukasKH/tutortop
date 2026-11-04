@@ -117,6 +117,9 @@ type languageServer struct {
 	writeMu sync.Mutex
 }
 
+// taskKey names one task of one workspace.
+type taskKey struct{ ws, task string }
+
 // oldestServer returns the longest-running server not already in skip.
 // Callers hold a.mu.
 func (a *App) oldestServer(skip []*languageServer) *languageServer {

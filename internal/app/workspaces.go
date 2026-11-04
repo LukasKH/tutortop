@@ -75,11 +75,6 @@ func (a *App) DeleteWorkspace(id string) error {
 	a.agents.endWorkspace(id)
 	a.mu.Lock()
 	var servers []*languageServer
-	for key := range a.lastResults {
-		if key.ws == id {
-			delete(a.lastResults, key)
-		}
-	}
 	for sid, ls := range a.servers {
 		if ls.key.ws == id {
 			delete(a.servers, sid)
