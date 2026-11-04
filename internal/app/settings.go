@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/LukasKH/tutortop/internal/agent"
+	"github.com/LukasKH/tutortop/internal/workspace"
 	"gopkg.in/yaml.v3"
 )
 
@@ -102,11 +103,7 @@ func (a *App) SaveSettings(s Settings) error {
 	if err := os.MkdirAll(filepath.Dir(a.settingsPath), 0o755); err != nil {
 		return err
 	}
-	tmp := a.settingsPath + ".tmp"
-	if err := os.WriteFile(tmp, b, 0o644); err != nil {
-		return err
-	}
-	return os.Rename(tmp, a.settingsPath)
+	return workspace.WriteFileAtomic(a.settingsPath, b)
 }
 
 func knownProvider(id string) bool {

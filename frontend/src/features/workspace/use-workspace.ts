@@ -6,11 +6,8 @@ import { objectiveOfWriter, PLAN_THREAD } from "@/lib/workspace";
  * A workspace as the backend reports it, kept current by its events: the
  * snapshot, which threads are busy, writers' sandbox checks and failures, the
  * planning tutor's sandbox check, and the tutor's open questions.
- *
- * onSnapshot runs after each refetch with the new snapshot; first is true for
- * the first one.
  */
-export function useWorkspace(id: string, onSnapshot: (s: WorkspaceState, first: boolean) => void) {
+export function useWorkspace(id: string) {
   const [ws, setWs] = useState<WorkspaceState | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState<Record<string, boolean | undefined>>({});
@@ -23,9 +20,6 @@ export function useWorkspace(id: string, onSnapshot: (s: WorkspaceState, first: 
   const [questions, setQuestions] = useState<QuestionForm | null>(null);
   const fail = useCallback((e: unknown) => setError(errorText(e)), []);
 
-  const onSnapshotRef = useRef(onSnapshot);
-  onSnapshotRef.current = onSnapshot;
-
   // When each thread's busy flag and each objective's check last changed by
   // event. A snapshot requested before that is older, so it doesn't undo it:
   // otherwise a writer that finishes during a refetch would spin forever.
@@ -33,10 +27,7 @@ export function useWorkspace(id: string, onSnapshot: (s: WorkspaceState, first: 
   const changed = (key: string) => (changedAt.current[key] = performance.now());
 
   // Refetches can overlap during a burst of events; only the newest one wins.
-  // Whichever refresh lands first is the first snapshot, so a fast event can't
-  // skip the first-load choices.
   const seq = useRef(0);
-  const loaded = useRef(false);
   const refresh = useCallback(async () => {
     const mine = ++seq.current;
     const asked = performance.now();
@@ -56,8 +47,6 @@ export function useWorkspace(id: string, onSnapshot: (s: WorkspaceState, first: 
       setChecks((cur) => newer<Gate | undefined>(s.checks ?? {}, cur, "check:"));
       setQuestions(s.questions ?? null);
       setError("");
-      onSnapshotRef.current(s, !loaded.current);
-      loaded.current = true;
       return s;
     } catch (e) {
       fail(e);

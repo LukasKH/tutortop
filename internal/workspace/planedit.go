@@ -14,7 +14,7 @@ func (w *Workspace) SaveMission(mission string) (bool, error) {
 	if mission == strings.TrimSpace(w.ReadDoc("MISSION.md")) {
 		return false, nil
 	}
-	if err := writeFileAtomic(w.path("MISSION.md"), []byte(mission+"\n")); err != nil {
+	if err := WriteFileAtomic(w.path("MISSION.md"), []byte(mission+"\n")); err != nil {
 		return false, err
 	}
 	w.commit("Edit mission by hand")

@@ -213,12 +213,12 @@ func (a *App) probeLanguageServer(ctx context.Context, tc runner.Toolchain, file
 			}
 		}
 	}()
+	ctx, cancel := context.WithTimeoutCause(ctx, 90*time.Second, errors.New("the language server didn't answer initialize within 90 seconds"))
+	defer cancel()
 	select {
 	case err := <-done:
 		return err
-	case <-time.After(90 * time.Second):
-		return errors.New("the language server didn't answer initialize within 90 seconds")
 	case <-ctx.Done():
-		return ctx.Err()
+		return context.Cause(ctx)
 	}
 }

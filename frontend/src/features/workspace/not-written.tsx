@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { App, errorText, type Gate } from "@/lib/api";
 import { type Part } from "@/lib/workspace";
 import { Spinner } from "@/components/ui/spinner";
@@ -31,13 +31,12 @@ export function NotWritten({ wsId, objective, part, moduleTitle, writing, check,
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState("");
   // A writer that finishes while this page is still open didn't write this part.
-  const wasWriting = useRef(writing);
+  const [wasWriting, setWasWriting] = useState(writing);
   const [unfinished, setUnfinished] = useState(false);
-  useEffect(() => {
-    if (wasWriting.current && !writing) setUnfinished(true);
-    if (writing) setUnfinished(false);
-    wasWriting.current = writing;
-  }, [writing]);
+  if (writing !== wasWriting) {
+    setWasWriting(writing);
+    setUnfinished(!writing);
+  }
 
   const name = objective.name || objective.title;
   const what = part === "lesson" ? "lesson" : "exercise";

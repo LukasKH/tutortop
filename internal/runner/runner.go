@@ -19,6 +19,8 @@ import (
 	"time"
 	"uuid"
 
+	"golang.org/x/sync/singleflight"
+
 	"github.com/LukasKH/tutortop/internal/text"
 )
 
@@ -90,6 +92,7 @@ var (
 type Runner struct {
 	Engine string // "docker", "podman" or "local"
 
+	builds   singleflight.Group // callers that need the same image share one build
 	mu       sync.Mutex
 	prepared map[string]bool
 }
@@ -146,15 +149,29 @@ func engineHint(engine, output string, notFound bool) error {
 }
 
 // Prepare builds the language image. The first call can take a few minutes.
+// A caller can give up waiting; the build carries on for the others.
 func (r *Runner) Prepare(ctx context.Context, tc Toolchain) error {
 	if r.Engine == "local" {
 		return nil
 	}
 	r.mu.Lock()
-	defer r.mu.Unlock()
-	if r.prepared[tc.Image] {
+	done := r.prepared[tc.Image]
+	r.mu.Unlock()
+	if done {
 		return nil
 	}
+	build := r.builds.DoChan(tc.Image, func() (any, error) {
+		return nil, r.build(context.WithoutCancel(ctx), tc)
+	})
+	select {
+	case res := <-build:
+		return res.Err
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func (r *Runner) build(ctx context.Context, tc Toolchain) error {
 	if exec.CommandContext(ctx, r.Engine, "image", "inspect", tc.Image).Run() != nil {
 		cmd := exec.CommandContext(ctx, r.Engine, "build", "-t", tc.Image, "-")
 		cmd.Stdin = strings.NewReader(tc.Dockerfile)
@@ -162,7 +179,9 @@ func (r *Runner) Prepare(ctx context.Context, tc Toolchain) error {
 			return fmt.Errorf("preparing the %s sandbox: %v\n%s", tc.Name, err, text.Tail(string(out), 1500))
 		}
 	}
+	r.mu.Lock()
 	r.prepared[tc.Image] = true
+	r.mu.Unlock()
 	return nil
 }
 

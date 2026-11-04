@@ -217,7 +217,7 @@ func (w *Workspace) SaveLesson(spec LessonSpec) (LessonInfo, error) {
 	if err := writeYAML(w.private("lessons", info.ID, "lesson.yaml"), file); err != nil {
 		return info, err
 	}
-	if err := writeFileAtomic(w.path("lessons", info.ID, "README.md"), []byte(spec.markdown())); err != nil {
+	if err := WriteFileAtomic(w.path("lessons", info.ID, "README.md"), []byte(spec.markdown())); err != nil {
 		return info, err
 	}
 	if err := writeYAML(w.path("lessons", info.ID, "lesson.yaml"), info); err != nil {

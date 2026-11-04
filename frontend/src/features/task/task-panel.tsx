@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ComponentProps, type ReactNode } from "react";
+import { useEffect, useEffectEvent, useRef, useState, type ComponentProps, type ReactNode } from "react";
 import Editor from "@monaco-editor/react";
 import { cn } from "cn";
 import type { TaskInfo } from "@/lib/api";
@@ -50,19 +50,32 @@ export function TaskPanel({ wsId, taskId, passed, moduleTitle, nextTask, moreCom
     if (await work.check(submit)) setResultsOpen(true);
   }
 
-  // Keyboard: Ctrl/Cmd+Enter runs, with Shift it submits. Monaco gets the same
-  // bindings as actions below, since it swallows Ctrl+Enter itself.
-  const checkRef = useRef(check);
-  checkRef.current = check;
+  // Keyboard: Ctrl/Cmd+Enter runs, with Shift it submits. The editor gets the
+  // same keys as actions, since it swallows Ctrl+Enter itself.
+  const [editor, setEditor] = useState<monaco.editor.IStandaloneCodeEditor | null>(null);
+  const onCheckKey = useEffectEvent((submit: boolean) => void check(submit));
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.defaultPrevented || e.key !== "Enter" || !(e.ctrlKey || e.metaKey)) return;
       e.preventDefault();
-      checkRef.current(e.shiftKey);
+      onCheckKey(e.shiftKey);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
+  useEffect(() => {
+    if (!editor) return;
+    const actions = [
+      editor.addAction({ id: "tutortop.run", label: "Run tests", keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter], run: () => onCheckKey(false) }),
+      editor.addAction({
+        id: "tutortop.submit",
+        label: "Submit",
+        keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.Enter],
+        run: () => onCheckKey(true),
+      }),
+    ];
+    return () => actions.forEach((a) => a.dispose());
+  }, [editor]);
 
   // Splitters: the statement keeps at least 260px, the editor at least 340px,
   // and the editor keeps at least 140px above the results. Dragging and the
@@ -149,20 +162,7 @@ export function TaskPanel({ wsId, taskId, passed, moduleTitle, nextTask, moreCom
                 theme="ink"
                 options={editorOptions}
                 onChange={(v) => work.edit(fileShown, v ?? "")}
-                onMount={(editor) => {
-                  editor.addAction({
-                    id: "tutortop.run",
-                    label: "Run tests",
-                    keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter],
-                    run: () => void checkRef.current(false),
-                  });
-                  editor.addAction({
-                    id: "tutortop.submit",
-                    label: "Submit",
-                    keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.Enter],
-                    run: () => void checkRef.current(true),
-                  });
-                }}
+                onMount={setEditor}
               />
             )}
           </div>
@@ -212,20 +212,16 @@ function FileTabs({
   children?: ReactNode;
 }) {
   return (
-    <div className="flex h-10 flex-none overflow-x-auto border-b px-2.5" role="tablist" aria-label={label}>
-      {files.map((f) => (
-        <button
-          key={f}
-          role="tab"
-          aria-selected={active === f}
-          className="-mb-px flex items-center border-b-2 border-transparent px-3 font-mono text-xs whitespace-nowrap text-muted-foreground hover:text-foreground aria-selected:border-foreground aria-selected:text-foreground"
-          onClick={() => onSelect(f)}
-        >
-          {f}
-        </button>
-      ))}
-      {children}
-    </div>
+    <Tabs value={active} onValueChange={onSelect}>
+      <TabsList aria-label={label} className="gap-0 overflow-x-auto px-2.5">
+        {files.map((f) => (
+          <TabsTrigger key={f} value={f} className="px-3 font-mono text-xs font-normal">
+            {f}
+          </TabsTrigger>
+        ))}
+        {children}
+      </TabsList>
+    </Tabs>
   );
 }
 

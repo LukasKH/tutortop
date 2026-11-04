@@ -1,11 +1,12 @@
 import { useState, type ReactNode } from "react";
-import { App, errorText, type WorkspaceState } from "@/lib/api";
+import { App, type WorkspaceState } from "@/lib/api";
 import { PencilIcon } from "lucide-react";
 import { Markdown } from "@/components/markdown";
 import { AutoTextarea } from "@/components/auto-textarea";
 import { ErrorText } from "@/components/error-text";
 import { ReadingPage } from "@/components/page";
 import { Button } from "@/components/ui/button";
+import { usePending } from "@/hooks/use-pending";
 import { CurriculumTitle, Module, ModuleList, ModuleNote, Objective, ObjectiveName, ObjectiveNote } from "@/features/workspace/curriculum-list";
 
 type Props = {
@@ -100,20 +101,12 @@ export function PlanView({ wsId, ws, onClose, onAskTutor }: Props) {
 /** The mission as plain text. Saving tells the tutor, who proposes plan changes to match if needed. */
 function MissionEditor({ wsId, mission: initial, onDone }: { wsId: string; mission: string; onDone: () => void }) {
   const [mission, setMission] = useState(initial);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
-
-  async function save() {
-    setSaving(true);
-    setError("");
-    try {
+  const { pending: saving, error, run } = usePending();
+  const save = () =>
+    run(async () => {
       await App.SaveMission(wsId, mission);
       onDone();
-    } catch (e) {
-      setError(errorText(e));
-      setSaving(false);
-    }
-  }
+    });
 
   return (
     <ReadingPage>
