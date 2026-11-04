@@ -39,27 +39,37 @@ import (
 // session opens and closes, a message is queued and then answered, and stop
 // interrupts the current turn.
 type threadAgents struct {
-	// What the agents need from the rest of the app: a way to open an
-	// agent's CLI session (agent.Start; tests pass a fake), the settings'
-	// agent, model and effort (read for every message), and a thread's
-	// folder, MCP server and instructions.
-	openSession sessionOpener
-	config      func() agentConfig
-	options     func(*workspace.Workspace, workspace.Thread) agent.Options
+	settings *settingsStore // the agent, model and effort, read for every message
+	mcp      *mcpHost
+	cli      agentCLI
 
 	mu     sync.Mutex
 	agents map[threadKey]*threadAgent
 	seq    uint64 // numbers busy and check changes and snapshots in order
 }
 
-// sessionOpener is agent.Start's signature.
-type sessionOpener func(ctx context.Context, provider string, opts agent.Options, onEvent func(agent.Event)) (agent.Session, error)
+func newThreadAgents(settings *settingsStore, mcp *mcpHost, cli agentCLI) *threadAgents {
+	return &threadAgents{settings: settings, mcp: mcp, cli: cli, agents: map[threadKey]*threadAgent{}, seq: firstSeq()}
+}
 
-func newThreadAgents(openSession sessionOpener, config func() agentConfig, options func(*workspace.Workspace, workspace.Thread) agent.Options) *threadAgents {
-	return &threadAgents{openSession: openSession, config: config, options: options, agents: map[threadKey]*threadAgent{},
-		// Counting from the time in microseconds keeps the numbers rising
-		// across a restart, for a page that outlives one in server mode.
-		seq: uint64(time.Now().UnixMicro())}
+// firstSeq is where threadAgents.seq starts. Counting from the time in
+// microseconds keeps the numbers rising across a restart, for a page that
+// outlives one in server mode.
+func firstSeq() uint64 {
+	return uint64(time.Now().UnixMicro())
+}
+
+// agentCLI opens a session with an agent's CLI. installedCLI opens the
+// learner's own; tests fake it.
+type agentCLI interface {
+	Start(ctx context.Context, provider string, opts agent.Options, onEvent func(agent.Event)) (agent.Session, error)
+}
+
+// installedCLI starts the agent CLI installed on the computer.
+type installedCLI struct{}
+
+func (installedCLI) Start(ctx context.Context, provider string, opts agent.Options, onEvent func(agent.Event)) (agent.Session, error) {
+	return agent.Start(ctx, provider, opts, onEvent)
 }
 
 // queue queues a message for a thread's agent, starting the agent if it
@@ -68,7 +78,7 @@ func newThreadAgents(openSession sessionOpener, config func() agentConfig, optio
 // It fails only if too many messages are already waiting.
 func (ag *threadAgents) queue(w *workspace.Workspace, t workspace.Thread, msg string) error {
 	key := threadKey{w.ID, t.String()}
-	cfg := ag.config()
+	cfg := ag.settings.Load().agentConfig()
 	ag.mu.Lock()
 	defer ag.mu.Unlock()
 	ta := ag.agents[key]
@@ -288,18 +298,27 @@ func (ag *threadAgents) open(ctx context.Context, w *workspace.Workspace, ta *th
 	}
 	// A writer starts fresh every time, so its conversation isn't kept.
 	resume := ta.thread.Kind != workspace.WriterKind
-	opts := ag.options(w, ta.thread)
-	opts.Model, opts.Effort = ta.cfg.Model, ta.cfg.Effort
+	opts := agent.Options{
+		Cwd: w.Dir, MCPName: mcpName, MCPURL: ag.mcp.URL(w, ta.thread), Instructions: instructions(w, ta.thread),
+		Model: ta.cfg.Model, Effort: ta.cfg.Effort, Subagents: usesSubagents(ta.thread.Kind),
+	}
 	if resume {
 		opts.ResumeID = saved[ta.key.name]
 	}
-	cli, err := ag.openSession(ctx, ta.cfg.Provider, opts, onEvent)
+	cli, err := ag.cli.Start(ctx, ta.cfg.Provider, opts, onEvent)
 	// Saved before the first turn, so the id is on disk even if the app
 	// quits during it.
 	if err == nil && resume {
 		_ = w.SetResumeID(ta.cfg.Provider, ta.key.name, cli.ID())
 	}
 	return cli, err
+}
+
+// usesSubagents reports whether a kind of thread may hand research to
+// subagents. The plan and writers may; task and lesson chats answer a
+// learner who's waiting, so they don't.
+func usesSubagents(kind workspace.ThreadKind) bool {
+	return kind == workspace.PlanKind || kind == workspace.WriterKind
 }
 
 // answered counts one of an agent's messages as answered, or given up on.

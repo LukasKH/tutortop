@@ -171,7 +171,7 @@ Writers have no chat window. They write an objective's lesson and exercise in th
 | `state(ws)` | which threads are busy, the writers' checks, and the `seq` they were read at |
 | `endWorkspace(ws)`, `endAll()` | end a deleted workspace's agents, or all of them as the app quits |
 
-What it needs from the app is passed in when `New` builds it: `agent.Start` to open a CLI session (tests pass a fake), the settings' agent, model and effort, and a thread's folder, MCP URL and instructions (`App.agentOptions`). It posts to the chat with `post`, like the rest of the app.
+What it needs from the app is passed in when `New` builds it: the `settingsStore` for the agent, model and effort, the `mcpHost` for each thread's MCP URL, and an `agentCLI` to open a CLI session (`installedCLI`, over `agent.Start`; tests pass a fake). `threadAgents.open` builds the CLI's options: the workspace's folder, the MCP URL, the thread's instructions and whether it may use subagents. It posts to the chat with `post`, like the rest of the app.
 
 Each verb in it means one thing. A thread agent (`threadAgent`) **starts** and **ends**; its CLI session **opens** and **closes**; a message is **queued**, then **answered**; **stop** interrupts a turn. On top of it, `App.send` **posts** a message in the thread's chat and queues it. When the learner sends a message, `SendMessage` adds a `[context]` block about the open task or lesson (`prompts.go`) and sends it. The thread agent's loop hands each message to the CLI, and its `transcript` streams the reply into the chat as `chat:message` events.
 

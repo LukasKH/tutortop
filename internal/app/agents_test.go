@@ -77,7 +77,9 @@ func TestSettingsRestartIdleSession(t *testing.T) {
 	ag, fake, w := newHeldAgents(t)
 	queue(t, ag, w, workspace.PlanThread, "one")
 	first := fake.next(t)
-	fake.cfg.Model = "other"
+	if err := ag.settings.Save(Settings{Provider: "claude", Models: map[string]ModelChoice{"claude": {Model: "other"}}}); err != nil {
+		t.Fatal(err)
+	}
 	queue(t, ag, w, workspace.PlanThread, "two")
 	first.end(nil)
 	second := fake.next(t)
@@ -178,19 +180,41 @@ func TestFailedAgentIsReplaced(t *testing.T) {
 	}
 }
 
+// Subagents are for research in the background: the plan and writers get
+// them, the chats where a learner waits for a reply don't.
+func TestSubagentsByThread(t *testing.T) {
+	ag, fake, w := newHeldAgents(t)
+	for _, c := range []struct {
+		thread workspace.Thread
+		want   bool
+	}{
+		{workspace.PlanThread, true},
+		{workspace.WriterThread("go.x"), true},
+		{workspace.TaskThread("0001-x"), false},
+		{workspace.LessonThread("0001-x"), false},
+	} {
+		queue(t, ag, w, c.thread, "hi")
+		if got := fake.next(t).s.opts.Subagents; got != c.want {
+			t.Errorf("%s: subagents %v, want %v", c.thread, got, c.want)
+		}
+	}
+}
+
 // newHeldAgents is a workspace's thread agents whose turns last until the
 // test ends them.
 func newHeldAgents(t *testing.T) (*threadAgents, *heldAgents, *workspace.Workspace) {
 	t.Helper()
-	fake := &heldAgents{turns: make(chan heldTurn, 8), cfg: agentConfig{Provider: "claude"}}
-	ag := newThreadAgents(fake.start, func() agentConfig { return fake.cfg }, func(*workspace.Workspace, workspace.Thread) agent.Options { return agent.Options{} })
-	t.Cleanup(ag.endAll)
-	store := &workspace.Store{Root: t.TempDir(), PrivateRoot: t.TempDir()}
-	w, err := store.Create("Go", "claude")
+	fake := &heldAgents{turns: make(chan heldTurn, 8)}
+	a := newTestAppWith(t, fake)
+	t.Cleanup(a.agents.endAll)
+	if err := a.SaveSettings(Settings{Provider: "claude"}); err != nil {
+		t.Fatal(err)
+	}
+	w, err := a.store.Create("Go", "claude")
 	if err != nil {
 		t.Fatal(err)
 	}
-	return ag, fake, w
+	return a.agents, fake, w
 }
 
 // queue queues a message for a thread's agent.
@@ -201,17 +225,15 @@ func queue(t *testing.T, ag *threadAgents, w *workspace.Workspace, thread worksp
 	}
 }
 
-// heldAgents fakes the agent processes the thread agents open, and the
-// settings they read.
+// heldAgents fakes the agent CLI the thread agents start.
 type heldAgents struct {
-	cfg       agentConfig   // the settings; change them only between queue calls
 	holdStart chan struct{} // if set, starts wait until it's closed
 	startErr  error         // if set, starts fail
 	started   atomic.Int32
 	turns     chan heldTurn // turns that have started
 }
 
-func (f *heldAgents) start(ctx context.Context, _ string, opts agent.Options, onEvent func(agent.Event)) (agent.Session, error) {
+func (f *heldAgents) Start(ctx context.Context, _ string, opts agent.Options, onEvent func(agent.Event)) (agent.Session, error) {
 	if f.holdStart != nil {
 		<-f.holdStart
 	}

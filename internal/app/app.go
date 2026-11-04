@@ -38,25 +38,20 @@ func New() (*App, error) {
 	// settings, else ~/Tutortop. It's fixed for the run: running agents open
 	// their workspace by id.
 	store := workspace.NewStore(cmp.Or(os.Getenv("TUTORTOP_HOME"), settings.Load().WorkspacesFolder, workspace.DefaultRoot()))
+	return newApp(store, settings, installedCLI{})
+}
+
+// newApp builds the app on the workspaces in store, the settings and the
+// agent CLI it starts. Tests pass their own.
+func newApp(store *workspace.Store, settings *settingsStore, cli agentCLI) (*App, error) {
 	a := &App{store: store, settings: settings, runner: runner.New(), links: newLinkChecker(), models: newModelCache(), servers: map[string]*languageServer{}}
-	a.agents = newThreadAgents(agent.Start, func() agentConfig { return a.settings.Load().agentConfig() }, a.agentOptions)
 	h, err := startMCP(a)
 	if err != nil {
 		return nil, err
 	}
 	a.mcp = h
+	a.agents = newThreadAgents(settings, h, cli)
 	return a, nil
-}
-
-// agentOptions are what a thread's agent opens its CLI with, besides the
-// settings: the workspace's folder, the thread's MCP server and its
-// instructions. The plan and writers may hand research to subagents; task
-// and lesson chats answer a learner who's waiting, so they don't.
-func (a *App) agentOptions(w *workspace.Workspace, t workspace.Thread) agent.Options {
-	return agent.Options{
-		Cwd: w.Dir, MCPName: mcpName, MCPURL: a.mcp.URL(w, t), Instructions: instructions(w, t),
-		Subagents: t.Kind == workspace.PlanKind || t.Kind == workspace.WriterKind,
-	}
 }
 
 // ServiceStartup is called by Wails as the app starts. It builds the sandbox
