@@ -3,9 +3,9 @@ import { objectiveOfWriter } from "@/lib/workspace";
 
 /**
  * Everything the workspace screen knows from the backend. The snapshot
- * (App.Workspace) is refetched whenever something changes; the rest is kept
- * current by events in between, because those change too often or too fast
- * to wait for a refetch.
+ * (WorkspaceService.Workspace) is refetched whenever something changes; the
+ * rest is kept current by events in between, because those change too often
+ * or too fast to wait for a refetch.
  */
 export type LiveWorkspace = {
   ws: WorkspaceSnapshot | null;

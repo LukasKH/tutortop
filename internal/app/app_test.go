@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -20,7 +19,7 @@ import (
 // AI: propose → approve → create_task (quality gate) → learner submits.
 // Set TUTORTOP_RUNNER=local to run without Docker.
 func TestToolsEndToEnd(t *testing.T) {
-	a := newTestApp(t)
+	a := newTestAppWith(t, quietCLI(), fakeLinks("https://go.dev/made-up"))
 	if err := a.runner.Available(context.Background()); err != nil {
 		t.Skip(err)
 	}
@@ -40,7 +39,6 @@ func TestToolsEndToEnd(t *testing.T) {
 	}
 
 	// A reference that doesn't open is sent back.
-	a.links = answeringLinks(http.StatusNotFound)
 	if out, isErr := callTool("propose_curriculum", map[string]any{
 		"language": "go", "modules": []any{map[string]any{"id": "basics", "title": "Basics",
 			"references": []any{map[string]any{"title": "Made up", "url": "https://go.dev/made-up"}},
@@ -48,7 +46,6 @@ func TestToolsEndToEnd(t *testing.T) {
 	}); !isErr || !strings.Contains(out, "made-up returns 404") {
 		t.Fatalf("a broken reference was accepted: %s", out)
 	}
-	a.links = answeringLinks(http.StatusOK)
 
 	call("propose_curriculum", map[string]any{
 		"language": "go", "taskDefaults": map[string]any{"size": "small"},
@@ -57,7 +54,7 @@ func TestToolsEndToEnd(t *testing.T) {
 			map[string]any{"id": "go.maps", "name": "Maps", "title": "Maps", "verify": "tests"},
 		}}},
 	})
-	if err := a.ApproveProposal(w.ID); err != nil {
+	if err := a.Workspaces.ApproveProposal(w.ID); err != nil {
 		t.Fatal(err)
 	}
 
@@ -71,27 +68,27 @@ func TestToolsEndToEnd(t *testing.T) {
 		t.Fatalf("task not published:\n%s", out)
 	}
 
-	st, _ := a.Workspace(w.ID)
+	st, _ := a.Workspaces.Workspace(w.ID)
 	if st.Progress.Total != 2 || st.Progress.Passed != 0 || st.Progress.Objectives["go.strings"].Status != "in_progress" {
 		t.Fatalf("progress before = %+v", st.Progress)
 	}
 
 	// The learner's starter code fails; the reference passes and counts.
-	res, err := a.RunTests(w.ID, created.TaskID, runner.Files{"solution.go": goStarter}, true)
+	res, err := a.Tasks.RunTests(w.ID, created.TaskID, runner.Files{"solution.go": goStarter}, true)
 	if err != nil || res.Status != runner.StatusFailed {
 		t.Fatalf("starter submit = %v %+v", err, res)
 	}
-	res, err = a.RunTests(w.ID, created.TaskID, runner.Files{"solution.go": goReference}, true)
+	res, err = a.Tasks.RunTests(w.ID, created.TaskID, runner.Files{"solution.go": goReference}, true)
 	if err != nil || res.Status != runner.StatusPassed {
 		t.Fatalf("reference submit = %v %+v", err, res)
 	}
-	st, _ = a.Workspace(w.ID)
+	st, _ = a.Workspaces.Workspace(w.ID)
 	if st.Progress.Passed != 1 || st.Progress.Objectives["go.strings"].Status != "passed" {
 		t.Fatalf("progress after = %+v", st.Progress)
 	}
 
 	// Learners can't see hidden tests or the reference.
-	d, _ := a.Task(w.ID, created.TaskID)
+	d, _ := a.Tasks.Task(w.ID, created.TaskID)
 	if _, leaked := d.Tests["hidden_test.go"]; leaked || d.HiddenCount != 2 {
 		t.Fatalf("task detail = tests %v hidden %d", d.Tests, d.HiddenCount)
 	}
@@ -123,27 +120,45 @@ func reverseWordsTask(objective string) map[string]any {
 	}
 }
 
-// newTestApp is newTestAppWith an agent CLI whose sessions take every
-// message and never answer, so no test starts a real agent by accident.
-func newTestApp(t *testing.T) *App {
-	t.Helper()
-	return newTestAppWith(t, startFunc(func(context.Context, string, agent.Options, func(agent.Event)) (agent.Session, error) {
-		return &fakeSession{prompts: new([]string), mu: &sync.Mutex{}}, nil
-	}))
+// testApp is the app's services, wired by newServices as New wires them,
+// and the shared pieces tests look into.
+type testApp struct {
+	*Services
+	store    *workspace.Store
+	settings *settingsStore
+	runner   *runner.Runner
+	agents   *threadAgents
+	mcp      *mcpHost
 }
 
-// newTestAppWith keeps a test's workspaces and settings in temp dirs, finds
-// every link, and starts agents with cli. (Setting XDG_DATA_HOME wouldn't
-// work: adrg/xdg reads it once at startup.)
-func newTestAppWith(t *testing.T, cli agentCLI) *App {
+// newTestApp is newTestAppWith an agent CLI whose sessions take every
+// message and never answer, so no test starts a real agent by accident, and
+// links that all open.
+func newTestApp(t *testing.T) *testApp {
+	t.Helper()
+	return newTestAppWith(t, quietCLI(), fakeLinks())
+}
+
+// quietCLI is an agentCLI whose sessions take every message and never answer.
+func quietCLI() agentCLI {
+	return startFunc(func(context.Context, string, agent.Options, func(agent.Event)) (agent.Session, error) {
+		return &fakeSession{prompts: new([]string), mu: &sync.Mutex{}}, nil
+	})
+}
+
+// newTestAppWith keeps a test's workspaces and settings in temp dirs, checks
+// links with links, and starts agents with cli. (Setting XDG_DATA_HOME
+// wouldn't work: adrg/xdg reads it once at startup.)
+func newTestAppWith(t *testing.T, cli agentCLI, links *linkChecker) *testApp {
 	t.Helper()
 	store := &workspace.Store{Root: t.TempDir(), PrivateRoot: t.TempDir()}
-	a, err := newApp(store, newSettingsStore(filepath.Join(t.TempDir(), "settings.yaml")), cli)
+	settings := newSettingsStore(filepath.Join(t.TempDir(), "settings.yaml"))
+	sandbox := runner.New()
+	s, err := newServices(store, settings, sandbox, links, cli)
 	if err != nil {
 		t.Fatal(err)
 	}
-	a.links = answeringLinks(http.StatusOK)
-	return a
+	return &testApp{Services: s, store: store, settings: settings, runner: sandbox, agents: s.Chat.agents, mcp: s.Chat.agents.mcp}
 }
 
 // startFunc is an agentCLI that starts sessions by calling itself.
@@ -154,7 +169,7 @@ func (f startFunc) Start(ctx context.Context, provider string, opts agent.Option
 }
 
 // sandboxApp is newTestApp for tests that need a container engine.
-func sandboxApp(t *testing.T) *App {
+func sandboxApp(t *testing.T) *testApp {
 	t.Helper()
 	a := newTestApp(t)
 	if err := a.runner.Available(context.Background()); err != nil {
@@ -239,28 +254,28 @@ func TestThreadsGetOwnSessions(t *testing.T) {
 		s := &started{opts: opts}
 		sessions[opts.MCPURL] = s
 		return &fakeSession{prompts: &s.prompts, mu: &mu}, nil
-	}))
+	}), fakeLinks())
 	w, err := a.store.Create("Go", "claude")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := a.SendMessage(w.ID, "hello plan", workspace.PlanThread.String()); err != nil {
+	if err := a.Chat.SendMessage(w.ID, "hello plan", workspace.PlanThread.String()); err != nil {
 		t.Fatal(err)
 	}
-	if err := a.SendMessage(w.ID, "hello task", "0001-some-task"); err != nil {
+	if err := a.Chat.SendMessage(w.ID, "hello task", "0001-some-task"); err != nil {
 		t.Fatal(err)
 	}
 	if err := w.SetQuestions(&workspace.Questions{Thread: "0001-some-task", Questions: []workspace.Question{{ID: "q", Question: "Which?"}}}); err != nil {
 		t.Fatal(err)
 	}
-	if err := a.AnswerQuestions(w.ID, map[string]string{"q": "this one"}); err != nil {
+	if err := a.Chat.AnswerQuestions(w.ID, map[string]string{"q": "this one"}); err != nil {
 		t.Fatal(err)
 	}
 
 	deadline := time.Now().Add(2 * time.Second)
 	for {
 		mu.Lock()
-		plan, task := sessions[a.mcp.URL(w, workspace.PlanThread)], sessions[a.mcp.URL(w, workspace.TaskThread("0001-some-task"))]
+		plan, task := sessions[a.mcp.URL(w, workspace.PlanThread, a.agents)], sessions[a.mcp.URL(w, workspace.TaskThread("0001-some-task"), a.agents)]
 		done := plan != nil && task != nil && len(plan.prompts) == 1 && len(task.prompts) == 2
 		mu.Unlock()
 		if done {
@@ -277,8 +292,8 @@ func TestThreadsGetOwnSessions(t *testing.T) {
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	plan, _ := a.Chat(w.ID, workspace.PlanThread.String())
-	task, _ := a.Chat(w.ID, "0001-some-task")
+	plan, _ := a.Chat.Chat(w.ID, workspace.PlanThread.String())
+	task, _ := a.Chat.Chat(w.ID, "0001-some-task")
 	if len(plan) != 1 || len(task) != 2 {
 		t.Fatalf("plan chat %d items, task chat %d items", len(plan), len(task))
 	}
@@ -292,13 +307,13 @@ func TestSettingsLoadTheOldTutorKey(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := ModelChoice{Model: "gpt-5", Effort: "high"}
-	if got := a.Settings().Models["codex"]; got != want {
+	if got := a.Settings.Settings().Models["codex"]; got != want {
 		t.Fatalf("got %+v, want %+v", got, want)
 	}
-	if err := a.SaveSettings(a.Settings()); err != nil {
+	if err := a.Settings.SaveSettings(a.Settings.Settings()); err != nil {
 		t.Fatal(err)
 	}
-	if got := a.Settings().Models["codex"]; got != want {
+	if got := a.Settings.Settings().Models["codex"]; got != want {
 		t.Fatalf("after saving: got %+v, want %+v", got, want)
 	}
 }

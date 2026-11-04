@@ -17,7 +17,7 @@ func main() {
 	// Before anything looks up claude, codex, docker or git.
 	shellpath.Fix()
 
-	svc, err := app.New()
+	services, err := app.New()
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -25,7 +25,18 @@ func main() {
 	wails := application.New(application.Options{
 		Name:        "Tutortop",
 		Description: "Learn anything verifiable, with your own AI tutor",
-		Services:    []application.Service{application.NewService(svc)},
+		// Wails starts these in this order and shuts them down in reverse.
+		// No service needs another started first or stopped last: Workspaces
+		// builds sandbox images in the background, Chat ends the agents and
+		// Editor stops the language servers, each on its own.
+		Services: []application.Service{
+			application.NewService(services.Settings),
+			application.NewService(services.Workspaces),
+			application.NewService(services.Tasks),
+			application.NewService(services.Lessons),
+			application.NewService(services.Chat),
+			application.NewService(services.Editor),
+		},
 		Assets:      application.AssetOptions{Handler: application.AssetFileServerFS(assets)},
 		Mac:         application.MacOptions{ApplicationShouldTerminateAfterLastWindowClosed: true},
 		// Used by server mode (`wails3 task run:server`): checks can take a

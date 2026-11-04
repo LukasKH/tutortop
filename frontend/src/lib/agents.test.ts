@@ -3,7 +3,7 @@ import type { Environment } from "@/lib/api";
 import { loadProviders, providerName } from "@/lib/agents";
 
 const { environment } = vi.hoisted(() => ({ environment: vi.fn<() => Promise<Partial<Environment>>>() }));
-vi.mock("@/lib/api", () => ({ App: { Environment: environment } }));
+vi.mock("@/lib/api", () => ({ SettingsService: { Environment: environment } }));
 
 test("an agent is named by the backend once loaded, by its id until then", async () => {
   environment.mockResolvedValue({ providers: [{ id: "claude", name: "Claude Code", installed: true }] });

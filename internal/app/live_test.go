@@ -20,25 +20,25 @@ func TestLiveInterview(t *testing.T) {
 	}
 
 	a := newTestApp(t)
-	defer a.ServiceShutdown()
+	defer a.Chat.ServiceShutdown()
 
-	if err := a.SaveSettings(Settings{Provider: provider}); err != nil {
+	if err := a.Settings.SaveSettings(Settings{Provider: provider}); err != nil {
 		t.Fatal(err)
 	}
-	id, err := a.CreateWorkspace("Go", "")
+	id, err := a.Workspaces.CreateWorkspace("Go", "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	// The tutor's questions show up in the workspace once it calls ask_user.
 	var questions *workspace.Questions
 	for deadline := time.Now().Add(4 * time.Minute); questions == nil && time.Now().Before(deadline); time.Sleep(2 * time.Second) {
-		st, err := a.Workspace(id)
+		st, err := a.Workspaces.Workspace(id)
 		if err != nil {
 			t.Fatal(err)
 		}
 		questions = st.Questions
 	}
-	chat, _ := a.Chat(id, workspace.PlanThread.String())
+	chat, _ := a.Chat.Chat(id, workspace.PlanThread.String())
 	for _, c := range chat {
 		t.Logf("%-9s %-7s %s", c.Role, c.Status, text.Truncate(c.Text, 300))
 	}

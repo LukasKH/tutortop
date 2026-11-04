@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useReducer } from "react";
-import { App, AppEvents, errorText, useEvent } from "@/lib/api";
+import { ChatService, WorkspaceService, AppEvents, errorText, useEvent } from "@/lib/api";
 import { initialWorkspace, isBusy, reduceWorkspace, tutorBusy, writingObjectives } from "@/features/workspace/workspace-state";
 
 /**
@@ -14,7 +14,7 @@ export function useWorkspace(id: string) {
   /** Refetches the snapshot; resolves to it, or null if the call failed. */
   const refresh = useCallback(async () => {
     try {
-      const ws = await App.Workspace(id);
+      const ws = await WorkspaceService.Workspace(id);
       dispatch({ type: "snapshot", ws });
       return ws;
     } catch (e) {
@@ -51,12 +51,12 @@ export function useWorkspace(id: string) {
   });
 
   async function answerQuestions(answers: Record<string, string>) {
-    await App.AnswerQuestions(id, answers);
+    await ChatService.AnswerQuestions(id, answers);
     dispatch({ type: "questions", questions: null });
   }
 
   function dismissQuestions() {
-    App.DismissQuestions(id).catch(fail);
+    ChatService.DismissQuestions(id).catch(fail);
     dispatch({ type: "questions", questions: null });
   }
 

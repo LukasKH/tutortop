@@ -74,7 +74,7 @@ func TestSetToolchainEnablesALanguage(t *testing.T) {
 	if out, isErr := call("propose_curriculum", plan); isErr {
 		t.Fatalf("propose: %s", out)
 	}
-	if err := a.ApproveProposal(w.ID); err != nil {
+	if err := a.Workspaces.ApproveProposal(w.ID); err != nil {
 		t.Fatal(err)
 	}
 	out, _ = toolCaller(t, a, w, workspace.WriterThread("js.add"))("create_task", map[string]any{
@@ -101,11 +101,11 @@ func TestSetToolchainEnablesALanguage(t *testing.T) {
 		t.Fatalf("task not published:\n%s", out)
 	}
 
-	d, err := a.Task(w.ID, created.TaskID)
+	d, err := a.Tasks.Task(w.ID, created.TaskID)
 	if err != nil || d.EditorLanguage != "javascript" || d.HiddenCount != 1 {
 		t.Fatalf("task detail = %+v, %v", d, err)
 	}
-	res, err := a.RunTests(w.ID, created.TaskID, runner.Files{"add.mjs": reference["add.mjs"]}, true)
+	res, err := a.Tasks.RunTests(w.ID, created.TaskID, runner.Files{"add.mjs": reference["add.mjs"]}, true)
 	if err != nil || res.Status != runner.StatusPassed || len(res.Tests) != 2 || !res.Tests[0].Hidden && !res.Tests[1].Hidden {
 		t.Fatalf("submit = %v %+v", err, res)
 	}

@@ -4,7 +4,7 @@
 // and formatting. Positions are UTF-16 in both, so only the base differs
 // (LSP counts from 0, Monaco from 1).
 import { Events } from "@wailsio/runtime";
-import { App, AppEvents, errorText } from "@/lib/api";
+import { EditorService, AppEvents, errorText } from "@/lib/api";
 import { monaco } from "@/lib/monaco";
 
 export type LanguageStatus = "starting" | "ready" | "off" | { error: string };
@@ -30,9 +30,9 @@ export class LanguageClient {
   async start() {
     this.onStatus("starting");
     try {
-      const info = await App.StartLanguageServer(this.wsId, this.taskId);
+      const info = await EditorService.StartLanguageServer(this.wsId, this.taskId);
       if (this.closed) {
-        if (info.id) App.StopLanguageServer(info.id);
+        if (info.id) EditorService.StopLanguageServer(info.id);
         return;
       }
       if (!info.id) return this.onStatus("off");
@@ -75,7 +75,7 @@ export class LanguageClient {
     this.docs.clear();
     for (const p of this.pending.values()) p.reject(new Error("closed"));
     this.pending.clear();
-    if (this.id) App.StopLanguageServer(this.id);
+    if (this.id) EditorService.StopLanguageServer(this.id);
   }
 
   private stopped() {
@@ -88,7 +88,7 @@ export class LanguageClient {
 
   private send(msg: Json) {
     if (this.closed) return;
-    App.SendLanguageServer(this.id, JSON.stringify({ jsonrpc: "2.0", ...msg })).catch(() => this.stopped());
+    EditorService.SendLanguageServer(this.id, JSON.stringify({ jsonrpc: "2.0", ...msg })).catch(() => this.stopped());
   }
 
   private notify(method: string, params: Json) {

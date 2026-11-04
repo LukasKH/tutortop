@@ -1,6 +1,6 @@
 import { useEffect, useEffectEvent } from "react";
 import { Events } from "@wailsio/runtime";
-import { App as Bindings } from "@bindings/github.com/LukasKH/tutortop/internal/app";
+import * as Bindings from "@bindings/github.com/LukasKH/tutortop/internal/app";
 import type { Environment, ProviderStatus, SandboxCheck, Settings, WorkspaceSnapshot } from "@bindings/github.com/LukasKH/tutortop/internal/app";
 import type { Model } from "@bindings/github.com/LukasKH/tutortop/internal/agent";
 import type {
@@ -51,17 +51,36 @@ export type {
   WorkspaceSnapshot,
 };
 
-/**
- * The backend's methods (the generated bindings). Calls that only read retry
- * quietly while the app's server is briefly unreachable.
- */
-export const App: typeof Bindings = new Proxy(Bindings, {
-  get(target, key, receiver) {
-    const value = Reflect.get(target, key, receiver);
-    if (typeof key !== "string" || !SAFE_TO_REPEAT.has(key) || typeof value !== "function") return value;
-    return (...args: unknown[]) => patiently(() => value(...args));
-  },
-});
+// The backend's services (the generated bindings), one per area. Calls that
+// only read (or, like autosave, are safe to repeat) wait out a short outage,
+// such as the server restarting, instead of failing (patiently). Calls that
+// change something fail at once, so nothing is done twice.
+
+export const WorkspaceService = {
+  ...Bindings.WorkspaceService,
+  ListWorkspaces: patiently(Bindings.WorkspaceService.ListWorkspaces),
+  Activity: patiently(Bindings.WorkspaceService.Activity),
+  Workspace: patiently(Bindings.WorkspaceService.Workspace),
+};
+
+export const TaskService = {
+  ...Bindings.TaskService,
+  Task: patiently(Bindings.TaskService.Task),
+  SaveWork: patiently(Bindings.TaskService.SaveWork),
+};
+
+export const LessonService = { ...Bindings.LessonService, Lesson: patiently(Bindings.LessonService.Lesson) };
+
+export const ChatService = { ...Bindings.ChatService, Chat: patiently(Bindings.ChatService.Chat) };
+
+export const SettingsService = {
+  ...Bindings.SettingsService,
+  Settings: patiently(Bindings.SettingsService.Settings),
+  Models: patiently(Bindings.SettingsService.Models),
+  Environment: patiently(Bindings.SettingsService.Environment),
+};
+
+export { EditorService } from "@bindings/github.com/LukasKH/tutortop/internal/app";
 
 export function errorText(err: unknown): string {
   if (isOffline(err)) return "Can't reach Tutortop. Reload the page once it's running again.";
@@ -79,24 +98,22 @@ export function useEvent<E extends keyof Events.CustomEvents>(name: E, handler: 
   useEffect(() => Events.On(name, (ev) => onEvent(ev.data)), [name]);
 }
 
-// Calls that only read (or, like autosave, are safe to repeat) wait out a
-// short outage, such as the server restarting, instead of failing: they retry
-// for up to a minute while the server doesn't answer. Calls that change
-// something fail at once, so nothing is done twice.
-const SAFE_TO_REPEAT = new Set(["Activity", "Chat", "Environment", "Lesson", "ListWorkspaces", "Models", "Settings", "Task", "Workspace", "SaveWork"]);
 const RETRY_MS = 1000;
 const RETRY_FOR_MS = 60_000;
 
-async function patiently<T>(call: () => Promise<T>): Promise<T> {
-  const until = Date.now() + RETRY_FOR_MS;
-  for (;;) {
-    try {
-      return await call();
-    } catch (e) {
-      if (!isOffline(e) || Date.now() > until) throw e;
-      await new Promise((r) => setTimeout(r, RETRY_MS));
+/** Wraps a call to retry for up to a minute while the server doesn't answer. */
+function patiently<A extends unknown[], R>(call: (...args: A) => Promise<R>): (...args: A) => Promise<R> {
+  return async (...args) => {
+    const until = Date.now() + RETRY_FOR_MS;
+    for (;;) {
+      try {
+        return await call(...args);
+      } catch (e) {
+        if (!isOffline(e) || Date.now() > until) throw e;
+        await new Promise((r) => setTimeout(r, RETRY_MS));
+      }
     }
-  }
+  };
 }
 
 /**

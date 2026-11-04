@@ -231,7 +231,7 @@ func TestCreateTaskWithholdsATaskThatFailsTheGate(t *testing.T) {
 }
 
 // goWorkspace is a workspace with an approved Go curriculum of two objectives.
-func goWorkspace(t *testing.T, a *App) *workspace.Workspace {
+func goWorkspace(t *testing.T, a *testApp) *workspace.Workspace {
 	t.Helper()
 	w, err := a.store.Create("Go", "claude")
 	if err != nil {
@@ -244,7 +244,7 @@ func goWorkspace(t *testing.T, a *App) *workspace.Workspace {
 // toolCaller connects to one thread's MCP tools, the way that thread's agent
 // would, and returns a function that calls a tool and reports its text and
 // whether it was an error.
-func toolCaller(t *testing.T, a *App, w *workspace.Workspace, thread workspace.Thread) func(name string, args any) (string, bool) {
+func toolCaller(t *testing.T, a *testApp, w *workspace.Workspace, thread workspace.Thread) func(name string, args any) (string, bool) {
 	t.Helper()
 	cs := toolSession(t, a, w, thread)
 	return func(name string, args any) (string, bool) {
@@ -264,10 +264,10 @@ func toolCaller(t *testing.T, a *App, w *workspace.Workspace, thread workspace.T
 }
 
 // toolSession connects to one thread's MCP server over HTTP, as its agent does.
-func toolSession(t *testing.T, a *App, w *workspace.Workspace, thread workspace.Thread) *mcp.ClientSession {
+func toolSession(t *testing.T, a *testApp, w *workspace.Workspace, thread workspace.Thread) *mcp.ClientSession {
 	t.Helper()
 	cs, err := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "1"}, nil).
-		Connect(context.Background(), &mcp.StreamableClientTransport{Endpoint: a.mcp.URL(w, thread)}, nil)
+		Connect(context.Background(), &mcp.StreamableClientTransport{Endpoint: a.mcp.URL(w, thread, a.agents)}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

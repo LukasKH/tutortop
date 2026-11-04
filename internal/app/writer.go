@@ -1,7 +1,6 @@
 package app
 
 import (
-	"errors"
 	"fmt"
 
 	"github.com/LukasKH/tutortop/internal/workspace"
@@ -18,50 +17,35 @@ import (
 // while it's busy, it ends once it has nothing left to do, and its MCP tools
 // publish lessons and tasks (mcp.go).
 
-// WriteObjectiveNow has a writer write an objective's lesson and task now,
-// because the learner opened it ahead of the suggested order. It returns
-// once the writer is asked; the lesson and task arrive as events, and a
-// writer that fails posts why in its thread.
-func (a *App) WriteObjectiveNow(wsID, objectiveID string) error {
-	w, err := a.store.Open(wsID)
-	if err != nil {
-		return err
-	}
-	c, err := w.Curriculum()
-	if err != nil {
-		return err
-	}
-	if c == nil {
-		return errors.New("there's no plan yet")
-	}
-	o, _, ok := c.Objective(objectiveID)
-	if !ok {
-		return fmt.Errorf("%q isn't in the plan", objectiveID)
-	}
-	a.writeObjective(w, o, "The learner opened it and is waiting for it, so be quick. Write the lesson first, as they read it first.")
-	return nil
+// writers start objectives' writers, on the thread agents.
+type writers struct {
+	agents *threadAgents
+}
+
+func newWriters(agents *threadAgents) *writers {
+	return &writers{agents: agents}
 }
 
 // readyAhead is how many unpassed objectives, in plan order, keepReady keeps
 // written, so the learner never waits for the next one.
 const readyAhead = 2
 
-// writeObjective starts a writer for one objective, unless one is already at
-// work on it. why tells the writer what prompted it. Like a chat message, it
-// doesn't wait for the start; a failure is posted in the writer's thread,
-// which the objective's page shows.
-func (a *App) writeObjective(w *workspace.Workspace, o workspace.Objective, why string) {
-	t := workspace.WriterThread(o.ID)
-	msg := fmt.Sprintf("[app] Write for the objective “%s” (%s). %s", o.Title, o.ID, why)
-	if err := a.agents.queue(w, t, msg); err != nil {
-		postFailure(w, t.String(), err.Error())
+// keepReady starts writers for the next unpassed objectives in plan order
+// that are missing a lesson or an unsolved exercise.
+func (wr *writers) keepReady(w *workspace.Workspace, why string) {
+	for _, o := range w.NeedsWriting(readyAhead) {
+		wr.write(w, o, why)
 	}
 }
 
-// keepReady starts writers for the next unpassed objectives in plan order
-// that are missing a lesson or an unsolved exercise.
-func (a *App) keepReady(w *workspace.Workspace, why string) {
-	for _, o := range w.NeedsWriting(readyAhead) {
-		a.writeObjective(w, o, why)
+// write starts a writer for one objective, unless one is already at work on
+// it. why tells the writer what prompted it. Like a chat message, it doesn't
+// wait for the start; a failure is posted in the writer's thread, which the
+// objective's page shows.
+func (wr *writers) write(w *workspace.Workspace, o workspace.Objective, why string) {
+	t := workspace.WriterThread(o.ID)
+	msg := fmt.Sprintf("[app] Write for the objective “%s” (%s). %s", o.Title, o.ID, why)
+	if err := wr.agents.queue(w, t, msg); err != nil {
+		postFailure(w, t.String(), err.Error())
 	}
 }

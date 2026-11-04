@@ -61,10 +61,14 @@ func TestLinkCheckerReportsNothingOffline(t *testing.T) {
 	}
 }
 
-// answeringLinks is a linkChecker that finds every page answering with
-// status, without the network.
-func answeringLinks(status int) *linkChecker {
+// fakeLinks is a linkChecker that finds every page but the missing ones,
+// which answer 404, without the network.
+func fakeLinks(missing ...string) *linkChecker {
 	return &linkChecker{client: &http.Client{Transport: roundTripper(func(r *http.Request) (*http.Response, error) {
+		status := http.StatusOK
+		if slices.Contains(missing, r.URL.String()) {
+			status = http.StatusNotFound
+		}
 		return &http.Response{StatusCode: status, Status: fmt.Sprint(status, " ", http.StatusText(status)), Body: http.NoBody, Request: r}, nil
 	})}}
 }

@@ -65,7 +65,7 @@ var proposeCurriculumTool = &mcp.Tool{
 // proposeCurriculum saves a proposal for the learner to approve. Approving
 // it is the learner's call, in the app, not the agent's.
 func (t *threadTools) proposeCurriculum(ctx context.Context, _ *mcp.CallToolRequest, in workspace.Curriculum) (*mcp.CallToolResult, any, error) {
-	if err := t.app.links.check(ctx, proposeCurriculumTool, in.URLs()); err != nil {
+	if err := t.links.check(ctx, proposeCurriculumTool, in.URLs()); err != nil {
 		return nil, nil, err
 	}
 	if err := t.w.Propose(in); err != nil {
@@ -104,16 +104,16 @@ func (t *threadTools) setToolchain(ctx context.Context, _ *mcp.CallToolRequest, 
 		return nil, nil, fmt.Errorf("%s is built in; use it directly", tc.Language)
 	}
 	check := SandboxCheck{Kind: CheckToolchain, Thread: t.thread.String(), Title: tc.Name, Running: true}
-	t.app.agents.showCheck(t.w.ID, check)
-	report, err := t.app.checkToolchain(ctx, tc, in.Example)
+	t.agents.showCheck(t.w.ID, check)
+	report, err := t.checkToolchain(ctx, tc, in.Example)
 	var lspErr error
 	if err == nil && report == "" && len(tc.LanguageServer) > 0 {
 		files := maps.Clone(in.Example.Solution)
 		maps.Copy(files, in.Example.Tests)
-		lspErr = t.app.probeLanguageServer(ctx, tc, files)
+		lspErr = probeLanguageServer(ctx, t.runner, tc, files)
 	}
 	check.Running, check.Passed = false, err == nil && report == ""
-	t.app.agents.showCheck(t.w.ID, check)
+	t.agents.showCheck(t.w.ID, check)
 	if err != nil {
 		return nil, nil, sandboxProblem(err)
 	}
@@ -139,7 +139,7 @@ func (t *threadTools) setToolchain(ctx context.Context, _ *mcp.CallToolRequest, 
 // checkToolchain builds a new language's image and proves it works. It
 // returns a report for the tutor when the setup is wrong, or an error when
 // the sandbox itself is broken.
-func (a *App) checkToolchain(ctx context.Context, tc runner.Toolchain, ex toolchainExample) (string, error) {
+func (t *threadTools) checkToolchain(ctx context.Context, tc runner.Toolchain, ex toolchainExample) (string, error) {
 	var problems []string
 	if len(ex.Solution) == 0 || len(ex.Tests) == 0 {
 		problems = append(problems, "the example needs a solution file and a test file")
@@ -157,14 +157,14 @@ func (a *App) checkToolchain(ctx context.Context, tc runner.Toolchain, ex toolch
 	if len(problems) > 0 {
 		return "Toolchain check FAILED.\n- " + strings.Join(problems, "\n- "), nil
 	}
-	if err := a.runner.Prepare(ctx, tc); err != nil {
+	if err := t.runner.Prepare(ctx, tc); err != nil {
 		// Build errors are the tutor's to fix, not a broken sandbox.
-		if a.runner.Available(ctx) != nil {
+		if t.runner.Available(ctx) != nil {
 			return "", err
 		}
 		return "Toolchain check FAILED: the image didn't build.\n" + err.Error(), nil
 	}
-	res, err := a.runner.Run(ctx, runner.Job{Toolchain: tc, Solution: ex.Solution, Tests: ex.Tests})
+	res, err := t.runner.Run(ctx, runner.Job{Toolchain: tc, Solution: ex.Solution, Tests: ex.Tests})
 	if err != nil {
 		return "", err
 	}
@@ -174,9 +174,9 @@ func (a *App) checkToolchain(ctx context.Context, tc runner.Toolchain, ex toolch
 		if res.Status == runner.StatusError {
 			b.WriteString(" (no readable JUnit report at /tmp/junit.xml, or the code didn't build)")
 		}
-		for _, t := range res.Tests {
-			if !t.Passed {
-				fmt.Fprintf(&b, "\n- %s failed: %s", t.Name, text.Tail(t.Message, 400))
+		for _, tr := range res.Tests {
+			if !tr.Passed {
+				fmt.Fprintf(&b, "\n- %s failed: %s", tr.Name, text.Tail(tr.Message, 400))
 			}
 		}
 		fmt.Fprintf(&b, "\nOutput:\n%s", text.Tail(res.Output, 2000))

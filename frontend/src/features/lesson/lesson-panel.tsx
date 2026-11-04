@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { cn } from "cn";
-import { App, errorText, type LessonDetail, type QuizResult, type Source } from "@/lib/api";
+import { LessonService, errorText, type LessonDetail, type QuizResult, type Source } from "@/lib/api";
 import { plural } from "@/lib/format";
 import { Link, Markdown } from "@/components/markdown";
 import { References } from "@/components/references";
@@ -36,7 +36,7 @@ export function LessonPanel({ wsId, lessonId, moduleTitle, icon, lang, onOpenExe
   const [error, setError] = useState("");
 
   useEffect(() => {
-    App.Lesson(wsId, lessonId)
+    LessonService.Lesson(wsId, lessonId)
       .then((l) => {
         setLesson(l);
         setResults(Object.fromEntries(Object.entries(l.results ?? {}).map(([k, v]) => [Number(k), v!])));
@@ -47,7 +47,7 @@ export function LessonPanel({ wsId, lessonId, moduleTitle, icon, lang, onOpenExe
   async function answer(question: number, choice: number) {
     if (results[question]) return;
     try {
-      const r = await App.AnswerQuiz(wsId, lessonId, question, choice);
+      const r = await LessonService.AnswerQuiz(wsId, lessonId, question, choice);
       setResults((cur) => ({ ...cur, [question]: r }));
     } catch (e) {
       setError(errorText(e));

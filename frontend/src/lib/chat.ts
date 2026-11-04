@@ -12,7 +12,7 @@ export function upsertChat(items: ChatItem[], item: ChatItem): ChatItem[] {
 /**
  * The plan conversation after setup. The interview and the first plan, up to
  * the learner approving it, stay with the tutor but off screen. The approval
- * is the notice App.ApproveProposal posts, marked MarkPlanApproved.
+ * is the notice WorkspaceService.ApproveProposal posts, marked MarkPlanApproved.
  */
 export function afterSetup(items: ChatItem[]): ChatItem[] {
   const i = items.findIndex(isPlanApproval);

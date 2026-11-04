@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { App, type Curriculum, type Progress } from "@/lib/api";
+import { WorkspaceService, type Curriculum, type Progress } from "@/lib/api";
 import { TASK_MINUTES, languageLabel, plural } from "@/lib/format";
 import { objectivesOf } from "@/lib/workspace";
 import { Markdown } from "@/components/markdown";
@@ -121,7 +121,7 @@ export function ProposalView({ wsId, proposal, current, progress, mission }: Pro
             <div className="flex flex-col gap-2.5">
               <Textarea rows={3} autoFocus value={feedback} onChange={(e) => setFeedback(e.target.value)} placeholder="What should change?" />
               <div className="flex flex-wrap items-center gap-2">
-                <Button onClick={() => run(() => App.RejectProposal(wsId, feedback.trim()))} disabled={!feedback.trim() || pending}>
+                <Button onClick={() => run(() => WorkspaceService.RejectProposal(wsId, feedback.trim()))} disabled={!feedback.trim() || pending}>
                   {pending ? "Sending…" : "Send"}
                 </Button>
                 <Button variant="ghost" onClick={() => setEditing(false)} disabled={pending}>
@@ -131,7 +131,7 @@ export function ProposalView({ wsId, proposal, current, progress, mission }: Pro
             </div>
           ) : (
             <div className="flex flex-wrap items-center gap-2">
-              <Button onClick={() => run(() => App.ApproveProposal(wsId))} disabled={pending}>
+              <Button onClick={() => run(() => WorkspaceService.ApproveProposal(wsId))} disabled={pending}>
                 {pending ? "Approving…" : "Approve"}
               </Button>
               <Button variant="outline" onClick={() => setEditing(true)} disabled={pending}>

@@ -8,24 +8,37 @@ import (
 	"github.com/LukasKH/tutortop/internal/workspace"
 )
 
-func (a *App) Task(wsID, taskID string) (workspace.TaskDetail, error) {
-	w, err := a.store.Open(wsID)
+// TaskService serves the exercises: a task, the learner's code in it, and its
+// test runs.
+type TaskService struct {
+	store   *workspace.Store
+	runner  *runner.Runner
+	agents  *threadAgents // tells the plan's tutor about a first pass
+	writers *writers      // keep the next objectives written after a pass
+}
+
+func newTaskService(store *workspace.Store, sandbox *runner.Runner, agents *threadAgents, writers *writers) *TaskService {
+	return &TaskService{store: store, runner: sandbox, agents: agents, writers: writers}
+}
+
+func (s *TaskService) Task(wsID, taskID string) (workspace.TaskDetail, error) {
+	w, err := s.store.Open(wsID)
 	if err != nil {
 		return workspace.TaskDetail{}, err
 	}
 	return w.Task(taskID)
 }
 
-func (a *App) SaveWork(wsID, taskID string, files runner.Files) error {
-	w, err := a.store.Open(wsID)
+func (s *TaskService) SaveWork(wsID, taskID string, files runner.Files) error {
+	w, err := s.store.Open(wsID)
 	if err != nil {
 		return err
 	}
 	return w.SaveWork(taskID, files)
 }
 
-func (a *App) ResetWork(wsID, taskID string) error {
-	w, err := a.store.Open(wsID)
+func (s *TaskService) ResetWork(wsID, taskID string) error {
+	w, err := s.store.Open(wsID)
 	if err != nil {
 		return err
 	}
@@ -35,8 +48,8 @@ func (a *App) ResetWork(wsID, taskID string) error {
 // RunTests runs the visible tests, or all tests when submit is true.
 // A passing submission tells the planning tutor, and writers write what
 // comes next.
-func (a *App) RunTests(wsID, taskID string, files runner.Files, submit bool) (runner.Result, error) {
-	w, err := a.store.Open(wsID)
+func (s *TaskService) RunTests(wsID, taskID string, files runner.Files, submit bool) (runner.Result, error) {
+	w, err := s.store.Open(wsID)
 	if err != nil {
 		return runner.Result{}, err
 	}
@@ -47,7 +60,7 @@ func (a *App) RunTests(wsID, taskID string, files runner.Files, submit bool) (ru
 	if err != nil {
 		return runner.Result{}, err
 	}
-	res, err := a.runner.Run(context.Background(), job)
+	res, err := s.runner.Run(context.Background(), job)
 	if err != nil {
 		return res, err
 	}
@@ -67,8 +80,8 @@ func (a *App) RunTests(wsID, taskID string, files runner.Files, submit bool) (ru
 		post(w, workspace.ChatItem{Thread: taskID, Role: workspace.RoleNotice, Text: shown})
 		// Writers keep the next objectives ready, so the learner never waits;
 		// the planning tutor records what was learned.
-		a.keepReady(w, fmt.Sprintf("The learner just passed “%s”.", d.Title))
-		a.send(w, workspace.PlanThread, message{
+		s.writers.keepReady(w, fmt.Sprintf("The learner just passed “%s”.", d.Title))
+		s.agents.send(w, workspace.PlanThread, message{
 			Role:  workspace.RoleNotice,
 			Shown: shown,
 			Agent: fmt.Sprintf("[app] I passed task %s on submit (%d/%d tests). %s Record what I learned if there's evidence worth recording. Writers are preparing what comes next, so don't write lessons or tasks. Reply in one sentence at most.", taskID, p, t, hintSummary(w, taskID)),

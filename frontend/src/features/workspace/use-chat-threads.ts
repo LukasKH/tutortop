@@ -1,5 +1,5 @@
 import { useEffect, useEffectEvent, useState } from "react";
-import { App, AppEvents, useEvent, type ChatItem } from "@/lib/api";
+import { ChatService, AppEvents, useEvent, type ChatItem } from "@/lib/api";
 import { mergeChat, upsertChat } from "@/lib/chat";
 import { objectiveOfWriter } from "@/lib/workspace";
 
@@ -19,7 +19,7 @@ export function useChatThreads(id: string, thread: string, { ready, visible, onE
   useEffect(() => {
     if (!ready) return;
     let current = true;
-    App.Chat(id, thread)
+    ChatService.Chat(id, thread)
       .then((saved) => current && setThreads((t) => ({ ...t, [thread]: mergeChat(saved, t[thread] ?? []) })))
       .catch((e) => current && fail(e));
     return () => {

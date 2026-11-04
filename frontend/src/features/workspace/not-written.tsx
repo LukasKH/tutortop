@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { App, errorText, type SandboxCheck } from "@/lib/api";
+import { WorkspaceService, errorText, type SandboxCheck } from "@/lib/api";
 import type { Part } from "@/features/workspace/open-item";
 import { Spinner } from "@/components/ui/spinner";
 import { ErrorText } from "@/components/error-text";
@@ -45,7 +45,7 @@ export function NotWritten({ wsId, objective, part, moduleTitle, writing, check,
     setError("");
     setStarting(true);
     try {
-      await App.WriteObjectiveNow(wsId, objective.id);
+      await WorkspaceService.WriteObjectiveNow(wsId, objective.id);
     } catch (e) {
       setError(errorText(e));
     } finally {

@@ -205,9 +205,9 @@ func TestSubagentsByThread(t *testing.T) {
 func newHeldAgents(t *testing.T) (*threadAgents, *heldAgents, *workspace.Workspace) {
 	t.Helper()
 	fake := &heldAgents{turns: make(chan heldTurn, 8)}
-	a := newTestAppWith(t, fake)
+	a := newTestAppWith(t, fake, fakeLinks())
 	t.Cleanup(a.agents.endAll)
-	if err := a.SaveSettings(Settings{Provider: "claude"}); err != nil {
+	if err := a.Settings.SaveSettings(Settings{Provider: "claude"}); err != nil {
 		t.Fatal(err)
 	}
 	w, err := a.store.Create("Go", "claude")

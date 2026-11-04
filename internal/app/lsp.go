@@ -17,11 +17,31 @@ import (
 
 	"github.com/LukasKH/tutortop/internal/decode"
 	"github.com/LukasKH/tutortop/internal/runner"
+	"github.com/LukasKH/tutortop/internal/workspace"
+	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
-// Language servers give the editor completions, hover docs and errors. Each
-// open task gets one, running in the task's sandbox image. The app only
-// relays protocol messages: the frontend speaks LSP, we frame it over stdio.
+// EditorService serves the code editor: language servers give it completions,
+// hover docs and errors. Each open task gets one, running in the task's
+// sandbox image. The app only relays protocol messages: the frontend speaks
+// LSP, we frame it over stdio. It stops the servers as the app quits.
+type EditorService struct {
+	store   *workspace.Store
+	runner  *runner.Runner
+	servers *languageServers
+}
+
+var _ application.ServiceShutdown = (*EditorService)(nil)
+
+func newEditorService(store *workspace.Store, sandbox *runner.Runner, servers *languageServers) *EditorService {
+	return &EditorService{store: store, runner: sandbox, servers: servers}
+}
+
+// ServiceShutdown is called by Wails on exit and stops the language servers.
+func (s *EditorService) ServiceShutdown() error {
+	s.servers.stopAll()
+	return nil
+}
 
 // LanguageServerInfo tells the editor how to talk to a started server.
 type LanguageServerInfo struct {
@@ -33,8 +53,8 @@ type LanguageServerInfo struct {
 // StartLanguageServer starts a language server for a task with the learner's
 // current code and the visible tests. It returns an empty ID if the task's
 // language has none. The first start may build the sandbox image.
-func (a *App) StartLanguageServer(wsID, taskID string) (LanguageServerInfo, error) {
-	w, err := a.store.Open(wsID)
+func (s *EditorService) StartLanguageServer(wsID, taskID string) (LanguageServerInfo, error) {
+	w, err := s.store.Open(wsID)
 	if err != nil {
 		return LanguageServerInfo{}, err
 	}
@@ -51,20 +71,20 @@ func (a *App) StartLanguageServer(wsID, taskID string) (LanguageServerInfo, erro
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
-	srv, err := a.runner.StartLanguageServer(ctx, tc, files)
+	srv, err := s.runner.StartLanguageServer(ctx, tc, files)
 	if err != nil {
 		return LanguageServerInfo{}, err
 	}
 	ls := &languageServer{id: rand.Text(), key: taskKey{wsID, taskID}, srv: srv, started: time.Now()}
 
-	a.servers.add(ls)
-	go a.servers.relay(ls)
+	s.servers.add(ls)
+	go s.servers.relay(ls)
 	return LanguageServerInfo{ID: ls.id, RootURI: "file://" + srv.Root}, nil
 }
 
 // SendLanguageServer sends one JSON-RPC message from the editor to a server.
-func (a *App) SendLanguageServer(id, message string) error {
-	ls := a.servers.get(id)
+func (s *EditorService) SendLanguageServer(id, message string) error {
+	ls := s.servers.get(id)
 	if ls == nil {
 		return errors.New("the language server has stopped")
 	}
@@ -74,7 +94,7 @@ func (a *App) SendLanguageServer(id, message string) error {
 }
 
 // StopLanguageServer stops a server the editor no longer needs.
-func (a *App) StopLanguageServer(id string) { a.servers.stop(id) }
+func (s *EditorService) StopLanguageServer(id string) { s.servers.stop(id) }
 
 // languageServers are the running language servers, by id.
 type languageServers struct {
@@ -226,8 +246,8 @@ func writeMessage(w io.Writer, body []byte) error {
 
 // probeLanguageServer checks that a server answers the LSP initialize request,
 // so a broken language_server command is caught when the tutor sets it up.
-func (a *App) probeLanguageServer(ctx context.Context, tc runner.Toolchain, files runner.Files) error {
-	srv, err := a.runner.StartLanguageServer(ctx, tc, files)
+func probeLanguageServer(ctx context.Context, sandbox *runner.Runner, tc runner.Toolchain, files runner.Files) error {
+	srv, err := sandbox.StartLanguageServer(ctx, tc, files)
 	if err != nil {
 		return err
 	}

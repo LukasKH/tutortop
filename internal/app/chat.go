@@ -14,16 +14,37 @@ import (
 
 	"github.com/LukasKH/tutortop/internal/agent"
 	"github.com/LukasKH/tutortop/internal/workspace"
+	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
-// The chat: what the learner sends to a thread's agent, and how its replies
-// show up. send posts a message in the thread's chat and queues it for the
-// thread's agent (threadAgents, agents.go), whose transcript streams the
-// reply into the chat as it arrives.
+// ChatService serves the chats: what the learner sends to a thread's agent,
+// which answers in the thread's chat as chat:message events. It owns the
+// thread agents' lifetime: it ends them all as the app quits.
+//
+// threadAgents.send posts a message in the thread's chat and queues it for
+// the thread's agent (agents.go); a transcript (below) streams the reply into
+// the chat as it arrives.
+type ChatService struct {
+	store  *workspace.Store
+	agents *threadAgents
+}
+
+var _ application.ServiceShutdown = (*ChatService)(nil)
+
+func newChatService(store *workspace.Store, agents *threadAgents) *ChatService {
+	return &ChatService{store: store, agents: agents}
+}
+
+// ServiceShutdown is called by Wails on exit and ends every thread's agent,
+// writers included.
+func (s *ChatService) ServiceShutdown() error {
+	s.agents.endAll()
+	return nil
+}
 
 // Chat returns one thread's chat.
-func (a *App) Chat(wsID, thread string) ([]workspace.ChatItem, error) {
-	w, err := a.store.Open(wsID)
+func (s *ChatService) Chat(wsID, thread string) ([]workspace.ChatItem, error) {
+	w, err := s.store.Open(wsID)
 	if err != nil {
 		return nil, err
 	}
@@ -35,12 +56,12 @@ func (a *App) Chat(wsID, thread string) ([]workspace.ChatItem, error) {
 // [context] block about it. It returns once the message is queued; the
 // reply, or why the agent couldn't answer, arrives in the chat. An error
 // means the message wasn't sent at all.
-func (a *App) SendMessage(wsID, text, thread string) error {
+func (s *ChatService) SendMessage(wsID, text, thread string) error {
 	text = strings.TrimSpace(text)
 	if text == "" {
 		return nil
 	}
-	w, err := a.store.Open(wsID)
+	w, err := s.store.Open(wsID)
 	if err != nil {
 		return err
 	}
@@ -48,13 +69,13 @@ func (a *App) SendMessage(wsID, text, thread string) error {
 	if err != nil {
 		return err
 	}
-	a.send(w, t, message{Role: workspace.RoleUser, Shown: text, Agent: contextFor(w, t) + text})
+	s.agents.send(w, t, message{Role: workspace.RoleUser, Shown: text, Agent: contextFor(w, t) + text})
 	return nil
 }
 
 // AnswerQuestions sends the learner's answers to the thread that asked.
-func (a *App) AnswerQuestions(wsID string, answers map[string]string) error {
-	w, err := a.store.Open(wsID)
+func (s *ChatService) AnswerQuestions(wsID string, answers map[string]string) error {
+	w, err := s.store.Open(wsID)
 	if err != nil {
 		return err
 	}
@@ -76,13 +97,13 @@ func (a *App) AnswerQuestions(wsID string, answers map[string]string) error {
 	if err := w.SetQuestions(nil); err != nil {
 		return err
 	}
-	a.send(w, t, message{Role: workspace.RoleUser, Shown: b.String(), Agent: b.String()})
+	s.agents.send(w, t, message{Role: workspace.RoleUser, Shown: b.String(), Agent: b.String()})
 	return nil
 }
 
 // DismissQuestions drops the pending form without answering.
-func (a *App) DismissQuestions(wsID string) error {
-	w, err := a.store.Open(wsID)
+func (s *ChatService) DismissQuestions(wsID string) error {
+	w, err := s.store.Open(wsID)
 	if err != nil {
 		return err
 	}
@@ -91,11 +112,11 @@ func (a *App) DismissQuestions(wsID string) error {
 
 // RequestHint records the hint (it counts against mastery) and asks the
 // task's tutor for it.
-func (a *App) RequestHint(wsID, taskID string, level int) error {
+func (s *ChatService) RequestHint(wsID, taskID string, level int) error {
 	if level < 1 || level > 4 {
 		return errors.New("hint level must be 1-4")
 	}
-	w, err := a.store.Open(wsID)
+	w, err := s.store.Open(wsID)
 	if err != nil {
 		return err
 	}
@@ -103,33 +124,13 @@ func (a *App) RequestHint(wsID, taskID string, level int) error {
 	names := []string{"", "a nudge", "a pointer", "a snippet", "the solution walkthrough"}
 	msg := fmt.Sprintf("Hint level %d (%s), please.", level, names[level])
 	t := workspace.TaskThread(taskID)
-	a.send(w, t, message{Role: workspace.RoleUser, Shown: msg, Agent: contextFor(w, t) + msg})
+	s.agents.send(w, t, message{Role: workspace.RoleUser, Shown: msg, Agent: contextFor(w, t) + msg})
 	return nil
 }
 
 // StopAgent interrupts the current turn in a thread. Its agent posts a
 // notice once the cut-off reply is saved.
-func (a *App) StopAgent(wsID, thread string) { a.agents.stop(wsID, thread) }
-
-// message is one thing sent to the tutor. What the learner sees in the chat
-// (Shown) can differ from what the tutor receives (Agent): the app attaches
-// the open task as context, and its own instructions to the tutor are shown
-// as short notices.
-type message struct {
-	Role  workspace.ChatRole // workspace.RoleUser for the learner's words, RoleNotice for app events
-	Shown string
-	Agent string
-}
-
-// send posts a message in a thread's chat and queues it for that thread's
-// agent, without waiting for the agent to start. Once the message is in the
-// chat, whatever goes wrong with it is posted there too.
-func (a *App) send(w *workspace.Workspace, t workspace.Thread, m message) {
-	post(w, workspace.ChatItem{Thread: t.String(), Role: m.Role, Text: m.Shown})
-	if err := a.agents.queue(w, t, m.Agent); err != nil {
-		postFailure(w, t.String(), err.Error())
-	}
-}
+func (s *ChatService) StopAgent(wsID, thread string) { s.agents.stop(wsID, thread) }
 
 // post saves a chat item and shows it in the UI.
 func post(w *workspace.Workspace, item workspace.ChatItem) {

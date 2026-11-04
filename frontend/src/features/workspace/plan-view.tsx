@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { App, type WorkspaceSnapshot } from "@/lib/api";
+import { WorkspaceService, type WorkspaceSnapshot } from "@/lib/api";
 import { PencilIcon } from "lucide-react";
 import { Markdown } from "@/components/markdown";
 import { AutoTextarea } from "@/components/auto-textarea";
@@ -104,7 +104,7 @@ function MissionEditor({ wsId, mission: initial, onDone }: { wsId: string; missi
   const { pending: saving, error, run } = usePending();
   const save = () =>
     run(async () => {
-      await App.SaveMission(wsId, mission);
+      await WorkspaceService.SaveMission(wsId, mission);
       onDone();
     });
 
