@@ -22,20 +22,6 @@ import (
 // open task gets one, running in the task's sandbox image. The app only
 // relays protocol messages: the frontend speaks LSP, we frame it over stdio.
 
-// maxLanguageServers bounds how many run at once; starting another stops the
-// oldest. The UI shows one task at a time, so this only matters when a
-// reloaded window leaves its old server behind.
-const maxLanguageServers = 2
-
-type languageServer struct {
-	id      string
-	key     threadKey
-	srv     *runner.Server
-	started time.Time
-
-	writeMu sync.Mutex
-}
-
 // LanguageServerInfo tells the editor how to talk to a started server.
 type LanguageServerInfo struct {
 	ID string `json:"id"`
@@ -93,6 +79,44 @@ func (a *App) StartLanguageServer(wsID, taskID string) (LanguageServerInfo, erro
 	return LanguageServerInfo{ID: ls.id, RootURI: "file://" + srv.Root}, nil
 }
 
+// SendLanguageServer sends one JSON-RPC message from the editor to a server.
+func (a *App) SendLanguageServer(id, message string) error {
+	a.mu.Lock()
+	ls := a.servers[id]
+	a.mu.Unlock()
+	if ls == nil {
+		return errors.New("the language server has stopped")
+	}
+	ls.writeMu.Lock()
+	defer ls.writeMu.Unlock()
+	return writeMessage(ls.srv.Stdin, []byte(message))
+}
+
+// StopLanguageServer stops a server the editor no longer needs.
+func (a *App) StopLanguageServer(id string) {
+	a.mu.Lock()
+	ls := a.servers[id]
+	delete(a.servers, id)
+	a.mu.Unlock()
+	if ls != nil {
+		ls.srv.Close()
+	}
+}
+
+// maxLanguageServers bounds how many run at once; starting another stops the
+// oldest. The UI shows one task at a time, so this only matters when a
+// reloaded window leaves its old server behind.
+const maxLanguageServers = 2
+
+type languageServer struct {
+	id      string
+	key     threadKey
+	srv     *runner.Server
+	started time.Time
+
+	writeMu sync.Mutex
+}
+
 // oldestServer returns the longest-running server not already in skip.
 // Callers hold a.mu.
 func (a *App) oldestServer(skip []*languageServer) *languageServer {
@@ -120,30 +144,6 @@ func (a *App) relay(ls *languageServer) {
 	a.mu.Unlock()
 	ls.srv.Close()
 	emit(lspMessage, LSPEvent{ID: ls.id, Closed: true})
-}
-
-// SendLanguageServer sends one JSON-RPC message from the editor to a server.
-func (a *App) SendLanguageServer(id, message string) error {
-	a.mu.Lock()
-	ls := a.servers[id]
-	a.mu.Unlock()
-	if ls == nil {
-		return errors.New("the language server has stopped")
-	}
-	ls.writeMu.Lock()
-	defer ls.writeMu.Unlock()
-	return writeMessage(ls.srv.Stdin, []byte(message))
-}
-
-// StopLanguageServer stops a server the editor no longer needs.
-func (a *App) StopLanguageServer(id string) {
-	a.mu.Lock()
-	ls := a.servers[id]
-	delete(a.servers, id)
-	a.mu.Unlock()
-	if ls != nil {
-		ls.srv.Close()
-	}
 }
 
 // ---- LSP framing: a Content-Length header, a blank line, then JSON ----

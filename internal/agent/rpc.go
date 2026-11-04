@@ -26,21 +26,6 @@ type rpcConn struct {
 	onRequest func(method string, params json.RawMessage) (any, error)
 }
 
-type rpcMessage struct {
-	ID     *json.RawMessage `json:"id,omitempty"`
-	Method string           `json:"method,omitempty"`
-	Params json.RawMessage  `json:"params,omitempty"`
-	Result json.RawMessage  `json:"result,omitempty"`
-	Error  *rpcError        `json:"error,omitempty"`
-}
-
-type rpcError struct {
-	Code    int    `json:"code"`
-	Message string `json:"message"`
-}
-
-func (e *rpcError) Error() string { return fmt.Sprintf("%s (code %d)", e.Message, e.Code) }
-
 // newRPCConn reads messages from r and writes them with send. The handlers
 // are set before the read loop starts.
 func newRPCConn(r io.Reader, send func(v any) error,
@@ -50,6 +35,46 @@ func newRPCConn(r io.Reader, send func(v any) error,
 	c := &rpcConn{send: send, onNotify: onNotify, onRequest: onRequest, pending: map[int64]chan rpcMessage{}, closed: make(chan struct{})}
 	go c.readLoop(r)
 	return c
+}
+
+// Call sends a request and waits for its result, the process exiting, or ctx.
+func (c *rpcConn) Call[T any](ctx context.Context, method string, params any) (T, error) {
+	var zero T
+	id := c.nextID.Add(1)
+	ch := make(chan rpcMessage, 1)
+	c.mu.Lock()
+	c.pending[id] = ch
+	c.mu.Unlock()
+	defer func() {
+		c.mu.Lock()
+		delete(c.pending, id)
+		c.mu.Unlock()
+	}()
+	if err := c.send(map[string]any{"id": id, "method": method, "params": params}); err != nil {
+		return zero, err
+	}
+	select {
+	case m := <-ch:
+		if m.Error != nil {
+			return zero, fmt.Errorf("%s: %w", method, m.Error)
+		}
+		if m.Result == nil {
+			return zero, nil
+		}
+		return decode[T](m.Result)
+	case <-c.closed:
+		return zero, fmt.Errorf("%s: %w", method, ErrStopped)
+	case <-ctx.Done():
+		return zero, fmt.Errorf("%s: %w", method, ctx.Err())
+	}
+}
+
+func (c *rpcConn) Notify(method string, params any) error {
+	msg := map[string]any{"method": method}
+	if params != nil {
+		msg["params"] = params
+	}
+	return c.send(msg)
 }
 
 func (c *rpcConn) readLoop(r io.Reader) {
@@ -93,42 +118,17 @@ func (c *rpcConn) answer(m rpcMessage) {
 	_ = c.send(reply)
 }
 
-// Call sends a request and waits for its result, the process exiting, or ctx.
-func (c *rpcConn) Call[T any](ctx context.Context, method string, params any) (T, error) {
-	var zero T
-	id := c.nextID.Add(1)
-	ch := make(chan rpcMessage, 1)
-	c.mu.Lock()
-	c.pending[id] = ch
-	c.mu.Unlock()
-	defer func() {
-		c.mu.Lock()
-		delete(c.pending, id)
-		c.mu.Unlock()
-	}()
-	if err := c.send(map[string]any{"id": id, "method": method, "params": params}); err != nil {
-		return zero, err
-	}
-	select {
-	case m := <-ch:
-		if m.Error != nil {
-			return zero, fmt.Errorf("%s: %w", method, m.Error)
-		}
-		if m.Result == nil {
-			return zero, nil
-		}
-		return decode[T](m.Result)
-	case <-c.closed:
-		return zero, fmt.Errorf("%s: %w", method, ErrStopped)
-	case <-ctx.Done():
-		return zero, fmt.Errorf("%s: %w", method, ctx.Err())
-	}
+type rpcMessage struct {
+	ID     *json.RawMessage `json:"id,omitempty"`
+	Method string           `json:"method,omitempty"`
+	Params json.RawMessage  `json:"params,omitempty"`
+	Result json.RawMessage  `json:"result,omitempty"`
+	Error  *rpcError        `json:"error,omitempty"`
 }
 
-func (c *rpcConn) Notify(method string, params any) error {
-	msg := map[string]any{"method": method}
-	if params != nil {
-		msg["params"] = params
-	}
-	return c.send(msg)
+type rpcError struct {
+	Code    int    `json:"code"`
+	Message string `json:"message"`
 }
+
+func (e *rpcError) Error() string { return fmt.Sprintf("%s (code %d)", e.Message, e.Code) }

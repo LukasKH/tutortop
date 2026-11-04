@@ -14,8 +14,6 @@
 package workspace
 
 import (
-	"bufio"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"maps"
@@ -28,7 +26,6 @@ import (
 	"time"
 
 	"github.com/adrg/xdg"
-	"gopkg.in/yaml.v3"
 )
 
 type Store struct {
@@ -48,43 +45,6 @@ func NewStore(root string) *Store {
 func DefaultRoot() string {
 	home, _ := os.UserHomeDir()
 	return filepath.Join(home, "Tutortop")
-}
-
-type Meta struct {
-	Title string `json:"title"`
-	// Icon names the workspace's picture, one of Icons; "" until one is picked.
-	Icon string `json:"icon,omitempty"`
-	// Provider is the agent the saved sessions belong to: "claude" or "codex".
-	// The agent in use comes from the app settings.
-	Provider string `json:"provider"`
-	// Sessions maps a chat thread to the agent's session id, so each thread
-	// resumes its own conversation.
-	Sessions  map[string]string `json:"sessions,omitempty"`
-	CreatedAt time.Time         `json:"createdAt"`
-}
-
-// PlanThread is the planning conversation: interview, mission and
-// curriculum. Every task also gets its own thread, named by its task id.
-const PlanThread = "plan"
-
-// WriterThread is the background conversation that writes one objective's
-// lesson and exercise. The learner doesn't chat in it; it ends when it's done.
-func WriterThread(objectiveID string) string { return "write-" + objectiveID }
-
-// ObjectiveOfWriter returns the objective a writer thread writes for, if the
-// thread is a writer.
-func ObjectiveOfWriter(thread string) (string, bool) { return strings.CutPrefix(thread, "write-") }
-
-// IsWriterThread reports whether a thread is an objective's writer.
-func IsWriterThread(thread string) bool { _, ok := ObjectiveOfWriter(thread); return ok }
-
-type Summary struct {
-	ID       string   `json:"id"`
-	Title    string   `json:"title"`
-	Icon     string   `json:"icon"`
-	Provider string   `json:"provider"`
-	Progress Progress `json:"progress"`
-	Next     string   `json:"next"` // title of the first unsolved task, "" if none
 }
 
 func (s *Store) List() ([]Summary, error) {
@@ -107,19 +67,6 @@ func (s *Store) List() ([]Summary, error) {
 		out = append(out, Summary{ID: w.ID, Title: w.Meta.Title, Icon: w.Meta.Icon, Provider: w.Meta.Provider, Progress: w.Progress(), Next: w.nextTask()})
 	}
 	return out, nil
-}
-
-var nonSlug = regexp.MustCompile(`[^a-z0-9]+`)
-
-func slugify(s string) string {
-	s = strings.Trim(nonSlug.ReplaceAllString(strings.ToLower(s), "-"), "-")
-	if len(s) > 40 {
-		s = strings.TrimRight(s[:40], "-")
-	}
-	if s == "" {
-		s = "topic"
-	}
-	return s
 }
 
 // Create makes a new workspace. The caller checks the provider is known.
@@ -181,6 +128,56 @@ func (s *Store) workspace(id string) *Workspace {
 	mu, _ := s.locks.LoadOrStore(id, &sync.Mutex{})
 	return &Workspace{ID: id, Dir: filepath.Join(s.Root, id), PrivateDir: filepath.Join(s.PrivateRoot, id), mu: mu.(*sync.Mutex)}
 }
+
+var nonSlug = regexp.MustCompile(`[^a-z0-9]+`)
+
+func slugify(s string) string {
+	s = strings.Trim(nonSlug.ReplaceAllString(strings.ToLower(s), "-"), "-")
+	if len(s) > 40 {
+		s = strings.TrimRight(s[:40], "-")
+	}
+	if s == "" {
+		s = "topic"
+	}
+	return s
+}
+
+type Summary struct {
+	ID       string   `json:"id"`
+	Title    string   `json:"title"`
+	Icon     string   `json:"icon"`
+	Provider string   `json:"provider"`
+	Progress Progress `json:"progress"`
+	Next     string   `json:"next"` // title of the first unsolved task, "" if none
+}
+
+type Meta struct {
+	Title string `json:"title"`
+	// Icon names the workspace's picture, one of Icons; "" until one is picked.
+	Icon string `json:"icon,omitempty"`
+	// Provider is the agent the saved sessions belong to: "claude" or "codex".
+	// The agent in use comes from the app settings.
+	Provider string `json:"provider"`
+	// Sessions maps a chat thread to the agent's session id, so each thread
+	// resumes its own conversation.
+	Sessions  map[string]string `json:"sessions,omitempty"`
+	CreatedAt time.Time         `json:"createdAt"`
+}
+
+// PlanThread is the planning conversation: interview, mission and
+// curriculum. Every task also gets its own thread, named by its task id.
+const PlanThread = "plan"
+
+// WriterThread is the background conversation that writes one objective's
+// lesson and exercise. The learner doesn't chat in it; it ends when it's done.
+func WriterThread(objectiveID string) string { return "write-" + objectiveID }
+
+// ObjectiveOfWriter returns the objective a writer thread writes for, if the
+// thread is a writer.
+func ObjectiveOfWriter(thread string) (string, bool) { return strings.CutPrefix(thread, "write-") }
+
+// IsWriterThread reports whether a thread is an objective's writer.
+func IsWriterThread(thread string) bool { _, ok := ObjectiveOfWriter(thread); return ok }
 
 type Workspace struct {
 	ID         string
@@ -325,89 +322,6 @@ func (w *Workspace) DiscardProposal() error {
 	return removeIfExists(w.path(".tutortop", "proposal.yaml"))
 }
 
-func readJSON[T any](p string) (T, error) {
-	return readFile[T](p, json.Unmarshal)
-}
-
-func readYAML[T any](p string) (T, error) {
-	return readFile[T](p, yaml.Unmarshal)
-}
-
-func readFile[T any](p string, unmarshal func([]byte, any) error) (T, error) {
-	var v T
-	b, err := os.ReadFile(p)
-	if err == nil {
-		err = unmarshal(b, &v)
-	}
-	if err != nil {
-		return *new(T), err // not a half-decoded value
-	}
-	return v, nil
-}
-
-// readEach reads <dir>/<entry>/<file> for every entry of dir, in name order,
-// skipping entries without a readable file.
-func readEach[T any](dir, file string) ([]T, error) {
-	entries, err := os.ReadDir(dir)
-	if errors.Is(err, os.ErrNotExist) {
-		return []T{}, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	out := []T{}
-	for _, e := range entries {
-		if v, err := readYAML[T](filepath.Join(dir, e.Name(), file)); err == nil {
-			out = append(out, v)
-		}
-	}
-	return out, nil
-}
-
-func writeJSON(p string, v any) error {
-	b, err := json.MarshalIndent(v, "", "  ")
-	if err != nil {
-		return err
-	}
-	return WriteFileAtomic(p, b)
-}
-
-func removeIfExists(p string) error {
-	if err := os.Remove(p); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return err
-	}
-	return nil
-}
-
-func writeYAML(p string, v any) error {
-	b, err := yaml.Marshal(v)
-	if err != nil {
-		return err
-	}
-	return WriteFileAtomic(p, b)
-}
-
-// WriteFileAtomic writes via a temporary file and a rename, so a crash never
-// leaves a half-written or empty file behind.
-func WriteFileAtomic(p string, data []byte) error {
-	f, err := os.CreateTemp(filepath.Dir(p), "."+filepath.Base(p)+".tmp-*")
-	if err != nil {
-		return err
-	}
-	defer os.Remove(f.Name()) // no-op after a successful rename
-	if _, err := f.Write(data); err != nil {
-		f.Close()
-		return err
-	}
-	if err := f.Close(); err != nil {
-		return err
-	}
-	if err := os.Chmod(f.Name(), 0o644); err != nil {
-		return err
-	}
-	return os.Rename(f.Name(), p)
-}
-
 // ---- questions ----
 
 type Question struct {
@@ -464,7 +378,6 @@ func (w *Workspace) commit(msg string) {
 
 // ---- chat transcript ----
 
-// ChatItem is one entry in the conversation shown in the UI.
 // Chat item roles.
 const (
 	RoleUser      = "user"      // the learner's words
@@ -473,6 +386,7 @@ const (
 	RoleNotice    = "notice"    // an app event, e.g. "Stopped" or "You passed …"
 )
 
+// ChatItem is one entry in the conversation shown in the UI.
 type ChatItem struct {
 	ID     string    `json:"id"`
 	Thread string    `json:"thread"`
@@ -505,39 +419,4 @@ func (w *Workspace) Chat(thread string) ([]ChatItem, error) {
 		return nil, fmt.Errorf("invalid chat thread %q", thread)
 	}
 	return readJSONL[ChatItem](w.path(".tutortop", "chat", thread+".jsonl"))
-}
-
-func appendJSONL(p string, v any) error {
-	f, err := os.OpenFile(p, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-	b, err := json.Marshal(v)
-	if err != nil {
-		return err
-	}
-	_, err = f.Write(append(b, '\n'))
-	return err
-}
-
-func readJSONL[T any](p string) ([]T, error) {
-	f, err := os.Open(p)
-	if errors.Is(err, os.ErrNotExist) {
-		return []T{}, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-	out := []T{}
-	sc := bufio.NewScanner(f)
-	sc.Buffer(make([]byte, 1024*1024), 16*1024*1024)
-	for sc.Scan() {
-		var v T
-		if json.Unmarshal(sc.Bytes(), &v) == nil {
-			out = append(out, v)
-		}
-	}
-	return out, sc.Err()
 }

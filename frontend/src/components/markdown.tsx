@@ -6,99 +6,6 @@ import { Browser } from "@wailsio/runtime";
 import { Diagram } from "@/components/diagram";
 import { monaco } from "@/lib/monaco";
 
-// Links open in the system browser; navigating the app's webview away would
-// lose the learner's session.
-export function Link({ href, children }: { href?: string; children?: ReactNode }) {
-  return (
-    <a
-      href={href}
-      onClick={(e) => {
-        e.preventDefault();
-        if (href && /^https?:/i.test(href)) Browser.OpenURL(href);
-      }}
-    >
-      {children}
-    </a>
-  );
-}
-
-// Wide tables scroll inside their own box instead of stretching the pane.
-function Table({ children }: { children?: ReactNode }) {
-  return (
-    <div className="table-wrap">
-      <table>{children}</table>
-    </div>
-  );
-}
-
-// Markdown fence names → Monaco language ids.
-const LANGS: Record<string, string> = {
-  js: "javascript",
-  ts: "typescript",
-  py: "python",
-  sh: "shell",
-  bash: "shell",
-  zsh: "shell",
-  yml: "yaml",
-  rs: "rust",
-  "c++": "cpp",
-  golang: "go",
-};
-const known = new Set(monaco.languages.getLanguages().map((l) => l.id));
-const monacoId = (lang?: string) => {
-  const id = lang && (LANGS[lang.toLowerCase()] ?? lang.toLowerCase());
-  return id && known.has(id) ? id : undefined;
-};
-
-/** Code coloured by Monaco's tokenizer with the editor's theme; "" until ready or when there's no language. */
-function useColorized(code: string, id: string | undefined): string {
-  const [html, setHtml] = useState("");
-  useEffect(() => {
-    setHtml("");
-    if (!id) return;
-    let live = true;
-    // colorize escapes the source; the result is only spans with token classes.
-    monaco.editor.colorize(code, id, { tabSize: 4 }).then((h) => live && setHtml(h));
-    return () => {
-      live = false;
-    };
-  }, [code, id]);
-  return html;
-}
-
-function CodeBlock({ code, lang }: { code: string; lang?: string }) {
-  const html = useColorized(code, monacoId(lang));
-  return <pre>{html ? <code dangerouslySetInnerHTML={{ __html: html }} /> : <code>{code}</code>}</pre>;
-}
-
-/**
- * A ```diff block: what changes between a before and an after. Added lines
- * are green, removed ones red, the context grey, so the change stands out.
- */
-function DiffBlock({ code }: { code: string }) {
-  return (
-    <pre className="diff">
-      <code>
-        {code.split("\n").map((line, i) => (
-          <span key={i} className={line.startsWith("+") ? "diff-add" : line.startsWith("-") ? "diff-del" : "diff-ctx"}>
-            {line || " "}
-          </span>
-        ))}
-      </code>
-    </pre>
-  );
-}
-
-// Inline code is coloured only when it looks like code (a call, a literal,
-// an operator), so phrases like `new note: empty title` stay plain.
-const CODE_LIKE = /[()[\]{}"'`=<>+*/!&|]|\d/;
-
-function InlineCode({ code, lang }: { code: string; lang?: string }) {
-  const html = useColorized(code, CODE_LIKE.test(code) ? monacoId(lang) : undefined);
-  // One line of code: drop the line break colorize ends with.
-  return html ? <code dangerouslySetInnerHTML={{ __html: html.replace(/(<br\s*\/?>)+$/, "") }} /> : <code>{code}</code>;
-}
-
 /**
  * Markdown as the app shows it. `lang` is the language of the surrounding
  * exercise or lesson: code without a language of its own is coloured as that.
@@ -132,6 +39,100 @@ export function Markdown({ text, className, foldExamples, lang }: { text: string
     </div>
   );
 }
+
+// Links open in the system browser; navigating the app's webview away would
+// lose the learner's session.
+export function Link({ href, children }: { href?: string; children?: ReactNode }) {
+  return (
+    <a
+      href={href}
+      onClick={(e) => {
+        e.preventDefault();
+        if (href && /^https?:/i.test(href)) Browser.OpenURL(href);
+      }}
+    >
+      {children}
+    </a>
+  );
+}
+
+// Wide tables scroll inside their own box instead of stretching the pane.
+function Table({ children }: { children?: ReactNode }) {
+  return (
+    <div className="table-wrap">
+      <table>{children}</table>
+    </div>
+  );
+}
+
+/**
+ * A ```diff block: what changes between a before and an after. Added lines
+ * are green, removed ones red, the context grey, so the change stands out.
+ */
+function DiffBlock({ code }: { code: string }) {
+  return (
+    <pre className="diff">
+      <code>
+        {code.split("\n").map((line, i) => (
+          <span key={i} className={line.startsWith("+") ? "diff-add" : line.startsWith("-") ? "diff-del" : "diff-ctx"}>
+            {line || " "}
+          </span>
+        ))}
+      </code>
+    </pre>
+  );
+}
+
+function CodeBlock({ code, lang }: { code: string; lang?: string }) {
+  const html = useColorized(code, monacoId(lang));
+  return <pre>{html ? <code dangerouslySetInnerHTML={{ __html: html }} /> : <code>{code}</code>}</pre>;
+}
+
+function InlineCode({ code, lang }: { code: string; lang?: string }) {
+  const html = useColorized(code, CODE_LIKE.test(code) ? monacoId(lang) : undefined);
+  // One line of code: drop the line break colorize ends with.
+  return html ? <code dangerouslySetInnerHTML={{ __html: html.replace(/(<br\s*\/?>)+$/, "") }} /> : <code>{code}</code>;
+}
+
+// Inline code is coloured only when it looks like code (a call, a literal,
+// an operator), so phrases like `new note: empty title` stay plain.
+const CODE_LIKE = /[()[\]{}"'`=<>+*/!&|]|\d/;
+
+/** Code coloured by Monaco's tokenizer with the editor's theme; "" until ready or when there's no language. */
+function useColorized(code: string, id: string | undefined): string {
+  const [html, setHtml] = useState("");
+  useEffect(() => {
+    setHtml("");
+    if (!id) return;
+    let live = true;
+    // colorize escapes the source; the result is only spans with token classes.
+    monaco.editor.colorize(code, id, { tabSize: 4 }).then((h) => live && setHtml(h));
+    return () => {
+      live = false;
+    };
+  }, [code, id]);
+  return html;
+}
+
+const monacoId = (lang?: string) => {
+  const id = lang && (LANGS[lang.toLowerCase()] ?? lang.toLowerCase());
+  return id && known.has(id) ? id : undefined;
+};
+
+// Markdown fence names → Monaco language ids.
+const LANGS: Record<string, string> = {
+  js: "javascript",
+  ts: "typescript",
+  py: "python",
+  sh: "shell",
+  bash: "shell",
+  zsh: "shell",
+  yml: "yaml",
+  rs: "rust",
+  "c++": "cpp",
+  golang: "go",
+};
+const known = new Set(monaco.languages.getLanguages().map((l) => l.id));
 
 /**
  * Lays out a task statement. Each "Example N" gets its input and output in

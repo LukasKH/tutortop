@@ -44,54 +44,6 @@ func (w *Workspace) Attempts() ([]Attempt, error) {
 // passed every test, the only thing that counts as progress.
 func (a Attempt) passedTask() bool { return a.Kind == KindSubmit && a.Status == runner.StatusPassed }
 
-// history is what the attempt log says about each task and lesson.
-type history struct {
-	passed map[string]bool               // task id -> passed
-	hints  map[string]HintUse            // task id -> hints asked for
-	quiz   map[string]map[int]QuizResult // lesson id -> first answer per question
-}
-
-// HintUse is how many hints the learner asked for on a task, and the deepest.
-type HintUse struct{ Count, Highest int }
-
-func (w *Workspace) history() history {
-	h := history{passed: map[string]bool{}, hints: map[string]HintUse{}, quiz: map[string]map[int]QuizResult{}}
-	attempts, _ := w.Attempts()
-	for _, a := range attempts {
-		switch {
-		case a.passedTask():
-			h.passed[a.TaskID] = true
-		case a.Kind == KindHint:
-			u := h.hints[a.TaskID]
-			h.hints[a.TaskID] = HintUse{Count: u.Count + 1, Highest: max(u.Highest, a.HintLevel)}
-		case a.Kind == KindQuiz:
-			if h.quiz[a.LessonID] == nil {
-				h.quiz[a.LessonID] = map[int]QuizResult{}
-			}
-			if _, seen := h.quiz[a.LessonID][a.Question]; !seen {
-				h.quiz[a.LessonID][a.Question] = QuizResult{Choice: a.Choice, Correct: a.Passed == 1}
-			}
-		}
-	}
-	return h
-}
-
-func (w *Workspace) TaskPassed(id string) bool { return w.history().passed[id] }
-
-// Hints reports the hints the learner asked for on a task.
-func (w *Workspace) Hints(id string) HintUse { return w.history().hints[id] }
-
-// nextTask is the title of the first task the learner hasn't passed.
-func (w *Workspace) nextTask() string {
-	tasks, _ := w.TaskStatuses()
-	for _, t := range tasks {
-		if !t.Passed {
-			return t.Title
-		}
-	}
-	return ""
-}
-
 // TaskStatus is a task plus whether the learner has passed it, and the
 // deepest hint they've asked for (0 for none).
 type TaskStatus struct {
@@ -204,4 +156,52 @@ func (w *Workspace) NeedsWriting(ahead int) []Objective {
 		}
 	}
 	return out
+}
+
+func (w *Workspace) TaskPassed(id string) bool { return w.history().passed[id] }
+
+// HintUse is how many hints the learner asked for on a task, and the deepest.
+type HintUse struct{ Count, Highest int }
+
+// Hints reports the hints the learner asked for on a task.
+func (w *Workspace) Hints(id string) HintUse { return w.history().hints[id] }
+
+// history is what the attempt log says about each task and lesson.
+type history struct {
+	passed map[string]bool               // task id -> passed
+	hints  map[string]HintUse            // task id -> hints asked for
+	quiz   map[string]map[int]QuizResult // lesson id -> first answer per question
+}
+
+func (w *Workspace) history() history {
+	h := history{passed: map[string]bool{}, hints: map[string]HintUse{}, quiz: map[string]map[int]QuizResult{}}
+	attempts, _ := w.Attempts()
+	for _, a := range attempts {
+		switch {
+		case a.passedTask():
+			h.passed[a.TaskID] = true
+		case a.Kind == KindHint:
+			u := h.hints[a.TaskID]
+			h.hints[a.TaskID] = HintUse{Count: u.Count + 1, Highest: max(u.Highest, a.HintLevel)}
+		case a.Kind == KindQuiz:
+			if h.quiz[a.LessonID] == nil {
+				h.quiz[a.LessonID] = map[int]QuizResult{}
+			}
+			if _, seen := h.quiz[a.LessonID][a.Question]; !seen {
+				h.quiz[a.LessonID][a.Question] = QuizResult{Choice: a.Choice, Correct: a.Passed == 1}
+			}
+		}
+	}
+	return h
+}
+
+// nextTask is the title of the first task the learner hasn't passed.
+func (w *Workspace) nextTask() string {
+	tasks, _ := w.TaskStatuses()
+	for _, t := range tasks {
+		if !t.Passed {
+			return t.Title
+		}
+	}
+	return ""
 }

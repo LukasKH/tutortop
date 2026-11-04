@@ -50,13 +50,6 @@ type claudeControlResponse struct {
 	Error     string `json:"error"`
 }
 
-// Tools the tutor may use without asking. Everything else is denied: the tutor
-// works through the tutortop MCP tools, not the shell.
-var claudeAllowed = map[string]bool{
-	"Read": true, "Write": true, "Edit": true, "MultiEdit": true, "Glob": true, "Grep": true,
-	"WebSearch": true, "WebFetch": true, "TodoWrite": true,
-}
-
 func startClaude(ctx context.Context, opts Options, onEvent func(Event)) (Session, error) {
 	mcpConfig, _ := json.Marshal(map[string]any{
 		"mcpServers": map[string]any{opts.MCPName: map[string]any{"type": "http", "url": opts.MCPURL}},
@@ -116,8 +109,6 @@ func startClaude(ctx context.Context, opts Options, onEvent func(Event)) (Sessio
 	return s, nil
 }
 
-func (s *claudeSession) ID() string { return s.id }
-
 // claudeSessionExists checks Claude Code's transcript store, so a deleted or
 // foreign session id starts a fresh session instead of failing. The folder
 // naming follows the CLI, as mirrored in the official Python SDK
@@ -167,31 +158,7 @@ func claudeProjectName(path string) string {
 	}, path)
 }
 
-// request sends a control request and waits for Claude Code's reply.
-func (s *claudeSession) request(ctx context.Context, req map[string]any) error {
-	id := fmt.Sprintf("req_%d", s.reqID.Add(1))
-	reply := make(chan claudeControlResponse, 1)
-	s.mu.Lock()
-	s.pending[id] = reply
-	s.mu.Unlock()
-	defer func() {
-		s.mu.Lock()
-		delete(s.pending, id)
-		s.mu.Unlock()
-	}()
-
-	if err := s.send(map[string]any{"type": "control_request", "request_id": id, "request": req}); err != nil {
-		return err
-	}
-	r, err := s.await(ctx, reply)
-	if err != nil {
-		return err
-	}
-	if r.Subtype == "error" {
-		return errors.New(cmp.Or(r.Error, "control request failed"))
-	}
-	return nil
-}
+func (s *claudeSession) ID() string { return s.id }
 
 func (s *claudeSession) Prompt(ctx context.Context, text string) error {
 	done := make(chan claudeResult, 1)
@@ -227,6 +194,32 @@ func (s *claudeSession) Cancel() {
 		defer cancel()
 		_ = s.request(ctx, map[string]any{"subtype": "interrupt"})
 	}()
+}
+
+// request sends a control request and waits for Claude Code's reply.
+func (s *claudeSession) request(ctx context.Context, req map[string]any) error {
+	id := fmt.Sprintf("req_%d", s.reqID.Add(1))
+	reply := make(chan claudeControlResponse, 1)
+	s.mu.Lock()
+	s.pending[id] = reply
+	s.mu.Unlock()
+	defer func() {
+		s.mu.Lock()
+		delete(s.pending, id)
+		s.mu.Unlock()
+	}()
+
+	if err := s.send(map[string]any{"type": "control_request", "request_id": id, "request": req}); err != nil {
+		return err
+	}
+	r, err := s.await(ctx, reply)
+	if err != nil {
+		return err
+	}
+	if r.Subtype == "error" {
+		return errors.New(cmp.Or(r.Error, "control request failed"))
+	}
+	return nil
 }
 
 type claudeLine struct {
@@ -384,6 +377,13 @@ func (s *claudeSession) canUseTool(name string, input json.RawMessage) error {
 	}
 	t := claudeTool(name, input)
 	return allowTool(s.cwd, t.Kind, t.Paths)
+}
+
+// Tools the tutor may use without asking. Everything else is denied: the tutor
+// works through the tutortop MCP tools, not the shell.
+var claudeAllowed = map[string]bool{
+	"Read": true, "Write": true, "Edit": true, "MultiEdit": true, "Glob": true, "Grep": true,
+	"WebSearch": true, "WebFetch": true, "TodoWrite": true,
 }
 
 // claudeTool describes a call to one of Claude Code's tools.

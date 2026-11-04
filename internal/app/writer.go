@@ -12,6 +12,16 @@ import (
 // learner. A writer isn't shown as a chat; the UI shows its objective as
 // being written while it's busy.
 
+// Gate tells the UI a new task, or a new language's sandbox (Kind
+// "toolchain"), is being checked.
+type Gate struct {
+	Kind      string `json:"kind,omitempty"`
+	Objective string `json:"objective,omitempty"` // for a task: whose writer is checking it
+	Title     string `json:"title"`
+	Running   bool   `json:"running"`
+	Passed    bool   `json:"passed"`
+}
+
 // readyAhead is how many unpassed objectives, in plan order, keepReady keeps
 // written, so the learner never waits for the next one.
 const readyAhead = 2

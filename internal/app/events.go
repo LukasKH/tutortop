@@ -5,44 +5,6 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
-// event is the name of an event the backend pushes to the frontend. Its type
-// says what data the event carries, so emit with the wrong data doesn't compile.
-type event[Data any] string
-
-const (
-	chatMessage        event[ChatEvent]      = "chat:message"
-	threadBusy         event[BusyEvent]      = "thread:busy"
-	gateStatus         event[GateEvent]      = "gate:status"
-	taskPublished      event[TaskEvent]      = "task:published"
-	lessonPublished    event[LessonEvent]    = "lesson:published"
-	questionsAsked     event[QuestionsEvent] = "questions:asked"
-	lspMessage         event[LSPEvent]       = "lsp:message"
-	workspaceChanged   event[WorkspaceEvent] = "workspace:changed" // the frontend reloads the workspace
-	curriculumProposed event[WorkspaceEvent] = "curriculum:proposed"
-)
-
-// Each event is registered with its data type, so the generated bindings type
-// it in TypeScript and Wails rejects an emit with the wrong type.
-func init() {
-	application.RegisterEvent[ChatEvent](string(chatMessage))
-	application.RegisterEvent[BusyEvent](string(threadBusy))
-	application.RegisterEvent[GateEvent](string(gateStatus))
-	application.RegisterEvent[TaskEvent](string(taskPublished))
-	application.RegisterEvent[LessonEvent](string(lessonPublished))
-	application.RegisterEvent[QuestionsEvent](string(questionsAsked))
-	application.RegisterEvent[LSPEvent](string(lspMessage))
-	application.RegisterEvent[WorkspaceEvent](string(workspaceChanged))
-	application.RegisterEvent[WorkspaceEvent](string(curriculumProposed))
-}
-
-// emit sends an event to the frontend. Tests run without a Wails app, and
-// there it does nothing.
-func emit[Data any](name event[Data], data Data) {
-	if wails := application.Get(); wails != nil {
-		wails.Event.Emit(string(name), data)
-	}
-}
-
 type WorkspaceEvent struct {
 	Workspace string `json:"workspace"`
 }
@@ -90,4 +52,42 @@ type LSPEvent struct {
 	ID      string `json:"id"`
 	Message string `json:"message"`
 	Closed  bool   `json:"closed"`
+}
+
+// event is the name of an event the backend pushes to the frontend. Its type
+// says what data the event carries, so emit with the wrong data doesn't compile.
+type event[Data any] string
+
+const (
+	chatMessage        event[ChatEvent]      = "chat:message"
+	threadBusy         event[BusyEvent]      = "thread:busy"
+	gateStatus         event[GateEvent]      = "gate:status"
+	taskPublished      event[TaskEvent]      = "task:published"
+	lessonPublished    event[LessonEvent]    = "lesson:published"
+	questionsAsked     event[QuestionsEvent] = "questions:asked"
+	lspMessage         event[LSPEvent]       = "lsp:message"
+	workspaceChanged   event[WorkspaceEvent] = "workspace:changed" // the frontend reloads the workspace
+	curriculumProposed event[WorkspaceEvent] = "curriculum:proposed"
+)
+
+// Each event is registered with its data type, so the generated bindings type
+// it in TypeScript and Wails rejects an emit with the wrong type.
+func init() {
+	application.RegisterEvent[ChatEvent](string(chatMessage))
+	application.RegisterEvent[BusyEvent](string(threadBusy))
+	application.RegisterEvent[GateEvent](string(gateStatus))
+	application.RegisterEvent[TaskEvent](string(taskPublished))
+	application.RegisterEvent[LessonEvent](string(lessonPublished))
+	application.RegisterEvent[QuestionsEvent](string(questionsAsked))
+	application.RegisterEvent[LSPEvent](string(lspMessage))
+	application.RegisterEvent[WorkspaceEvent](string(workspaceChanged))
+	application.RegisterEvent[WorkspaceEvent](string(curriculumProposed))
+}
+
+// emit sends an event to the frontend. Tests run without a Wails app, and
+// there it does nothing.
+func emit[Data any](name event[Data], data Data) {
+	if wails := application.Get(); wails != nil {
+		wails.Event.Emit(string(name), data)
+	}
 }

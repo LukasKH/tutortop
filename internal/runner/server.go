@@ -27,17 +27,6 @@ type Server struct {
 	closeOnce sync.Once
 }
 
-// Close stops the server and removes its container or temp directory.
-func (s *Server) Close() {
-	s.closeOnce.Do(func() {
-		_ = s.Stdin.Close()
-		if s.cmd.Process != nil {
-			_ = s.cmd.Process.Kill()
-		}
-		s.cleanup()
-	})
-}
-
 // StartLanguageServer runs the toolchain's language server with a snapshot of
 // the task's files. Like checks, it runs without network and with capped
 // resources. Edits reach it through the protocol, not the file system.
@@ -91,6 +80,17 @@ func (r *Runner) StartLanguageServer(ctx context.Context, tc Toolchain, files Fi
 		return nil, errors.New("copying files to the language server: " + string(bytes.TrimSpace(out)))
 	}
 	return startServer(exec.Command(r.Engine, "start", "-a", "-i", name), "/work", remove)
+}
+
+// Close stops the server and removes its container or temp directory.
+func (s *Server) Close() {
+	s.closeOnce.Do(func() {
+		_ = s.Stdin.Close()
+		if s.cmd.Process != nil {
+			_ = s.cmd.Process.Kill()
+		}
+		s.cleanup()
+	})
 }
 
 func startServer(cmd *exec.Cmd, root string, cleanup func()) (*Server, error) {

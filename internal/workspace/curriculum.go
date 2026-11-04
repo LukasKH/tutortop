@@ -29,6 +29,23 @@ type Module struct {
 	Objectives []Objective `yaml:"objectives" json:"objectives"`
 }
 
+type Source struct {
+	Title string `json:"title" yaml:"title"`
+	URL   string `json:"url" yaml:"url"`
+}
+
+// check reports what's wrong with a source, or "".
+func (s Source) check() string {
+	if strings.TrimSpace(s.Title) == "" {
+		return "needs a title"
+	}
+	u, err := url.Parse(s.URL)
+	if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" {
+		return "needs a full http(s) url"
+	}
+	return ""
+}
+
 type Objective struct {
 	ID string `yaml:"id" json:"id" jsonschema:"dotted id, e.g. go.errors.wrap"`
 	// Name is the objective in the curriculum menu; Title is the full goal.
@@ -140,18 +157,6 @@ func (c *Curriculum) URLs() []string {
 		}
 	}
 	return out
-}
-
-// check reports what's wrong with a source, or "".
-func (s Source) check() string {
-	if strings.TrimSpace(s.Title) == "" {
-		return "needs a title"
-	}
-	u, err := url.Parse(s.URL)
-	if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" {
-		return "needs a full http(s) url"
-	}
-	return ""
 }
 
 // Objective looks up an objective and its effective language.

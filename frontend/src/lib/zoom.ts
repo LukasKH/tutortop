@@ -1,4 +1,5 @@
 import { Window } from "@wailsio/runtime";
+import { clamp } from "@/lib/math";
 
 // The desktop app's size. The webview doesn't zoom with Ctrl +/- by itself,
 // so the app does, with the window's native zoom (like a browser's, so the
@@ -26,48 +27,6 @@ const KEY = "zoom.factor";
 let factor = Number(localStorage.getItem(KEY)) || 1;
 /** The zoom the window has now. */
 let applied = 1;
-
-const clamp = (n: number, lo: number, hi: number) => Math.min(Math.max(n, lo), hi);
-
-/** The size for this window: 100% up to BASE_WIDTH, then growing with it. */
-function automatic(): number {
-  // innerWidth is in zoomed pixels; times the zoom it's the real width.
-  const width = window.innerWidth * applied;
-  return Math.round(clamp(width / BASE_WIDTH, 1, 2) * 20) / 20;
-}
-
-function apply(announce: boolean) {
-  const auto = automatic();
-  const level = Math.round(clamp(auto * factor, MIN, MAX) * 100) / 100;
-  // Pressing past a limit doesn't build up.
-  factor = level / auto;
-  localStorage.setItem(KEY, String(factor));
-  if (announce) show(level, Math.abs(factor - 1) < 0.01);
-  if (Math.abs(level - applied) < 0.005) return;
-  applied = level;
-  Window.SetZoom(level).catch(() => {});
-}
-
-function zoom(by: number | null) {
-  factor = by === null ? 1 : factor * by;
-  apply(true);
-}
-
-let toast: HTMLDivElement | null = null;
-let hide = 0;
-function show(level: number, auto: boolean) {
-  if (!toast) {
-    toast = document.createElement("div");
-    toast.className =
-      "pointer-events-none fixed top-4 left-1/2 z-100 -translate-x-1/2 rounded-lg border border-input bg-muted px-3 py-1.5 text-sm font-medium text-foreground tabular-nums opacity-0 transition-opacity duration-120 data-shown:opacity-100";
-    toast.setAttribute("role", "status");
-    document.body.append(toast);
-  }
-  toast.textContent = `${Math.round(level * 100)}%${auto ? " · automatic" : ""}`;
-  toast.dataset.shown = "";
-  clearTimeout(hide);
-  hide = window.setTimeout(() => toast && delete toast.dataset.shown, 1200);
-}
 
 export async function startZoom() {
   if (!isDesktop) return;
@@ -106,4 +65,44 @@ export async function startZoom() {
     },
     { passive: false, capture: true },
   );
+}
+
+function zoom(by: number | null) {
+  factor = by === null ? 1 : factor * by;
+  apply(true);
+}
+
+function apply(announce: boolean) {
+  const auto = automatic();
+  const level = Math.round(clamp(auto * factor, MIN, MAX) * 100) / 100;
+  // Pressing past a limit doesn't build up.
+  factor = level / auto;
+  localStorage.setItem(KEY, String(factor));
+  if (announce) show(level, Math.abs(factor - 1) < 0.01);
+  if (Math.abs(level - applied) < 0.005) return;
+  applied = level;
+  Window.SetZoom(level).catch(() => {});
+}
+
+/** The size for this window: 100% up to BASE_WIDTH, then growing with it. */
+function automatic(): number {
+  // innerWidth is in zoomed pixels; times the zoom it's the real width.
+  const width = window.innerWidth * applied;
+  return Math.round(clamp(width / BASE_WIDTH, 1, 2) * 20) / 20;
+}
+
+let toast: HTMLDivElement | null = null;
+let hide = 0;
+function show(level: number, auto: boolean) {
+  if (!toast) {
+    toast = document.createElement("div");
+    toast.className =
+      "pointer-events-none fixed top-4 left-1/2 z-100 -translate-x-1/2 rounded-lg border border-input bg-muted px-3 py-1.5 text-sm font-medium text-foreground tabular-nums opacity-0 transition-opacity duration-120 data-shown:opacity-100";
+    toast.setAttribute("role", "status");
+    document.body.append(toast);
+  }
+  toast.textContent = `${Math.round(level * 100)}%${auto ? " · automatic" : ""}`;
+  toast.dataset.shown = "";
+  clearTimeout(hide);
+  hide = window.setTimeout(() => toast && delete toast.dataset.shown, 1200);
 }

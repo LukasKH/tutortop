@@ -3,6 +3,7 @@ import Editor from "@monaco-editor/react";
 import { cn } from "cn";
 import type { TaskInfo } from "@/lib/api";
 import { plural } from "@/lib/format";
+import { clamp } from "@/lib/math";
 import { editorOptions, monaco } from "@/lib/monaco";
 import { modelPath, type LanguageStatus } from "@/features/task/lsp";
 import { Results } from "@/features/task/results";
@@ -12,7 +13,7 @@ import { Markdown } from "@/components/markdown";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Page, PageHeader } from "@/components/page";
 import { Placeholder } from "@/components/placeholder";
-import { Splitter, clamp } from "@/components/splitter";
+import { Splitter } from "@/components/splitter";
 import { useStored } from "@/hooks/use-stored";
 
 type Props = {

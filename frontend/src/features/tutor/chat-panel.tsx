@@ -1,6 +1,6 @@
 import { useLayoutEffect, useRef, type ReactNode, type RefObject } from "react";
 import { type ChatItem, type Gate } from "@/lib/api";
-import type { NewItem } from "@/features/workspace/workspace-view";
+import type { NewItem } from "@/lib/workspace";
 import { Markdown } from "@/components/markdown";
 import { AutoTextarea } from "@/components/auto-textarea";
 import { IconButton } from "@/components/icon-button";
@@ -139,30 +139,6 @@ export function ChatPanel(p: Props) {
   );
 }
 
-const HINT_LEVELS = ["", "a nudge", "a pointer", "a snippet", "the solution"];
-
-/**
- * Hints float over the conversation they answer in. Each press goes one
- * level deeper (nudge → pointer → snippet → solution); the solution asks first.
- */
-function HintPill({ level, busy, onHint }: { level: number; busy: boolean; onHint: (level: number) => void }) {
-  const [armed, arm] = useArmed();
-  return (
-    <Button
-      variant="outline"
-      className={cn(
-        "absolute right-4 bottom-3 z-3 h-auto rounded-full bg-muted px-3.5 py-1.5 font-semibold shadow-[0_6px_20px_rgba(0,0,0,0.45)] hover:not-disabled:border-soft-foreground hover:not-disabled:bg-accent",
-        armed && "border-fail text-fail",
-      )}
-      disabled={busy}
-      title={busy ? "Wait for the tutor to finish" : `Ask for ${HINT_LEVELS[level]}`}
-      onClick={() => (level === 4 && !armed ? arm() : onHint(level))}
-    >
-      {armed ? "Show the solution?" : level === 1 ? "Hint" : level === 4 ? "Show solution" : "Another hint"}
-    </Button>
-  );
-}
-
 /** The tutor folded into a strip: a way back, and a sign of new or running work. */
 export function ChatRail({ attention, busy, onExpand }: { attention: boolean; busy: boolean; onExpand: () => void }) {
   return (
@@ -184,37 +160,6 @@ export function ChatRail({ attention, busy, onExpand }: { attention: boolean; bu
       {busy && <Spinner className="size-[12px] text-muted-foreground" />}
     </aside>
   );
-}
-
-function Message({ item, lang }: { item: ChatItem; lang?: string }) {
-  switch (item.role) {
-    case "user":
-      return <div className="max-w-[85%] self-end rounded-xl bg-muted px-[11px] py-2 leading-[1.5] wrap-anywhere whitespace-pre-wrap">{item.text}</div>;
-    case "assistant":
-      return (
-        <Markdown
-          text={item.text}
-          className="prose text-[13px] [&_:is(h1,h2,h3)]:mt-3 [&_:is(h1,h2,h3)]:font-sans [&_:is(h1,h2,h3)]:text-[13px] [&_:is(h1,h2,h3)]:leading-normal [&_:is(h1,h2,h3)]:font-semibold [&>*+*]:mt-2"
-          lang={lang}
-        />
-      );
-    case "tool":
-      return (
-        <div className="-my-2 flex items-center gap-1.5 text-xs text-muted-foreground" title={item.text}>
-          <span className="grid w-3 flex-none">{item.status === "running" ? <Spinner className="size-[10px]" /> : item.status === "failed" ? "✗" : "✓"}</span>
-          <span className="min-w-0 truncate">{item.text}</span>
-        </div>
-      );
-    default:
-      return (
-        <div
-          className="max-w-[88%] self-center text-center text-xs text-balance wrap-anywhere whitespace-pre-wrap text-muted-foreground"
-          role={item.status === "failed" ? "alert" : undefined}
-        >
-          {item.text.replace(/^\[app\]\s*/, "")}
-        </div>
-      );
-  }
 }
 
 type StatusProps = {
@@ -258,3 +203,58 @@ export function StatusLine({ gate, newTask, busy, onStop, onOpenTask }: StatusPr
     </div>
   );
 }
+
+function Message({ item, lang }: { item: ChatItem; lang?: string }) {
+  switch (item.role) {
+    case "user":
+      return <div className="max-w-[85%] self-end rounded-xl bg-muted px-[11px] py-2 leading-[1.5] wrap-anywhere whitespace-pre-wrap">{item.text}</div>;
+    case "assistant":
+      return (
+        <Markdown
+          text={item.text}
+          className="prose text-[13px] [&_:is(h1,h2,h3)]:mt-3 [&_:is(h1,h2,h3)]:font-sans [&_:is(h1,h2,h3)]:text-[13px] [&_:is(h1,h2,h3)]:leading-normal [&_:is(h1,h2,h3)]:font-semibold [&>*+*]:mt-2"
+          lang={lang}
+        />
+      );
+    case "tool":
+      return (
+        <div className="-my-2 flex items-center gap-1.5 text-xs text-muted-foreground" title={item.text}>
+          <span className="grid w-3 flex-none">{item.status === "running" ? <Spinner className="size-[10px]" /> : item.status === "failed" ? "✗" : "✓"}</span>
+          <span className="min-w-0 truncate">{item.text}</span>
+        </div>
+      );
+    default:
+      return (
+        <div
+          className="max-w-[88%] self-center text-center text-xs text-balance wrap-anywhere whitespace-pre-wrap text-muted-foreground"
+          role={item.status === "failed" ? "alert" : undefined}
+        >
+          {item.text.replace(/^\[app\]\s*/, "")}
+        </div>
+      );
+  }
+}
+
+/**
+ * Hints float over the conversation they answer in. Each press goes one
+ * level deeper (nudge → pointer → snippet → solution); the solution asks first.
+ */
+function HintPill({ level, busy, onHint }: { level: number; busy: boolean; onHint: (level: number) => void }) {
+  const [armed, arm] = useArmed();
+  return (
+    <Button
+      variant="outline"
+      className={cn(
+        "absolute right-4 bottom-3 z-3 h-auto rounded-full bg-muted px-3.5 py-1.5 font-semibold shadow-[0_6px_20px_rgba(0,0,0,0.45)] hover:not-disabled:border-soft-foreground hover:not-disabled:bg-accent",
+        armed && "border-fail text-fail",
+      )}
+      disabled={busy}
+      title={busy ? "Wait for the tutor to finish" : `Ask for ${HINT_LEVELS[level]}`}
+      onClick={() => (level === 4 && !armed ? arm() : onHint(level))}
+    >
+      {armed ? "Show the solution?" : level === 1 ? "Hint" : level === 4 ? "Show solution" : "Another hint"}
+    </Button>
+  );
+}
+
+const HINT_LEVELS = ["", "a nudge", "a pointer", "a snippet", "the solution"];

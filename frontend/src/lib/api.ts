@@ -43,17 +43,6 @@ export type {
   WorkspaceState,
 };
 
-// ---- events ----
-
-/** The names of the backend's events. Importing them also registers their data types with the runtime. */
-export * as AppEvents from "@bindings/events";
-
-/** Listens to one of the backend's events (internal/app/events.go) for the component's lifetime. */
-export function useEvent<E extends keyof Events.CustomEvents>(name: E, handler: (data: Events.CustomEvents[E]) => void) {
-  const onEvent = useEffectEvent(handler);
-  useEffect(() => Events.On(name, (ev) => onEvent(ev.data)), [name]);
-}
-
 /**
  * The backend's methods (the generated bindings). Calls that only read retry
  * quietly while the app's server is briefly unreachable.
@@ -71,6 +60,15 @@ export function errorText(err: unknown): string {
   const text = err instanceof Error ? err.message : typeof err === "string" ? err : JSON.stringify(err);
   // Go errors start lowercase; they're shown as sentences here.
   return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+/** The names of the backend's events. Importing them also registers their data types with the runtime. */
+export * as AppEvents from "@bindings/events";
+
+/** Listens to one of the backend's events (internal/app/events.go) for the component's lifetime. */
+export function useEvent<E extends keyof Events.CustomEvents>(name: E, handler: (data: Events.CustomEvents[E]) => void) {
+  const onEvent = useEffectEvent(handler);
+  useEffect(() => Events.On(name, (ev) => onEvent(ev.data)), [name]);
 }
 
 // Calls that only read (or, like autosave, are safe to repeat) wait out a

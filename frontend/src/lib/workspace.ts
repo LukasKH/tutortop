@@ -49,3 +49,6 @@ export const exerciseTarget = (objective: string, tasks: TaskInfo[]) =>
 export function objectivesOf(c: Curriculum | null) {
   return (c?.modules ?? []).flatMap((m) => m.objectives ?? []);
 }
+
+/** Something new the tutor wrote while the learner was busy: a task, or a lesson (id is its key). */
+export type NewItem = { id: string; title: string; kind: "task" | "lesson" };

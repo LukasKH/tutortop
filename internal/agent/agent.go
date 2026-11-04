@@ -38,6 +38,28 @@ func Lookup(id string) (Provider, bool) {
 // Models lists the models the provider's CLI can use.
 func (p Provider) Models(ctx context.Context) ([]Model, error) { return p.models(ctx) }
 
+func Start(ctx context.Context, providerID string, opts Options, onEvent func(Event)) (Session, error) {
+	p, ok := Lookup(providerID)
+	if !ok {
+		return nil, fmt.Errorf("unknown agent provider %q", providerID)
+	}
+	return p.start(ctx, opts, onEvent)
+}
+
+type Session interface {
+	// ID is the provider's session or thread id; save it to resume later.
+	ID() string
+	// Prompt sends a user message and blocks until the agent's turn ends.
+	// If the agent process exits, the error wraps ErrStopped.
+	Prompt(ctx context.Context, text string) error
+	// Cancel interrupts the current turn.
+	Cancel()
+	Close() error
+}
+
+// ErrStopped means the agent process exited; the session can't be used again.
+var ErrStopped = errors.New("the agent stopped")
+
 type Options struct {
 	Cwd          string
 	MCPName      string
@@ -91,28 +113,6 @@ type Tool struct {
 	Paths     []string // files it reads or changes
 	MCPServer string   // for MCP tools, the server and tool name
 	MCPTool   string
-}
-
-type Session interface {
-	// ID is the provider's session or thread id; save it to resume later.
-	ID() string
-	// Prompt sends a user message and blocks until the agent's turn ends.
-	// If the agent process exits, the error wraps ErrStopped.
-	Prompt(ctx context.Context, text string) error
-	// Cancel interrupts the current turn.
-	Cancel()
-	Close() error
-}
-
-// ErrStopped means the agent process exited; the session can't be used again.
-var ErrStopped = errors.New("the agent stopped")
-
-func Start(ctx context.Context, providerID string, opts Options, onEvent func(Event)) (Session, error) {
-	p, ok := Lookup(providerID)
-	if !ok {
-		return nil, fmt.Errorf("unknown agent provider %q", providerID)
-	}
-	return p.start(ctx, opts, onEvent)
 }
 
 func optional(prefix, s string) string {

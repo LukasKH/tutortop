@@ -16,24 +16,6 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-func probeMCP(t *testing.T) (url string, called *bool) {
-	called = new(bool)
-	s := mcp.NewServer(&mcp.Implementation{Name: "probe", Version: "1"}, nil)
-	mcp.AddTool(s, &mcp.Tool{Name: "ping", Description: "Returns the secret word."},
-		func(ctx context.Context, _ *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, any, error) {
-			*called = true
-			return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: "secret word: TURTLE"}}}, nil, nil
-		})
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	srv := &http.Server{Handler: mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return s }, nil)}
-	go srv.Serve(ln)
-	t.Cleanup(func() { srv.Close() })
-	return "http://" + ln.Addr().String() + "/mcp", called
-}
-
 func TestLive(t *testing.T) {
 	for _, provider := range []string{"claude", "codex"} {
 		t.Run(provider, func(t *testing.T) {
@@ -82,4 +64,22 @@ func TestLive(t *testing.T) {
 			}
 		})
 	}
+}
+
+func probeMCP(t *testing.T) (url string, called *bool) {
+	called = new(bool)
+	s := mcp.NewServer(&mcp.Implementation{Name: "probe", Version: "1"}, nil)
+	mcp.AddTool(s, &mcp.Tool{Name: "ping", Description: "Returns the secret word."},
+		func(ctx context.Context, _ *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, any, error) {
+			*called = true
+			return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: "secret word: TURTLE"}}}, nil, nil
+		})
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := &http.Server{Handler: mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return s }, nil)}
+	go srv.Serve(ln)
+	t.Cleanup(func() { srv.Close() })
+	return "http://" + ln.Addr().String() + "/mcp", called
 }

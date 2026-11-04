@@ -25,6 +25,16 @@ type Effort struct {
 	Description string `json:"description,omitempty"`
 }
 
+func claudeModels(context.Context) ([]Model, error) { return claudeModelList, nil }
+
+var claudeModelList = []Model{
+	{ID: "", Name: "Default", Description: "Whatever Claude Code is set to use", Efforts: claudeEfforts},
+	{ID: "fable", Name: "Fable", Description: "Most capable", Efforts: claudeEfforts, DefaultEffort: "medium"},
+	{ID: "opus", Name: "Opus", Description: "Very capable, for complex work", Efforts: claudeEfforts, DefaultEffort: "medium"},
+	{ID: "sonnet", Name: "Sonnet", Description: "Fast and capable for everyday work", Efforts: claudeEfforts, DefaultEffort: "medium"},
+	{ID: "haiku", Name: "Haiku", Description: "Fastest and lightest", Efforts: claudeEfforts, DefaultEffort: "medium"},
+}
+
 // Claude Code takes model aliases that always point at the latest model of a
 // family, so this list doesn't go stale with each release. Every current model
 // takes the same efforts (as listed by `claude --help`), defaulting to medium.
@@ -34,16 +44,6 @@ var claudeEfforts = []Effort{
 	{"high", "Deeper reasoning"},
 	{"xhigh", "Extra deep reasoning"},
 	{"max", "Deepest reasoning, slowest"},
-}
-
-func claudeModels(context.Context) ([]Model, error) { return claudeModelList, nil }
-
-var claudeModelList = []Model{
-	{ID: "", Name: "Default", Description: "Whatever Claude Code is set to use", Efforts: claudeEfforts},
-	{ID: "fable", Name: "Fable", Description: "Most capable", Efforts: claudeEfforts, DefaultEffort: "medium"},
-	{ID: "opus", Name: "Opus", Description: "Very capable, for complex work", Efforts: claudeEfforts, DefaultEffort: "medium"},
-	{ID: "sonnet", Name: "Sonnet", Description: "Fast and capable for everyday work", Efforts: claudeEfforts, DefaultEffort: "medium"},
-	{ID: "haiku", Name: "Haiku", Description: "Fastest and lightest", Efforts: claudeEfforts, DefaultEffort: "medium"},
 }
 
 // codexModels asks a short-lived `codex app-server` for its model list, so

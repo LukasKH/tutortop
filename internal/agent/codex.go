@@ -45,14 +45,6 @@ type codexTurnParams struct {
 	Turn codexTurn `json:"turn"`
 }
 
-// setupCall is a call made while starting up, with its own deadline so a
-// hung app-server can't block the app forever.
-func setupCall[T any](ctx context.Context, rpc *rpcConn, method string, params any) (T, error) {
-	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
-	defer cancel()
-	return rpc.Call[T](ctx, method, params)
-}
-
 func startCodex(ctx context.Context, opts Options, onEvent func(Event)) (Session, error) {
 	// The tutor gets the same rights as with Claude: it can write in the
 	// workspace but not under tasks/ (the app manages those), and only read
@@ -132,6 +124,14 @@ func startCodexServer(ctx context.Context, cwd string,
 	}
 	_ = rpc.Notify("initialized", nil)
 	return proc, rpc, nil
+}
+
+// setupCall is a call made while starting up, with its own deadline so a
+// hung app-server can't block the app forever.
+func setupCall[T any](ctx context.Context, rpc *rpcConn, method string, params any) (T, error) {
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+	return rpc.Call[T](ctx, method, params)
 }
 
 func (s *codexSession) ID() string { return s.threadID }

@@ -19,8 +19,6 @@ type Props = {
   mission?: string;
 };
 
-const SHAPES: Record<string, string> = { kata: "standalone exercises", project: "one program that grows task by task" };
-
 export function ProposalView({ wsId, proposal, current, progress, mission }: Props) {
   // The backend fills in defaults when it validates a proposal.
   const { size = "medium", shape = "kata" } = proposal.taskDefaults ?? {};
@@ -137,6 +135,8 @@ export function ProposalView({ wsId, proposal, current, progress, mission }: Pro
     </Page>
   );
 }
+
+const SHAPES: Record<string, string> = { kata: "standalone exercises", project: "one program that grows task by task" };
 
 /** "new" or "renamed" beside an objective in a plan revision. */
 function Tag(props: { title?: string; children: string }) {

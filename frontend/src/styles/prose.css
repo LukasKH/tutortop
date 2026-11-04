@@ -4,28 +4,6 @@
 
 /* ---------- prose: statements, mission, tutor replies ---------- */
 
-/* ```diff: a change, line by line */
-.prose pre.diff code {
-  display: flex;
-  flex-direction: column;
-}
-.prose pre.diff span {
-  margin: 0 -12px;
-  padding: 0 12px;
-  white-space: pre;
-}
-.prose pre.diff .diff-add {
-  background: rgb(85 184 134 / 0.1);
-  color: #a6d189;
-}
-.prose pre.diff .diff-del {
-  background: rgb(229 104 79 / 0.1);
-  color: #e5968a;
-}
-.prose pre.diff .diff-ctx {
-  color: var(--muted-foreground);
-}
-
 .prose {
   color: var(--soft-foreground);
   line-height: 1.6;
@@ -106,6 +84,27 @@
   background: none;
   font-size: inherit;
   white-space: pre;
+}
+/* ```diff: a change, line by line */
+.prose pre.diff code {
+  display: flex;
+  flex-direction: column;
+}
+.prose pre.diff span {
+  margin: 0 -12px;
+  padding: 0 12px;
+  white-space: pre;
+}
+.prose pre.diff .diff-add {
+  background: rgb(85 184 134 / 0.1);
+  color: #a6d189;
+}
+.prose pre.diff .diff-del {
+  background: rgb(229 104 79 / 0.1);
+  color: #e5968a;
+}
+.prose pre.diff .diff-ctx {
+  color: var(--muted-foreground);
 }
 /* mermaid diagrams */
 .prose .diagram {
