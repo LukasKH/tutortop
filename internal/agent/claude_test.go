@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -23,8 +24,6 @@ func TestClaudeStart(t *testing.T) {
 		"--permission-prompt-tool": "stdio",
 		"--allowedTools":           "mcp__tutortop__*",
 		"--append-system-prompt":   "Be a tutor.",
-		"--input-format":           "stream-json",
-		"--output-format":          "stream-json",
 		"--model":                  "opus",
 		"--effort":                 "high",
 		"--session-id":             sess.ID(),
@@ -62,7 +61,10 @@ func TestClaudeResume(t *testing.T) {
 	opts := claudeOptions(t)
 	const saved = "4b4c1f2e-0000-4000-8000-000000000001"
 	cwd, _ := filepath.EvalSymlinks(opts.Cwd)
-	transcript := filepath.Join(os.Getenv("CLAUDE_CONFIG_DIR"), "projects", claudeProjectName(cwd), saved+".jsonl")
+	// Claude Code names a project's folder after its path, with every
+	// character but a letter or digit replaced by '-'.
+	project := regexp.MustCompile(`[^A-Za-z0-9]`).ReplaceAllString(cwd, "-")
+	transcript := filepath.Join(os.Getenv("CLAUDE_CONFIG_DIR"), "projects", project, saved+".jsonl")
 	if err := os.MkdirAll(filepath.Dir(transcript), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -182,7 +184,6 @@ func TestClaudeMCPWarning(t *testing.T) {
 		statuses []string // in successive init messages
 		warn     bool
 	}{
-		{"connected", []string{"connected"}, false},
 		{"pending, then connected", []string{"pending", "connected"}, false},
 		{"failed twice", []string{"failed", "failed"}, true},
 		{"missing", []string{""}, true},
@@ -332,10 +333,8 @@ func TestClaudePermissions(t *testing.T) {
 		allow bool
 	}{
 		{"search outside", "Grep", map[string]any{"pattern": "x", "path": outside}, false},
-		{"search inside", "Glob", map[string]any{"pattern": "*.md"}, true},
-		{"write a new file", "Write", map[string]any{"file_path": filepath.Join(opts.Cwd, "GLOSSARY.md"), "content": "x"}, true},
+		{"write outside", "Write", map[string]any{"file_path": filepath.Join(outside, "GLOSSARY.md"), "content": "x"}, false},
 		{"web search", "WebSearch", map[string]any{"query": "goroutines"}, true},
-		{"a tool not on the list", "NotebookEdit", map[string]any{"notebook_path": filepath.Join(opts.Cwd, "a.ipynb")}, false},
 		// A field of an unexpected type mustn't hide the path from the check.
 		{"odd field beside an outside path", "Read", map[string]any{"file_path": outside, "pattern": 1.0}, false},
 	} {

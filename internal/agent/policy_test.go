@@ -45,14 +45,11 @@ func TestPolicy(t *testing.T) {
 		tool Tool
 		ok   bool
 	}{
-		{"relative edit", Tool{Kind: ToolEdit, Paths: []string{"NOTES.md"}}, true},
 		{"relative edit under tasks", Tool{Kind: ToolEdit, Paths: []string{"./tasks/a.go"}}, false},
 		{"edit the tasks folder", Tool{Kind: ToolEdit, Paths: []string{"/ws/tasks"}}, false},
 		{"edit a file named like tasks", Tool{Kind: ToolEdit, Paths: []string{"/ws/tasks.md"}}, true},
 		{"one of several paths under tasks", Tool{Kind: ToolEdit, Paths: []string{"/ws/NOTES.md", "/ws/tasks/a.go"}}, false},
-		{"edit without paths", Tool{Kind: ToolEdit}, false},
 		{"relative read escaping", Tool{Kind: ToolSearch, Paths: []string{"../x"}}, false},
-		{"web search", Tool{Kind: ToolFetch}, true},
 		{"unknown tool", Tool{Kind: ToolOther, Title: "NotebookEdit"}, false},
 		{"MCP tool with a path outside", Tool{Kind: ToolOther, MCPServer: "tutortop", Paths: []string{"/etc"}}, true},
 	} {

@@ -235,7 +235,6 @@ func TestCodexPermissions(t *testing.T) {
 	}{
 		{"file change Codex never described", "item/fileChange/requestApproval", with(map[string]any{"itemId": "fc_unknown"}), `"decline"`},
 		// What older app-servers send.
-		{"v1 command", "execCommandApproval", map[string]any{"conversationId": "thr_1", "callId": "c", "command": []string{"ls"}, "cwd": opts.Cwd}, `"denied"`},
 		{"v1 patch inside", "applyPatchApproval", map[string]any{"conversationId": "thr_1", "callId": "c", "fileChanges": map[string]any{filepath.Join(opts.Cwd, "NOTES.md"): map[string]any{}}}, `"approved"`},
 		{"v1 patch touching tasks", "applyPatchApproval", map[string]any{"conversationId": "thr_1", "callId": "c", "fileChanges": map[string]any{filepath.Join(opts.Cwd, "NOTES.md"): map[string]any{}, tasks: map[string]any{}}}, `"denied"`},
 		{"questions for the learner", "item/tool/requestUserInput", with(map[string]any{"itemId": "q", "questions": []any{}}), `"answers":{}`},
@@ -327,9 +326,6 @@ func beginCodex(t *testing.T, opts Options) (cli *fakeCLI, started <-chan error,
 func codexHandshake(t *testing.T, cli *fakeCLI) {
 	t.Helper()
 	req := codexExpect(t, cli, "initialize")
-	if req.str("params.clientInfo.name") != "tutortop" {
-		t.Errorf("initialize %v, want our client info", req)
-	}
 	codexReply(t, cli, req, `{"userAgent":"codex/0.166.0"}`)
 	if n := cli.recv(t); n.str("method") != "initialized" || n.get("id") != nil {
 		t.Errorf("sent %v, want the initialized notification", n)

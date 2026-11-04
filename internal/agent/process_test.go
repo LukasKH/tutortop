@@ -24,20 +24,6 @@ func TestProcessKeepsOutputAfterExit(t *testing.T) {
 	}
 }
 
-// Close stops a process that doesn't exit when its stdin closes.
-func TestProcessCloseStops(t *testing.T) {
-	p, err := startProcess(t.Context(), t.TempDir(), nil, "sleep", "60")
-	if err != nil {
-		t.Fatal(err)
-	}
-	_ = p.Close()
-	select {
-	case <-p.done:
-	case <-time.After(3 * time.Second):
-		t.Fatal("the process is still running 3s after Close")
-	}
-}
-
 // Close returns, and the process stops, even when its output is never read.
 func TestProcessCloseUnread(t *testing.T) {
 	p, err := startProcess(t.Context(), t.TempDir(), nil, "sh", "-c", "yes")

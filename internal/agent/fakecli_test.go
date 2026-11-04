@@ -8,7 +8,6 @@ import (
 	"net"
 	"os"
 	"path/filepath"
-	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -54,19 +53,8 @@ func fakeBinary(t *testing.T, binary string) *fakeProcesses {
 		t.Fatal(err)
 	}
 	dir := t.TempDir()
-	name := binary
-	if runtime.GOOS == "windows" {
-		name += ".exe"
-	}
-	if err := os.Symlink(self, filepath.Join(dir, name)); err != nil {
-		// Windows allows symlinks only in developer mode.
-		b, err := os.ReadFile(self)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(filepath.Join(dir, name), b, 0o755); err != nil {
-			t.Fatal(err)
-		}
+	if err := os.Symlink(self, filepath.Join(dir, binary)); err != nil {
+		t.Fatal(err)
 	}
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 
