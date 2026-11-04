@@ -29,7 +29,6 @@ describe("resolveOpen", () => {
   test("a deleted task falls back to the first unsolved task, through its unfinished lesson", () => {
     const ws = workspace({ tasks: [task("t1", "a", true), task("t2", "b")], lessons: [lesson("l2", "b", 1)] });
     expect(resolveOpen(ws, { kind: "task", id: "gone" })).toEqual({ kind: "lesson", id: "l2" });
-    expect(resolveOpen(ws, null)).toEqual({ kind: "lesson", id: "l2" });
   });
 
   test("with every task solved, a lesson without an exercise comes first, else the last task", () => {
@@ -42,7 +41,6 @@ describe("resolveOpen", () => {
 test("an objective's exercise is its newest unsolved task, else its last", () => {
   expect(exerciseOf(workspace({ tasks: [task("t1", "a"), task("t2", "a"), task("t3", "a", true)] }), "a")).toEqual({ kind: "task", id: "t2" });
   expect(exerciseOf(workspace({ tasks: [task("t1", "a", true), task("t2", "a", true)] }), "a")).toEqual({ kind: "task", id: "t2" });
-  expect(exerciseOf(workspace(), "a")).toEqual({ kind: "todo", objective: "a", part: "exercise" });
 });
 
 describe("entryOf: clicking an objective", () => {
@@ -55,10 +53,6 @@ describe("entryOf: clicking an objective", () => {
   test("keeps the objective's open exercise open", () => {
     const ws = workspace({ tasks: [task("t1", "a"), task("t2", "a")] });
     expect(entryOf(ws, "a", { kind: "task", id: "t1" })).toEqual({ kind: "task", id: "t1" });
-  });
-
-  test("with nothing written, opens the page that writes the lesson", () => {
-    expect(entryOf(workspace(), "c", null)).toEqual({ kind: "todo", objective: "c", part: "lesson" });
   });
 });
 

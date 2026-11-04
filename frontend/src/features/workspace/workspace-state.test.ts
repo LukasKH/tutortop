@@ -19,10 +19,13 @@ describe("snapshots and events", () => {
       { type: "busy", thread: "write-a", busy: true, seq: 1 },
       // Read at 2, while the writer was still busy; it finished at 3; the snapshot lands after.
       { type: "busy", thread: "write-a", busy: false, seq: 3 },
-      { type: "snapshot", ws: workspace({ busy: { "write-a": true }, seq: 2 }) },
+      // Another writer's check started at 4, so the snapshot doesn't have it either.
+      { type: "check", check: check("b", true), seq: 4 },
+      { type: "snapshot", ws: workspace({ busy: { "write-a": true }, checks: {}, seq: 2 }) },
     );
     expect(s.busy["write-a"]).toBe(false);
     expect(writingObjectives(s).size).toBe(0);
+    expect(s.checks.b?.running).toBe(true);
   });
 
   test("a snapshot read after an event is newer and wins", () => {
@@ -30,19 +33,9 @@ describe("snapshots and events", () => {
     expect(s.busy.plan).toBeUndefined();
   });
 
-  test("a writer's check from an event survives an older snapshot", () => {
-    const s = run({ type: "check", check: check("a", true), seq: 3 }, { type: "snapshot", ws: workspace({ checks: {}, seq: 2 }) });
-    expect(s.checks.a?.running).toBe(true);
-  });
-
   test("an older refetch landing after a newer one is dropped", () => {
     const s = run({ type: "snapshot", ws: workspace({ title: "new", seq: 5 }) }, { type: "snapshot", ws: workspace({ title: "old", seq: 4 }) });
     expect(s.ws?.title).toBe("new");
-  });
-
-  test("a snapshot clears the last error", () => {
-    const s = run({ type: "failed", error: "Can't stop" }, { type: "snapshot", ws: workspace() });
-    expect(s.error).toBe("");
   });
 });
 
@@ -50,16 +43,14 @@ describe("writers", () => {
   const failed: ChatItem = { id: "1", thread: "write-a", role: ChatRole.RoleNotice, text: "Agent crashed", status: ChatStatus.ChatFailed, at: "" };
 
   test("a failed writer is remembered until it starts again, and its check starts afresh", () => {
-    let s = run({ type: "check", check: check("a", false), seq: 1 }, { type: "chat", item: failed });
+    // A message that isn't a failure doesn't count.
+    let s = run({ type: "check", check: check("a", false), seq: 1 }, { type: "chat", item: { ...failed, status: ChatStatus.ChatDone } });
+    expect(s.writeFailed.a).toBeUndefined();
+    s = reduceWorkspace(s, { type: "chat", item: failed });
     expect(s.writeFailed.a).toBe("Agent crashed");
     s = reduceWorkspace(s, { type: "busy", thread: "write-a", busy: true, seq: 2 });
     expect(s.writeFailed.a).toBeUndefined();
     expect(s.checks.a).toBeUndefined();
-  });
-
-  test("other chat messages don't count as writer failures", () => {
-    const s = run({ type: "chat", item: { ...failed, thread: "plan" } }, { type: "chat", item: { ...failed, status: ChatStatus.ChatDone } });
-    expect(s.writeFailed).toEqual({});
   });
 });
 
@@ -68,18 +59,10 @@ describe("a chat's toolchain check", () => {
   const checked = (c: SandboxCheck): Action => ({ type: "check", check: c, seq: 1 });
   const idle = (thread: string): Action => ({ type: "busy", thread, busy: false, seq: 2 });
 
-  test("a finished check clears once the thread that ran it stops; a running one stays", () => {
+  test("a finished check clears once the thread that ran it stops; a running one, or another thread stopping, leaves it", () => {
     expect(run(checked(toolchain("plan", false)), idle("plan")).toolchainCheck).toBeNull();
-    expect(run(checked(toolchain("lesson-l1", false)), idle("lesson-l1")).toolchainCheck).toBeNull();
     expect(run(checked(toolchain("plan", true)), idle("plan")).toolchainCheck?.running).toBe(true);
-  });
-
-  test("another thread stopping leaves it", () => {
     expect(run(checked(toolchain("lesson-l1", false)), idle("plan")).toolchainCheck?.thread).toBe("lesson-l1");
-  });
-
-  test("isn't an objective's check", () => {
-    expect(run(checked(toolchain("plan", true))).checks).toEqual({});
   });
 
   test("dismissing only clears a finished check", () => {

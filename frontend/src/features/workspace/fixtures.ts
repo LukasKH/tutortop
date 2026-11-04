@@ -29,6 +29,6 @@ export function task(id: string, objective: string, passed = false): TaskStatus 
   return { id, title: `Task ${id}`, objective, language: "go", size: "small", files: [], createdAt: "", passed, hintLevel: 0 };
 }
 
-export function lesson(id: string, objective: string, answered = 0, questions = 2): LessonStatus {
-  return { id, title: `Lesson ${id}`, objective, questions, answered, correct: 0, createdAt: "" };
+export function lesson(id: string, objective: string, answered = 0): LessonStatus {
+  return { id, title: `Lesson ${id}`, objective, questions: 2, answered, correct: 0, createdAt: "" };
 }

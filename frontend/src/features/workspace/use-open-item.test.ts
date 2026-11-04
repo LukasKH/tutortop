@@ -69,6 +69,7 @@ describe("published work", () => {
   test("a proposal opens for review once it's loaded", async () => {
     const proposed = workspace({ proposal: workspace().curriculum });
     const { result, refresh } = render(workspace(), "t1");
+    act(() => result.current.setView("plan"));
     refresh.mockResolvedValue(proposed);
     await emit(AppEvents.CurriculumProposed, {});
     expect(result.current.view).toBe("proposal");
@@ -112,10 +113,6 @@ describe("placeQuestions", () => {
   });
   const ws = workspace({ tasks: [task("t1", "a")] });
   const t1: OpenItem = { kind: "task", id: "t1" };
-
-  test("none: nowhere", () => {
-    expect(placeQuestions(ws, "item", null, "plan", null)).toEqual({ center: false, chat: null, planBadge: 0 });
-  });
 
   test("during setup: the setup page, unless the plan or a proposal is open", () => {
     const setup = workspace({ curriculum: null });

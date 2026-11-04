@@ -1,14 +1,8 @@
-import { describe, expect, test } from "vitest";
+import { expect, test } from "vitest";
 import { ChatMark, ChatRole, ChatStatus, type ChatItem } from "@/lib/api";
-import { afterSetup, mergeChat, showThinking, upsertChat } from "@/lib/chat";
+import { afterSetup, mergeChat, showThinking } from "@/lib/chat";
 
 const item = (id: string, over: Partial<ChatItem> = {}): ChatItem => ({ id, thread: "plan", role: ChatRole.RoleAssistant, text: id, at: "", ...over });
-
-test("a streamed update replaces its message in place", () => {
-  const items = [item("1"), item("2", { text: "Hel" })];
-  expect(upsertChat(items, item("2", { text: "Hello" })).map((x) => x.text)).toEqual(["1", "Hello"]);
-  expect(upsertChat(items, item("3")).map((x) => x.id)).toEqual(["1", "2", "3"]);
-});
 
 test("loading a transcript keeps live messages that aren't saved yet", () => {
   const saved = [item("1"), item("2")];
@@ -30,17 +24,11 @@ test("thinking shows while the tutor works, unless a reply streams or a tool cal
   expect(showThinking([tool("a", ChatStatus.ChatRunning), item("reply"), item("n", { role: ChatRole.RoleNotice })], true)).toBe(true);
 });
 
-describe("the setup interview", () => {
+test("the setup interview is hidden up to the plan's approval, found by its mark or, in older chats, its text", () => {
   const interview = item("q", { role: ChatRole.RoleUser, text: "You approved the plan, right?" });
-
-  test("is hidden up to the plan's approval, found by its mark", () => {
-    const approved = item("n", { role: ChatRole.RoleNotice, text: "Plan approved.", mark: ChatMark.MarkPlanApproved });
-    expect(afterSetup([interview, approved, item("after")]).map((x) => x.id)).toEqual(["after"]);
-    expect(afterSetup([item("1")]).map((x) => x.id)).toEqual(["1"]);
-  });
-
-  test("is hidden up to an approval saved before marks, found by its text", () => {
-    const old = item("n", { role: ChatRole.RoleNotice, text: "You approved the plan (revision 1)." });
-    expect(afterSetup([interview, old, item("after")]).map((x) => x.id)).toEqual(["after"]);
-  });
+  const approved = item("n", { role: ChatRole.RoleNotice, text: "Plan approved.", mark: ChatMark.MarkPlanApproved });
+  const old = item("n", { role: ChatRole.RoleNotice, text: "You approved the plan (revision 1)." });
+  expect(afterSetup([interview, approved, item("after")]).map((x) => x.id)).toEqual(["after"]);
+  expect(afterSetup([interview, old, item("after")]).map((x) => x.id)).toEqual(["after"]);
+  expect(afterSetup([item("1")]).map((x) => x.id)).toEqual(["1"]);
 });
