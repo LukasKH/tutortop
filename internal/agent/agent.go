@@ -6,7 +6,7 @@
 // and [Tool], and [Provider] for the list of agents. policy.go says what the
 // tutor may do and how an adapter enforces it. Each CLI's adapter is one file
 // (claude.go, codex.go) built from the shared pieces in process.go (the CLI
-// process, newline-delimited JSON, decode) and rpc.go (JSON-RPC). The fake CLI
+// process, newline-delimited JSON) and rpc.go (JSON-RPC). The fake CLI
 // in fakecli_test.go tests an adapter without the real CLI.
 //
 // docs/agents.md explains how to add an agent.

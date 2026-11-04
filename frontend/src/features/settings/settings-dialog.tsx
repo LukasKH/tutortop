@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { cn } from "cn";
 import { Dialogs } from "@wailsio/runtime";
-import { App, errorText, type Model, type Environment, type Settings } from "@/lib/api";
+import { SettingsService, errorText, type Model, type Environment, type Settings } from "@/lib/api";
 import { cachedModels, cachedProviders, currentModel, effortLabel, loadModels, providerName } from "@/lib/agents";
 import { ErrorText } from "@/components/error-text";
 import { Button } from "@/components/ui/button";
@@ -26,7 +26,7 @@ export function SettingsDialog({ settings, onChange, onClose }: Props) {
   const choice = settings.models?.[agent] ?? { model: "", effort: "" };
 
   useEffect(() => {
-    App.Environment()
+    SettingsService.Environment()
       .then(setEnv)
       .catch(() => {});
   }, []);

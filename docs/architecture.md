@@ -4,9 +4,9 @@ Tutortop is a Go program with a React frontend, shipped as one desktop app by [W
 
 ```
  React frontend (frontend/src)
-   |  calls App methods            ^  events (chat:message, thread:busy, ...)
+   |  calls service methods        ^  events (chat:message, thread:busy, ...)
    v  (generated bindings)         |
- internal/app  App, the one Wails service
+ internal/app  Wails services: Workspace, Task, Lesson, Chat, Settings, Editor
    |-- internal/workspace   files on disk, one git repo per topic
    |-- internal/agent       the learner's Claude Code or Codex CLI
    |-- internal/runner      Docker/Podman sandbox: checks, quality gate
@@ -15,11 +15,12 @@ Tutortop is a Go program with a React frontend, shipped as one desktop app by [W
 
 ## Packages
 
-- `main.go` gives the app the user's shell PATH, builds `App`, registers it with Wails and opens the window.
-- `internal/app` holds `App`. Every exported method on it is callable from the frontend. It also runs each thread's agent (the chats' tutors and the background writers), the MCP server and the language servers.
+- `main.go` gives the app the user's shell PATH, builds the services with `app.New`, registers each with Wails and opens the window.
+- `internal/app` holds the Wails services, one per area (see [Calls from the frontend](#calls-from-the-frontend)). Every exported method on them is callable from the frontend. It also runs each thread's agent (the chats' tutors and the background writers), the MCP server and the language servers, which the services share.
 - `internal/workspace` stores one topic as plain files in `~/Tutortop/<id>`, plus private files (hidden tests, reference solutions) under the XDG data dir. It knows nothing about agents or Wails.
 - `internal/agent` starts the Claude Code or Codex CLI, streams its output as text and tool events, and decides which tool calls to allow. The agent may change files in the workspace, except under `tasks/`, and may not run commands. [Adding an agent](agents.md) describes its contract.
 - `internal/runner` runs tests in a Docker or Podman container built for the task's toolchain. It also runs the quality gate for new tasks.
+- `internal/decode` turns JSON, YAML and XML into typed values (`decode.JSON[T]`, ...), for every package.
 - `frontend/src/lib/api.ts` wraps the generated bindings and events; components import from it. A few modules use the Wails runtime directly: links open in the browser, the settings pick a folder, the window zooms, and the language client listens to its event outside React. The frontend's own layout is described under [Frontend](#frontend).
 
 ## How Wails fits in
@@ -28,7 +29,27 @@ Wails links the two halves in two directions. The frontend calls Go methods and 
 
 ### Calls from the frontend
 
-`main.go` registers `App` as the app's only service. `wails3 generate bindings` reads it and writes `frontend/bindings`, with one TypeScript function per exported method and a TypeScript type for every struct those methods take or return. `lib/api.ts` re-exports them as `App`, so a component writes `App.RunTests(wsID, taskID, files, false)`. A returned Go error becomes a rejected promise.
+The backend is a set of [Wails services](https://v3.wails.io/features/bindings/services), one per area. Each is a struct whose exported methods are the frontend's calls, and gets what it uses through its constructor:
+
+| Service | Calls | Owns |
+| --- | --- | --- |
+| `WorkspaceService` (`workspaces.go`) | `ListWorkspaces`, `Activity`, `CreateWorkspace`, `DeleteWorkspace`, `Workspace`, `ApproveProposal`, `RejectProposal`, `SaveMission`, `WriteObjectiveNow` | building the plans' sandbox images ahead (`ServiceStartup`) |
+| `TaskService` (`tasks.go`) | `Task`, `SaveWork`, `ResetWork`, `RunTests` | |
+| `LessonService` (`lessons.go`) | `Lesson`, `AnswerQuiz` | |
+| `ChatService` (`chat.go`) | `Chat`, `SendMessage`, `AnswerQuestions`, `DismissQuestions`, `RequestHint`, `StopAgent` | ending the thread agents as the app quits (`ServiceShutdown`) |
+| `SettingsService` (`settings.go`) | `Settings`, `SaveSettings`, `Models`, `Environment` | |
+| `EditorService` (`lsp.go`) | `StartLanguageServer`, `SendLanguageServer`, `StopLanguageServer` | stopping the language servers as the app quits (`ServiceShutdown`) |
+
+`app.New` reads the settings and opens the workspaces folder; `newServices` builds the pieces several services share once (the sandbox runner, the MCP host, the thread agents, the writers, the language servers) and passes each service the ones it uses. When one area sets off another, the service gets the narrow piece, not the other service: `RunTests` and the workspace calls message the plan's tutor through `threadAgents.send`, and keep objectives written through `writers`. Tests build the services the same way with fakes (`newTestAppWith` in `app_test.go`). `main.go` registers them in order; Wails starts them in that order and shuts them down in reverse, and none depends on another's.
+
+`wails3 generate bindings` reads the registered services and writes `frontend/bindings`, one module per service with one TypeScript function per exported method, and a TypeScript type for every struct those methods take or return. `lib/api.ts` re-exports each service under its Go name, so a component writes `TaskService.RunTests(wsID, taskID, files, false)`. A returned Go error becomes a rejected promise.
+
+To add a service, for a new area that fits none of the others:
+
+1. `internal/app/<area>.go`: the `<Area>Service` struct, its unexported constructor taking what it uses, and its exported methods. If it owns a resource to set up or release, give it `ServiceStartup` or `ServiceShutdown` and assert them next to the type (`var _ application.ServiceShutdown = (*<Area>Service)(nil)`), so a wrong signature doesn't compile instead of never being called.
+2. `app.go`: a field on `Services`, filled in `newServices`.
+3. `main.go`: `application.NewService(services.<Area>)` in the list.
+4. Regenerate the bindings, export the service from `lib/api.ts` as the others are, and add it to the table above.
 
 The bindings are generated, and committed. After changing an exported method or a type it returns, run `wails3 generate bindings -clean=true -ts -i` and commit the result. CI regenerates them and fails if they differ.
 
@@ -36,7 +57,7 @@ The bindings are generated, and committed. After changing an exported method or 
 
 Some things start on the Go side. The agent streams a reply, a writer publishes a task, a sandbox check finishes, a language server answers. Go emits an event for each one, and the frontend listens.
 
-All events live in `internal/app/events.go`. Each has a payload struct, a name constant in `namespace:name` form whose type names the payload (`chatMessage event[ChatEvent] = "chat:message"`), and an `application.RegisterEvent[Payload](string(name))` call in `init()`. Registering does two things. The binding generator writes the names to `frontend/bindings/events` and types each event's data in TypeScript, and Wails drops an event whose data has the wrong type. It only logs that, and release builds discard the log, so a mistake fails silently: `TestEventsRegistered` checks that every name constant is registered with its payload type.
+All events live in `internal/app/events.go`, apart from the services: a service, a thread agent or an MCP tool may send any of them. Each has a payload struct, a name constant in `namespace:name` form whose type names the payload (`chatMessage event[ChatEvent] = "chat:message"`), and an `application.RegisterEvent[Payload](string(name))` call in `init()`. Registering does two things. The binding generator writes the names to `frontend/bindings/events` and types each event's data in TypeScript, and Wails drops an event whose data has the wrong type. It only logs that, and release builds discard the log, so a mistake fails silently: `TestEventsRegistered` checks that every name constant is registered with its payload type.
 
 | Event | Payload | Sent when |
 | --- | --- | --- |
@@ -50,7 +71,7 @@ All events live in `internal/app/events.go`. Each has a payload struct, a name c
 | `curriculum:proposed` | `WorkspaceEvent` | the tutor proposed a curriculum |
 | `lsp:message` | `LSPEvent` | a language server sent a message, or stopped |
 
-Go code sends with `emit(name, payload)`. Because the name's type carries the payload type, `emit(chatMessage, BusyEvent{...})` doesn't compile. The compiler can't link the `RegisterEvent` calls to the names, because the binding generator needs them written out literally, so `TestEventsRegistered` checks those. `emit` looks up the running Wails app with `application.Get()`. Tests run without one, and there `emit` does nothing, so tests check what changed through `App` methods.
+Go code sends with `emit(name, payload)`. Because the name's type carries the payload type, `emit(chatMessage, BusyEvent{...})` doesn't compile. The compiler can't link the `RegisterEvent` calls to the names, because the binding generator needs them written out literally, so `TestEventsRegistered` checks those. `emit` looks up the running Wails app with `application.Get()`. Tests run without one, and there `emit` does nothing, so tests check what changed through the services' methods.
 
 In the frontend, `useEvent(AppEvents.ChatMessage, (ev) => ...)` listens for as long as the component is mounted. Most payloads carry the workspace id, and views ignore events for other workspaces.
 
@@ -82,7 +103,7 @@ frontend/src/
 
 The theme lives in `styles/globals.css`. Colours are CSS variables named the shadcn way (`--background`, `--foreground`, `--muted-foreground`, `--border`, ...), plus Tutortop's own `--soft-foreground`, `--faint`, `--pass` and `--fail`. Use them through Tailwind classes such as `text-muted-foreground` or `text-pass`, not raw colours. Colour is only for check results, green passed and red failed.
 
-A feature's state and its backend calls live in hooks next to its components. The components render what the hooks return. Pages that own their data load it themselves: a lesson (`LessonPanel`), an exercise with autosave and checks (`features/task/use-task-work.ts`), Home and Settings call `App` in an effect and keep their own edits.
+A feature's state and its backend calls live in hooks next to its components. The components render what the hooks return. Pages that own their data load it themselves: a lesson (`LessonPanel`), an exercise with autosave and checks (`features/task/use-task-work.ts`), Home and Settings call their services in an effect and keep their own edits.
 
 ### The workspace screen
 
@@ -90,22 +111,22 @@ A feature's state and its backend calls live in hooks next to its components. Th
 
 | Hook | State | Comes from |
 | --- | --- | --- |
-| `use-workspace.ts` | the snapshot (`App.Workspace`), busy threads, writers' checks and failures, a chat's toolchain check, open questions, the last error | refetched on `workspace:changed`, `task:published` and `lesson:published`; `thread:busy`, `check:status`, writers' failures from `chat:message` and `questions:asked` update it directly |
+| `use-workspace.ts` | the snapshot (`WorkspaceService.Workspace`), busy threads, writers' checks and failures, a chat's toolchain check, open questions, the last error | refetched on `workspace:changed`, `task:published` and `lesson:published`; `thread:busy`, `check:status`, writers' failures from `chat:message` and `questions:asked` update it directly |
 | `use-open-item.ts` | the open item, the centre's view (item, plan or proposal), the chat thread that goes with them, new work to point out | the learner, remembered per workspace; `task:published`, `lesson:published` and `curriculum:proposed` |
-| `use-chat-threads.ts` | conversations by thread, and which are unread | `App.Chat` for the shown thread; chats' messages from `chat:message` |
+| `use-chat-threads.ts` | conversations by thread, and which are unread | `ChatService.Chat` for the shown thread; chats' messages from `chat:message` |
 | `use-chat-panel.ts`, `chat/use-composer.ts` | the chat panel's width and whether it's folded; the message draft | the learner |
 
 #### How data flows
 
 All files are in `features/workspace/` unless named otherwise.
 
-1. **Snapshot.** `use-workspace.ts: useWorkspace` loads `App.Workspace` and loads it again on `workspace:changed`, `task:published` and `lesson:published`.
+1. **Snapshot.** `use-workspace.ts: useWorkspace` loads `WorkspaceService.Workspace` and loads it again on `workspace:changed`, `task:published` and `lesson:published`.
 2. **Events.** The same hook dispatches `thread:busy`, `check:status`, `questions:asked` and writers' failures from `chat:message` straight to the reducer, without a refetch.
 3. **Reducer.** `workspace-state.ts: reduceWorkspace` merges both into one `LiveWorkspace`. Busy threads and writers' checks reach it both ways, in either order. Go numbers the events and the snapshots in the order they happened (`seq`, counted under `threadAgents.mu`; see `agents.go`), and the reducer keeps whichever is newer, so a writer that finishes during a refetch stops spinning.
 4. **Selectors.** Pure functions turn that state, and what the learner has open (`use-open-item.ts: useOpenItem`), into what each part shows: `isBusy`, `tutorBusy` and `writingObjectives` in `workspace-state.ts`; `describeItem` in `open-item.ts`; `placeQuestions` and `centerOf` in `use-open-item.ts`.
-5. **Components.** `workspace-view.tsx: WorkspaceView` calls them and hands their results to `Sidebar`, `CenterPane` and `ChatPanel` (or `ChatRail` when folded). They render them and call `App` or the hooks' calls.
+5. **Components.** `workspace-view.tsx: WorkspaceView` calls them and hands their results to `Sidebar`, `CenterPane` and `ChatPanel` (or `ChatRail` when folded). They render them and call the services or the hooks' calls.
 
-Chat transcripts are kept apart from this: `use-chat-threads.ts: useChatThreads` loads `App.Chat` for the shown thread and adds each `chat:message` to it. It drops writers' messages, and `useWorkspace` keeps only writers' failures, so each message goes to one of the two.
+Chat transcripts are kept apart from this: `use-chat-threads.ts: useChatThreads` loads `ChatService.Chat` for the shown thread and adds each `chat:message` to it. It drops writers' messages, and `useWorkspace` keeps only writers' failures, so each message goes to one of the two.
 
 The open item is an `OpenItem`: a task, a lesson, or an objective's lesson or exercise that isn't written yet (`open-item.ts`). `centerOf` decides what the centre shows and returns a `Center` that carries everything that page shows from the snapshot. `CenterPane` renders it, taking only busy threads, checks and the calls from `useWorkspace`. `placeQuestions` decides where the tutor's questions show: the centre, the chat of the thread that asked, and the count on "Your plan". Thread names (`plan`, a task id, `lesson-<id>`, `write-<objective>`) are the backend's and live in `lib/workspace.ts`. Only the hooks and the chat pass them around.
 
@@ -124,7 +145,7 @@ The open item is an `OpenItem`: a task, a lesson, or an objective's lesson or ex
 
 **A centre page**
 
-1. Get its data. `WorkspaceSnapshot` carries only the mission of the tutor's documents, so a page for `NOTES.md` or `GLOSSARY.md` needs a field on it in Go (`App.Workspace`), or its own `App` method that the page calls itself, like `LessonPanel`. Either needs the bindings regenerated.
+1. Get its data. `WorkspaceSnapshot` carries only the mission of the tutor's documents, so a page for `NOTES.md` or `GLOSSARY.md` needs a field on it in Go (`WorkspaceService.Workspace`), or its own service method that the page calls itself, like `LessonPanel`. Either needs the bindings regenerated.
 2. If the learner chooses the page, as they choose "Your plan": add a value to `use-open-item.ts: CenterView`, and a link in `sidebar.tsx: Sidebar` whose callback in `workspace-view.tsx: WorkspaceView` calls `nav.setView` (see `onShowPlan` and `planOpen`). The chat shows the plan thread for every view but `item`.
 3. `use-open-item.ts: Center`: add a kind with everything the page shows from the snapshot.
 4. `use-open-item.ts: centerOf`: decide when it shows and fill it in. Until the first plan is approved, `centerOf` returns early with `setup`, `proposal` or `plan`; add a case there if the page is needed then too.
@@ -140,12 +161,13 @@ The open item is an `OpenItem`: a task, a lesson, or an objective's lesson or ex
 5. If components need it worked out (like busy), add a selector next to `isBusy` and return it from `useWorkspace`.
 6. `workspace-state.test.ts`: test the new case, and with step 4 an event arriving before an older snapshot.
 
-**A backend call** (after adding the Go method and regenerating the bindings, `App.<Method>` exists with its types)
+**A backend call**
 
-1. `lib/api.ts`: re-export any new Go type it takes or returns, under its Go name. Add a read-only method to `SAFE_TO_REPEAT`, so it waits out a restart.
-2. Call it from the hook or component that owns the state: `use-workspace.ts: useWorkspace` for the workspace's own state (like `answerQuestions`), else the page that shows the result (like `LessonPanel`).
-3. On the workspace screen, pass failures to `live.fail`, which shows them above the centre pane.
-4. If the call changes what the snapshot shows, have Go emit `workspace:changed`, or call `live.refresh` after it, as the hint button in `WorkspaceView` does.
+1. Go: an exported method on the service of its area (`internal/app`). If it needs a piece the service doesn't have, add it to the service's struct and constructor, and pass it in `newServices`. Run `wails3 generate bindings -clean=true -ts -i`; `<Service>.<Method>` then exists with its types.
+2. `lib/api.ts`: re-export any new Go type it takes or returns, under its Go name. If the call only reads, or is safe to repeat, wrap it in `patiently` in its service's export, so it waits out a restart.
+3. Call it from the hook or component that owns the state: `use-workspace.ts: useWorkspace` for the workspace's own state (like `answerQuestions`), else the page that shows the result (like `LessonPanel`).
+4. On the workspace screen, pass failures to `live.fail`, which shows them above the centre pane.
+5. If the call changes what the snapshot shows, have Go emit `workspace:changed`, or call `live.refresh` after it, as the hint button in `WorkspaceView` does.
 
 ### Tests
 
@@ -155,25 +177,26 @@ Components are styled with utility classes in their markup. The one exception is
 
 ## The agent and its tools
 
-The agent is the learner's own CLI, signed in already. In a chat thread it's the tutor; in a writer's thread, it's that writer. `App` runs one agent process per thread (`threadAgents`), a conversation with its own chat. `workspace.Thread` names the four kinds, and its name is the chat's file name and what the frontend sends: `plan` for the mission and curriculum, the task id for a task, `lesson-<id>` for a lesson, and `write-<objective>` for an objective's writer.
+The agent is the learner's own CLI, signed in already. In a chat thread it's the tutor; in a writer's thread, it's that writer. The app runs one agent process per thread (`threadAgents`), a conversation with its own chat. `workspace.Thread` names the four kinds, and its name is the chat's file name and what the frontend sends: `plan` for the mission and curriculum, the task id for a task, `lesson-<id>` for a lesson, and `write-<objective>` for an objective's writer.
 
 Writers have no chat window. They write an objective's lesson and exercise in the background, and the app keeps the next two unpassed objectives written so the learner doesn't wait.
 
 ### Thread agents
 
-`threadAgents` (`internal/app/agents.go`) runs every thread's agent, with its own lock. The rest of `App` uses it only through a few methods:
+`threadAgents` (`internal/app/agents.go`) runs every thread's agent, with its own lock. The services, writers and MCP tools use it only through a few methods:
 
 | Method | What it does |
 | --- | --- |
 | `queue(w, thread, msg)` | queues a message for the thread's agent, starting the agent if it has none |
+| `send(w, thread, message)` | posts a message in the thread's chat, then queues it |
 | `stop(ws, thread)` | interrupts the thread's current turn |
 | `showCheck(ws, check)` | sends `check:status`, and keeps a writer's check while the writer lives |
 | `state(ws)` | which threads are busy, the writers' checks, and the `seq` they were read at |
-| `endWorkspace(ws)`, `endAll()` | end a deleted workspace's agents, or all of them as the app quits |
+| `endWorkspace(ws)`, `endAll()` | end a deleted workspace's agents (and drop their MCP servers), or all of them as the app quits |
 
-What it needs from the app is passed in when `New` builds it: the `settingsStore` for the agent, model and effort, the `mcpHost` for each thread's MCP URL, and an `agentCLI` to open a CLI session (`installedCLI`, over `agent.Start`; tests pass a fake). `threadAgents.open` builds the CLI's options: the workspace's folder, the MCP URL, the thread's instructions and whether it may use subagents. It posts to the chat with `post`, like the rest of the app.
+What it needs is passed in when `newServices` builds it: the `settingsStore` for the agent, model and effort, the `mcpHost` for each thread's MCP URL, and an `agentCLI` to open a CLI session (`installedCLI`, over `agent.Start`; tests pass a fake). `threadAgents.open` builds the CLI's options: the workspace's folder, the MCP URL, the thread's instructions and whether it may use subagents. It posts to the chat with `post`, like the rest of the app.
 
-Each verb in it means one thing. A thread agent (`threadAgent`) **starts** and **ends**; its CLI session **opens** and **closes**; a message is **queued**, then **answered**; **stop** interrupts a turn. On top of it, `App.send` **posts** a message in the thread's chat and queues it. When the learner sends a message, `SendMessage` adds a `[context]` block about the open task or lesson (`prompts.go`) and sends it. The thread agent's loop hands each message to the CLI, and its `transcript` streams the reply into the chat as `chat:message` events.
+Each verb in it means one thing. A thread agent (`threadAgent`) **starts** and **ends**; its CLI session **opens** and **closes**; a message is **queued**, then **answered**; **stop** interrupts a turn. On top of it, `send` **posts** a message in the thread's chat and queues it. When the learner sends a message, `SendMessage` adds a `[context]` block about the open task or lesson (`prompts.go`) and sends it. The thread agent's loop hands each message to the CLI, and its `transcript` streams the reply into the chat as `chat:message` events.
 
 - A thread's agent starts with the first message queued for its thread, in the background. Chats resume their saved conversation (`Meta.ResumeIDs`); a writer starts fresh.
 - The thread is busy (`thread:busy`) from the moment a message is queued until every queued message is answered, including while the CLI opens. The thread agent's count of pending messages is the only source of this state.
@@ -197,7 +220,7 @@ To add a kind of thread:
 5. `TestInstructionsFillEveryPlaceholder` in `mcp_test.go`: add a thread of the kind.
 6. `docs/GLOSSARY.md`: the kind under **Thread**; and in the frontend, its name in `lib/workspace.ts` if the UI shows it.
 
-The agent changes the app's state only through MCP tools, built on the [official Go SDK](https://github.com/modelcontextprotocol/go-sdk). `App` serves them over HTTP on `127.0.0.1`, with a random token in each thread's URL, so a thread can only reach its own workspace. The tool handlers write to the workspace and emit events.
+The agent changes the app's state only through MCP tools, built on the [official Go SDK](https://github.com/modelcontextprotocol/go-sdk). The MCP host (`mcpHost`) serves them over HTTP on `127.0.0.1`, with a random token in each thread's URL, so a thread can only reach its own workspace. The tool handlers write to the workspace and emit events. They get the sandbox runner and the link checker from the host, and the thread agents, which show their sandbox checks. The thread agents need the host for each thread's URL too, so they pass themselves to `mcpHost.URL` rather than the host holding them.
 
 `mcpTools` in `internal/app/mcp.go` lists every tool with the line its calls show as in the chat, if any, and the kinds of thread that get it:
 
@@ -217,9 +240,9 @@ Each tool is a `*mcp.Tool` with its name and description, a handler method on `t
 
 ## Checks and the editor
 
-**Run** and **Submit** call `App.RunTests`. It saves the learner's code, runs the visible tests (plus the hidden ones on submit) in the sandbox and records the attempt. The sandbox images are built ahead, in the background, so the first test run is fast: when the app starts (`ServiceStartup`, for every workspace's plan language) and when the learner approves a plan. Reading a workspace never starts a build, since the frontend repeats reads freely.
+**Run** and **Submit** call `TaskService.RunTests`. It saves the learner's code, runs the visible tests (plus the hidden ones on submit) in the sandbox and records the attempt. The sandbox images are built ahead, in the background, so the first test run is fast: when the app starts (`WorkspaceService.ServiceStartup`, for every workspace's plan language) and when the learner approves a plan. Reading a workspace never starts a build, since the frontend repeats reads freely.
 
-The editor's completions and errors come from a language server running in the task's sandbox image. Go doesn't read the LSP messages. It relays them between the server's stdio and the frontend, sending them out as `lsp:message` events and taking them in through `App.SendLanguageServer`.
+The editor's completions and errors come from a language server running in the task's sandbox image. Go doesn't read the LSP messages. It relays them between the server's stdio and the frontend, sending them out as `lsp:message` events and taking them in through `EditorService.SendLanguageServer`.
 
 ### Languages
 

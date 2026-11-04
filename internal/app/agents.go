@@ -12,9 +12,10 @@ import (
 )
 
 // threadAgents runs each thread's agent, at most one per thread. Its methods
-// are all the rest of the app uses: queue a message for a thread, stop a
-// thread's turn, show a sandbox check, read what the agents are doing, and
-// end a workspace's agents or all of them.
+// are all the rest of the app uses: queue a message for a thread (or send
+// one, which also posts it in the chat), stop a thread's turn, show a
+// sandbox check, read what the agents are doing, and end a workspace's
+// agents or all of them.
 //
 // A thread's agent (threadAgent):
 //
@@ -105,6 +106,26 @@ func (ag *threadAgents) queue(w *workspace.Workspace, t workspace.Thread, msg st
 	return nil
 }
 
+// send posts a message in a thread's chat and queues it for that thread's
+// agent, without waiting for the agent to start. Once the message is in the
+// chat, whatever goes wrong with it is posted there too.
+func (ag *threadAgents) send(w *workspace.Workspace, t workspace.Thread, m message) {
+	post(w, workspace.ChatItem{Thread: t.String(), Role: m.Role, Text: m.Shown})
+	if err := ag.queue(w, t, m.Agent); err != nil {
+		postFailure(w, t.String(), err.Error())
+	}
+}
+
+// message is one thing sent to the tutor. What the learner sees in the chat
+// (Shown) can differ from what the tutor receives (Agent): the app attaches
+// the open task as context, and its own instructions to the tutor are shown
+// as short notices.
+type message struct {
+	Role  workspace.ChatRole // workspace.RoleUser for the learner's words, RoleNotice for app events
+	Shown string
+	Agent string
+}
+
 // stop interrupts the current turn in a thread. Its agent posts a notice
 // once the cut-off reply is saved, and takes the next message as usual.
 func (ag *threadAgents) stop(wsID, thread string) {
@@ -159,7 +180,8 @@ func (ag *threadAgents) state(wsID string) (busy map[string]bool, checks map[str
 	return busy, checks, ag.seq
 }
 
-// endWorkspace ends a workspace's agents, before it's deleted.
+// endWorkspace ends a workspace's agents and drops their MCP servers,
+// before it's deleted.
 func (ag *threadAgents) endWorkspace(wsID string) {
 	ag.mu.Lock()
 	defer ag.mu.Unlock()
@@ -168,6 +190,7 @@ func (ag *threadAgents) endWorkspace(wsID string) {
 			ag.end(ta)
 		}
 	}
+	ag.mcp.forget(wsID)
 }
 
 // endAll ends every agent, as the app quits.
@@ -299,7 +322,7 @@ func (ag *threadAgents) open(ctx context.Context, w *workspace.Workspace, ta *th
 	// A writer starts fresh every time, so its conversation isn't kept.
 	resume := ta.thread.Kind != workspace.WriterKind
 	opts := agent.Options{
-		Cwd: w.Dir, MCPName: mcpName, MCPURL: ag.mcp.URL(w, ta.thread), Instructions: instructions(w, ta.thread),
+		Cwd: w.Dir, MCPName: mcpName, MCPURL: ag.mcp.URL(w, ta.thread, ag), Instructions: instructions(w, ta.thread),
 		Model: ta.cfg.Model, Effort: ta.cfg.Effort, Subagents: usesSubagents(ta.thread.Kind),
 	}
 	if resume {

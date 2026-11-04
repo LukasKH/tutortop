@@ -31,12 +31,12 @@ func TestCreateLessonTool(t *testing.T) {
 		t.Fatalf("create_lesson: %s", out)
 	}
 
-	st, err := a.Workspace(w.ID)
+	st, err := a.Workspaces.Workspace(w.ID)
 	if err != nil || len(st.Lessons) != 1 || st.Lessons[0].Questions != 3 {
 		t.Fatalf("lessons = %+v, %v", st.Lessons, err)
 	}
 	id := st.Lessons[0].ID
-	if _, err := a.AnswerQuiz(w.ID, id, 2, 0); err != nil {
+	if _, err := a.Lessons.AnswerQuiz(w.ID, id, 2, 0); err != nil {
 		t.Fatal(err)
 	}
 

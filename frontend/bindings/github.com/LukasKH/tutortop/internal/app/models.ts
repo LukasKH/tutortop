@@ -60,6 +60,10 @@ export enum CheckKind {
     CheckToolchain = "toolchain",
 };
 
+/**
+ * Environment is what's installed: the agents' CLIs and a working sandbox,
+ * and the workspaces folder in use.
+ */
 export interface Environment {
     "providers": ProviderStatus[] | null;
     "sandboxOk": boolean;

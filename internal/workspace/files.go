@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/LukasKH/tutortop/internal/decode"
 	"gopkg.in/yaml.v3"
 )
 
@@ -32,21 +33,23 @@ func WriteFileAtomic(p string, data []byte) error {
 }
 
 func readJSON[T any](p string) (T, error) {
-	return readFile[T](p, json.Unmarshal)
+	return readFile(p, decode.JSON[T])
 }
 
 func readYAML[T any](p string) (T, error) {
-	return readFile[T](p, yaml.Unmarshal)
+	return readFile(p, decode.YAML[T])
 }
 
-func readFile[T any](p string, unmarshal func([]byte, any) error) (T, error) {
-	var v T
+// readFile reads file p with parse, or returns the zero T, not a
+// half-decoded one.
+func readFile[T any](p string, parse func([]byte) (T, error)) (T, error) {
 	b, err := os.ReadFile(p)
-	if err == nil {
-		err = unmarshal(b, &v)
-	}
 	if err != nil {
-		return *new(T), err // not a half-decoded value
+		return *new(T), err
+	}
+	v, err := parse(b)
+	if err != nil {
+		return *new(T), err
 	}
 	return v, nil
 }
@@ -119,8 +122,9 @@ func readJSONL[T any](p string) ([]T, error) {
 	out := []T{}
 	sc := bufio.NewScanner(f)
 	sc.Buffer(make([]byte, 1024*1024), 16*1024*1024)
+	var v T
 	for sc.Scan() {
-		var v T
+		v = *new(T) // or the previous line's fields leak into this one
 		if json.Unmarshal(sc.Bytes(), &v) == nil {
 			out = append(out, v)
 		}

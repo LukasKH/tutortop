@@ -18,7 +18,7 @@ An adapter is one file, like `claude.go` or `codex.go`, and an entry in a list:
 8. `internal/shellpath/shellpath.go`: `commonDirs`. An app started from a desktop launcher doesn't get the user's shell PATH, so it asks the login shell and falls back to these folders, where the agents' installers put their binaries. Add the new CLI's folder if it isn't there; OpenCode's install script, for one, uses `~/.opencode/bin`.
 9. `README.md`: the introduction and **Install** name the agents Tutortop runs on, with a link to each one's setup.
 
-Nothing else changes. Settings list `Providers()` and show the ones that aren't installed as missing. The frontend gets each provider's display name from `App.Environment`, so a new agent needs no frontend change. The prompts in `internal/app/prompts` don't name an agent, and the chat shows Tutortop's own tools by their `mcpTools` line, whatever title the CLI gives the call.
+Nothing else changes. Settings list `Providers()` and show the ones that aren't installed as missing. The frontend gets each provider's display name from `SettingsService.Environment`, so a new agent needs no frontend change. The prompts in `internal/app/prompts` don't name an agent, and the chat shows Tutortop's own tools by their `mcpTools` line, whatever title the CLI gives the call.
 
 A workspace remembers one agent (`Meta.Provider`) and, for each chat, the `Session.ID()` to resume (`Meta.ResumeIDs`). Those ids belong to one agent, so when a thread starts with another agent, `Workspace.UseProvider` switches the workspace to it and forgets them: every thread starts a fresh conversation, and the tutor catches up from the workspace files.
 
@@ -81,7 +81,7 @@ Build the policy with `newPolicy(opts)` when the session starts.
 
 | File | What it gives an adapter |
 | --- | --- |
-| `process.go` | `startProcess` finds and starts the CLI with piped stdio; `send` writes one line of JSON; `await` waits for a reply unless the process exits first; `abort` and `exitError` turn an exit into `ErrExited` with stderr. `decode[T]` decodes a message or a field of one. |
+| `process.go` | `startProcess` finds and starts the CLI with piped stdio; `send` writes one line of JSON; `await` waits for a reply unless the process exits first; `abort` and `exitError` turn an exit into `ErrExited` with stderr. Messages and fields decode with `decode.JSON[T]` (internal/decode). |
 | `rpc.go` | `rpcConn`, newline-delimited JSON-RPC: `Call[T]`, `Notify`, and handlers for the CLI's notifications and requests. |
 | `policy.go` | `policy.allow`, the one place that decides tool calls. |
 | `agent.go` | `optional`, for titles like `"Searched files" + optional(": ", pattern)`. |

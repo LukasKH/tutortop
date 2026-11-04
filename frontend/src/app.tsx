@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { App, type Settings } from "@/lib/api";
+import { SettingsService, type Settings } from "@/lib/api";
 import { Home } from "@/features/home/home";
 import { SettingsDialog } from "@/features/settings/settings-dialog";
 import { loadModels, loadProviders, tutorLabel } from "@/lib/agents";
@@ -25,7 +25,7 @@ export function AppRoot() {
     loadProviders()
       .then(redraw)
       .catch(() => {});
-    App.Settings().then((s) => {
+    SettingsService.Settings().then((s) => {
       setSettings(s);
       loadModels(s.agent)
         .then(redraw)
@@ -37,7 +37,7 @@ export function AppRoot() {
     const prev = settings;
     setSettings(next);
     try {
-      await App.SaveSettings(next);
+      await SettingsService.SaveSettings(next);
     } catch (e) {
       setSettings(prev);
       throw e;

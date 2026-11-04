@@ -10,9 +10,78 @@ import (
 	"time"
 
 	"github.com/LukasKH/tutortop/internal/agent"
+	"github.com/LukasKH/tutortop/internal/decode"
+	"github.com/LukasKH/tutortop/internal/runner"
 	"github.com/LukasKH/tutortop/internal/workspace"
 	"gopkg.in/yaml.v3"
 )
+
+// SettingsService serves the Settings screen: the app-wide settings, the
+// models each agent offers, and what's installed.
+type SettingsService struct {
+	settings *settingsStore
+	models   *modelCache
+	runner   *runner.Runner
+	root     string // the workspaces folder in use
+}
+
+func newSettingsService(settings *settingsStore, models *modelCache, sandbox *runner.Runner, root string) *SettingsService {
+	return &SettingsService{settings: settings, models: models, runner: sandbox, root: root}
+}
+
+// Settings returns the saved settings. Without a saved agent it picks the
+// first one that's installed, or the first one listed if none is.
+func (s *SettingsService) Settings() Settings { return s.settings.Load() }
+
+// SaveSettings stores the settings. Running agents pick up a new agent,
+// model or effort with the next message once they're idle.
+func (s *SettingsService) SaveSettings(settings Settings) error { return s.settings.Save(settings) }
+
+// Models lists the models an agent offers, with their reasoning efforts.
+// Codex is asked live; answers are kept for a few minutes.
+func (s *SettingsService) Models(provider string) ([]agent.Model, error) {
+	p, ok := agent.Lookup(provider)
+	if !ok {
+		return nil, fmt.Errorf("unknown agent %q", provider)
+	}
+	return s.models.list(p)
+}
+
+// Environment is what's installed: the agents' CLIs and a working sandbox,
+// and the workspaces folder in use.
+type Environment struct {
+	Providers   []ProviderStatus `json:"providers"`
+	SandboxOK   bool             `json:"sandboxOk"`
+	SandboxHint string           `json:"sandboxHint,omitempty"`
+	// Root is the workspaces folder in use. A folder chosen in the settings
+	// is used from the next start; TUTORTOP_HOME overrides it (RootFromEnv).
+	Root        string `json:"root"`
+	DefaultRoot string `json:"defaultRoot"`
+	RootFromEnv bool   `json:"rootFromEnv"`
+}
+
+type ProviderStatus struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	Installed bool   `json:"installed"`
+	Path      string `json:"path,omitempty"`
+}
+
+func (s *SettingsService) Environment() Environment {
+	env := Environment{Root: s.root, DefaultRoot: workspace.DefaultRoot(), RootFromEnv: os.Getenv("TUTORTOP_HOME") != ""}
+	for _, p := range agent.Providers() {
+		path, err := exec.LookPath(p.Binary)
+		env.Providers = append(env.Providers, ProviderStatus{ID: p.ID, Name: p.Name, Installed: err == nil, Path: path})
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := s.runner.Available(ctx); err != nil {
+		env.SandboxHint = err.Error()
+	} else {
+		env.SandboxOK = true
+	}
+	return env
+}
 
 // Settings are app-wide preferences, kept in settings.yaml in the user's
 // config folder. They apply to every workspace.
@@ -35,24 +104,6 @@ type Settings struct {
 type ModelChoice struct {
 	Model  string `yaml:"model,omitempty" json:"model"`
 	Effort string `yaml:"effort,omitempty" json:"effort"`
-}
-
-// Settings returns the saved settings. Without a saved agent it picks the
-// first one that's installed, or the first one listed if none is.
-func (a *App) Settings() Settings { return a.settings.Load() }
-
-// SaveSettings stores the settings. Running agents pick up a new agent,
-// model or effort with the next message once they're idle.
-func (a *App) SaveSettings(s Settings) error { return a.settings.Save(s) }
-
-// Models lists the models an agent offers, with their reasoning efforts.
-// Codex is asked live; answers are kept for a few minutes.
-func (a *App) Models(provider string) ([]agent.Model, error) {
-	p, ok := agent.Lookup(provider)
-	if !ok {
-		return nil, fmt.Errorf("unknown agent %q", provider)
-	}
-	return a.models.list(p)
 }
 
 // settingsStore keeps the Settings in a settings.yaml file.
@@ -109,9 +160,9 @@ func (s *settingsStore) Save(settings Settings) error {
 // file. Without a saved agent it picks the first one that's installed, or
 // the first one listed if none is.
 func loadSettings(b []byte) Settings {
-	s, _ := decodeYAML[Settings](b)
+	s, _ := decode.YAML[Settings](b)
 	if s.Models == nil {
-		old, _ := decodeYAML[settingsBeforeModels](b)
+		old, _ := decode.YAML[settingsBeforeModels](b)
 		s.Models = old.Tutor
 	}
 	if s.Models == nil {

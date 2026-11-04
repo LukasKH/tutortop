@@ -90,6 +90,7 @@ func contextFor(w *workspace.Workspace, t workspace.Thread) string {
 		return taskContext(w, t.ID, &last)
 	case workspace.LessonKind:
 		return lessonContext(w, t.ID)
+	case workspace.PlanKind, workspace.WriterKind:
 	}
 	return ""
 }

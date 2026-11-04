@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/LukasKH/tutortop/internal/decode"
 	"github.com/LukasKH/tutortop/internal/text"
 )
 
@@ -210,13 +211,13 @@ func (it codexItem) paths() []string {
 func (s *codexSession) notify(method string, params json.RawMessage) {
 	switch method {
 	case "item/agentMessage/delta":
-		if p, err := decode[struct {
+		if p, err := decode.JSON[struct {
 			Delta string `json:"delta"`
 		}](params); err == nil {
 			s.onEvent(Event{Kind: EventText, Text: p.Delta})
 		}
 	case "item/started", "item/completed":
-		p, err := decode[struct {
+		p, err := decode.JSON[struct {
 			Item codexItem `json:"item"`
 		}](params)
 		if err != nil {
@@ -246,7 +247,7 @@ func (s *codexSession) notify(method string, params json.RawMessage) {
 		}
 		s.onEvent(Event{Kind: EventTool, Tool: t})
 	case "turn/completed":
-		p, err := decode[codexTurnParams](params)
+		p, err := decode.JSON[codexTurnParams](params)
 		if err != nil {
 			return
 		}
@@ -267,9 +268,9 @@ func codexTool(it codexItem) (Tool, bool) {
 	case "mcpToolCall":
 		return Tool{Kind: ToolOther, Title: it.Server + " · " + it.Tool, MCPServer: it.Server, MCPTool: it.Tool}, true
 	case "commandExecution":
-		cmd, err := decode[string](it.Command)
+		cmd, err := decode.JSON[string](it.Command)
 		if err != nil {
-			parts, _ := decode[[]string](it.Command)
+			parts, _ := decode.JSON[[]string](it.Command)
 			cmd = strings.Join(parts, " ")
 		}
 		return Tool{Kind: ToolExecute, Title: "Ran " + text.Truncate(strings.ReplaceAll(cmd, "\n", " "), 80)}, true
@@ -293,7 +294,7 @@ func (s *codexSession) request(method string, params json.RawMessage) (any, erro
 		return map[string]any{"decision": map[string]any{"denied": map[string]any{"rejection": errNoShell.Error()}}}, nil
 
 	case "item/fileChange/requestApproval":
-		p, _ := decode[struct {
+		p, _ := decode.JSON[struct {
 			ItemID string `json:"itemId"`
 		}](params)
 		s.mu.Lock()
@@ -304,7 +305,7 @@ func (s *codexSession) request(method string, params json.RawMessage) (any, erro
 		}
 		return map[string]any{"decision": "accept"}, nil
 	case "applyPatchApproval":
-		p, _ := decode[struct {
+		p, _ := decode.JSON[struct {
 			FileChanges map[string]json.RawMessage `json:"fileChanges"`
 		}](params)
 		if err := s.policy.allow(Tool{Kind: ToolEdit, Paths: slices.Collect(maps.Keys(p.FileChanges))}); err != nil {
@@ -314,7 +315,7 @@ func (s *codexSession) request(method string, params json.RawMessage) (any, erro
 
 	case "mcpServer/elicitation/request":
 		// Only our own server's requests are pre-approved.
-		p, _ := decode[struct {
+		p, _ := decode.JSON[struct {
 			ServerName string `json:"serverName"`
 		}](params)
 		action := "decline"

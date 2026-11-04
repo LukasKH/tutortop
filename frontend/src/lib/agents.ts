@@ -1,4 +1,4 @@
-import { App, type Model, type ProviderStatus, type Settings } from "@/lib/api";
+import { SettingsService, type Model, type ProviderStatus, type Settings } from "@/lib/api";
 
 // The agents the backend offers and their models, for Settings and the
 // tutor's label. Names come from the backend, so a new agent needs no change here.
@@ -6,7 +6,7 @@ import { App, type Model, type ProviderStatus, type Settings } from "@/lib/api";
 /** The agents and whether each is installed, asked once per session. */
 export function loadProviders(): Promise<ProviderStatus[]> {
   if (providers) return Promise.resolve(providers);
-  return App.Environment().then((env) => (providers = env.providers ?? []));
+  return SettingsService.Environment().then((env) => (providers = env.providers ?? []));
 }
 
 /** An agent's name as people know it ("Claude Code"), or its id until the agents are loaded. */
@@ -24,7 +24,7 @@ let providers: ProviderStatus[] | null = null;
 export function loadModels(agent: string): Promise<Model[]> {
   const cached = modelCache.get(agent);
   if (cached) return Promise.resolve(cached);
-  return App.Models(agent).then((list) => {
+  return SettingsService.Models(agent).then((list) => {
     modelCache.set(agent, list ?? []);
     return list ?? [];
   });

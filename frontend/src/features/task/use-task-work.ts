@@ -1,5 +1,5 @@
 import { useEffect, useEffectEvent, useRef, useState } from "react";
-import { App, errorText, type Result, type TaskDetail } from "@/lib/api";
+import { TaskService, errorText, type Result, type TaskDetail } from "@/lib/api";
 
 /** A check of the learner's code: the visible tests (run), or all of them (submit). */
 export type Run = { result: Result; submit: boolean };
@@ -38,7 +38,7 @@ export function useTaskWork(wsId: string, taskId: string) {
     const pending = unsaved.current;
     if (!pending) return;
     unsaved.current = null;
-    App.SaveWork(wsId, taskId, pending)
+    TaskService.SaveWork(wsId, taskId, pending)
       .then(() => !unsaved.current && setDirty(false))
       .catch((e) => setError(`Couldn't save: ${errorText(e)}`));
   }
@@ -60,7 +60,7 @@ export function useTaskWork(wsId: string, taskId: string) {
     setError("");
     cancelSave(); // RunTests saves the files itself.
     try {
-      const result = await App.RunTests(wsId, taskId, filesRef.current, submit);
+      const result = await TaskService.RunTests(wsId, taskId, filesRef.current, submit);
       const r = { result, submit };
       lastRuns.set(runKey, r);
       setRun(r);
@@ -81,8 +81,8 @@ export function useTaskWork(wsId: string, taskId: string) {
   async function reset() {
     cancelSave();
     try {
-      await App.ResetWork(wsId, taskId);
-      replaceFiles(workOf(await App.Task(wsId, taskId)));
+      await TaskService.ResetWork(wsId, taskId);
+      replaceFiles(workOf(await TaskService.Task(wsId, taskId)));
       setDirty(false);
     } catch (e) {
       setError(errorText(e));
@@ -100,7 +100,7 @@ export function useTaskWork(wsId: string, taskId: string) {
     save();
   });
   useEffect(() => {
-    App.Task(wsId, taskId)
+    TaskService.Task(wsId, taskId)
       .then(loaded)
       .catch((e) => setError(errorText(e)));
     return () => leave();

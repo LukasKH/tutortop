@@ -28,12 +28,12 @@ Make dependencies named types, not function fields.
 
 ```go
 // Good:
-type App struct {
+type mcpHost struct {
 	links *linkChecker
 }
 
 // Bad:
-type App struct {
+type mcpHost struct {
 	findBroken func(ctx context.Context, urls []string) []string
 }
 ```
@@ -60,11 +60,11 @@ run, ok := a.lastResults[taskKey{wsID, taskID}]
 
 ### Return values
 
-Return values instead of filling a pointer. Use a generic helper so the result and its type read on one line.
+Return values instead of filling a pointer. Use a generic helper, such as `decode.JSON[T]`, so the result and its type read on one line.
 
 ```go
 // Good:
-meta, err := decode[Meta](b)
+meta, err := decode.JSON[Meta](b)
 
 // Bad:
 var meta Meta

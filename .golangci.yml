@@ -21,16 +21,6 @@ linters:
       # handle values outside the constants.
       default-signifies-exhaustive: false
 
-  exclusions:
-    rules:
-      # internal/app is being rewritten and split into Wails services, which
-      # turn these on. Until the service split; remove then.
-      - path: ^internal/app/
-        linters:
-          - exhaustive
-          - gocognit
-          - nestif
-
 formatters:
   enable:
     - goimports

@@ -33,7 +33,8 @@ import (
 // localhost. Each gets a random token in its URL, so an agent can only reach
 // its own workspace, and tools like ask_user know which thread called them.
 type mcpHost struct {
-	app     *App
+	runner  *runner.Runner // sandbox checks: toolchains and the quality gate
+	links   *linkChecker   // the references a plan or lesson cites
 	baseURL string
 
 	mu      sync.Mutex
@@ -41,12 +42,12 @@ type mcpHost struct {
 	tokens  map[threadKey]string
 }
 
-func startMCP(a *App) (*mcpHost, error) {
+func startMCP(sandbox *runner.Runner, links *linkChecker) (*mcpHost, error) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		return nil, err
 	}
-	h := &mcpHost{app: a, baseURL: "http://" + ln.Addr().String(), servers: map[string]*mcp.Server{}, tokens: map[threadKey]string{}}
+	h := &mcpHost{runner: sandbox, links: links, baseURL: "http://" + ln.Addr().String(), servers: map[string]*mcp.Server{}, tokens: map[threadKey]string{}}
 	handler := mcp.NewStreamableHTTPHandler(func(r *http.Request) *mcp.Server {
 		token := strings.TrimPrefix(r.URL.Path, "/mcp/")
 		h.mu.Lock()
@@ -57,8 +58,10 @@ func startMCP(a *App) (*mcpHost, error) {
 	return h, nil
 }
 
-// URL returns the MCP endpoint for one thread, creating its server on first use.
-func (h *mcpHost) URL(w *workspace.Workspace, thread workspace.Thread) string {
+// URL returns the MCP endpoint for one thread, creating its server on first
+// use. agents are the thread agents that run it, which show its sandbox
+// checks. They pass themselves in, as they also need the host for this URL.
+func (h *mcpHost) URL(w *workspace.Workspace, thread workspace.Thread, agents *threadAgents) string {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	key := threadKey{w.ID, thread.String()}
@@ -66,7 +69,7 @@ func (h *mcpHost) URL(w *workspace.Workspace, thread workspace.Thread) string {
 	if !ok {
 		token = rand.Text()
 		h.tokens[key] = token
-		h.servers[token] = h.newServer(w, thread)
+		h.servers[token] = h.newServer(w, thread, agents)
 	}
 	return h.baseURL + "/mcp/" + token
 }
@@ -84,8 +87,8 @@ func (h *mcpHost) forget(wsID string) {
 }
 
 // newServer builds one thread's server with the tools of its kind.
-func (h *mcpHost) newServer(w *workspace.Workspace, thread workspace.Thread) *mcp.Server {
-	t := &threadTools{app: h.app, w: w, thread: thread}
+func (h *mcpHost) newServer(w *workspace.Workspace, thread workspace.Thread, agents *threadAgents) *mcp.Server {
+	t := &threadTools{w: w, thread: thread, agents: agents, runner: h.runner, links: h.links}
 	s := mcp.NewServer(&mcp.Implementation{Name: "tutortop", Version: "0.1.1"}, nil)
 	for _, tool := range toolsFor(thread.Kind) {
 		tool.add(s, t)
@@ -161,9 +164,11 @@ func chatLine(name string) string {
 // error's text back as an error result, which the agent reads and acts on. So
 // errors here are written for the agent, and say what to do next.
 type threadTools struct {
-	app    *App
 	w      *workspace.Workspace
 	thread workspace.Thread
+	agents *threadAgents // show the thread's sandbox checks
+	runner *runner.Runner
+	links  *linkChecker
 }
 
 var getStateTool = &mcp.Tool{

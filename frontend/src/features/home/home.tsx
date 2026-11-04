@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { cn } from "cn";
 import { ActivityPanel } from "@/features/home/activity-panel";
-import { App, errorText, type Activity, type Environment, type Summary } from "@/lib/api";
+import { SettingsService, WorkspaceService, errorText, type Activity, type Environment, type Summary } from "@/lib/api";
 import { IDEAS, type Idea } from "@/features/home/ideas";
 import { SettingsIcon } from "lucide-react";
 import { Logo } from "@/components/logo";
@@ -46,16 +46,16 @@ export function Home({ tutor, lastId, onSettings, onOpen }: Props) {
   }
 
   useEffect(() => {
-    App.ListWorkspaces()
+    WorkspaceService.ListWorkspaces()
       .then((list) => {
         setWorkspaces(list ?? []);
         setCreating((list ?? []).length === 0);
       })
       .catch((e) => setError(errorText(e)));
-    App.Activity()
+    WorkspaceService.Activity()
       .then(setActivity)
       .catch(() => {});
-    App.Environment()
+    SettingsService.Environment()
       .then((e) => setEnv((lastEnv = e)))
       .catch((e) => setError(errorText(e)));
   }, []);
@@ -126,7 +126,7 @@ export function Home({ tutor, lastId, onSettings, onOpen }: Props) {
                   focused={w.id === focusId && list.length > 1}
                   onOpen={() => onOpen(w.id)}
                   onDelete={async () => {
-                    await App.DeleteWorkspace(w.id);
+                    await WorkspaceService.DeleteWorkspace(w.id);
                     setWorkspaces((cur) => (cur ?? []).filter((x) => x.id !== w.id));
                   }}
                 />
@@ -269,7 +269,7 @@ function NewWorkspace({
     e.preventDefault();
     // An idea's icon stays only while its title does; otherwise the tutor picks one.
     const icon = title.trim() === draft.title ? draft.icon : "";
-    if (title.trim() && !noAgent) run(async () => onCreated(await App.CreateWorkspace(title.trim(), icon)));
+    if (title.trim() && !noAgent) run(async () => onCreated(await WorkspaceService.CreateWorkspace(title.trim(), icon)));
   }
 
   return (

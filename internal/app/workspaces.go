@@ -8,24 +8,60 @@ import (
 	"strings"
 	"time"
 
+	"github.com/LukasKH/tutortop/internal/runner"
 	"github.com/LukasKH/tutortop/internal/workspace"
+	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
-// Workspaces: the list on Home, creating and deleting one, the state the
-// workspace screen shows, and the learner's own changes to the plan.
+// WorkspaceService serves the workspaces: the list on Home, creating and
+// deleting one, the state the workspace screen shows, and the learner's own
+// changes to the plan. It builds the plans' sandbox images ahead.
+type WorkspaceService struct {
+	store    *workspace.Store
+	settings *settingsStore // the agent a new workspace starts with
+	runner   *runner.Runner
+	agents   *threadAgents // a new workspace's interview, the plan's notices, and ending a deleted workspace's agents
+	writers  *writers      // write objectives once the plan is approved or opened ahead
+	servers  *languageServers
+}
 
-func (a *App) ListWorkspaces() ([]workspace.Summary, error) { return a.store.List() }
+var _ application.ServiceStartup = (*WorkspaceService)(nil)
+
+func newWorkspaceService(store *workspace.Store, settings *settingsStore, sandbox *runner.Runner, agents *threadAgents, writers *writers, servers *languageServers) *WorkspaceService {
+	return &WorkspaceService{store: store, settings: settings, runner: sandbox, agents: agents, writers: writers, servers: servers}
+}
+
+// ServiceStartup is called by Wails as the app starts. It builds the sandbox
+// images of the workspaces' plans in the background, so the first check in
+// each is fast. Reading a workspace has no such side effect.
+func (s *WorkspaceService) ServiceStartup(context.Context, application.ServiceOptions) error {
+	go func() {
+		list, _ := s.store.List()
+		for _, sum := range list {
+			w, err := s.store.Open(sum.ID)
+			if err != nil {
+				continue
+			}
+			if c, _ := w.Curriculum(); c != nil {
+				s.prepareImage(w, c.Language)
+			}
+		}
+	}()
+	return nil
+}
+
+func (s *WorkspaceService) ListWorkspaces() ([]workspace.Summary, error) { return s.store.List() }
 
 // Activity is what the learner finished each day across all workspaces, with
 // their streak, for the activity panel on Home.
-func (a *App) Activity() (workspace.Activity, error) {
-	list, err := a.store.List()
+func (s *WorkspaceService) Activity() (workspace.Activity, error) {
+	list, err := s.store.List()
 	if err != nil {
 		return workspace.Activity{}, err
 	}
 	var all []workspace.Completion
-	for _, s := range list {
-		w, err := a.store.Open(s.ID)
+	for _, sum := range list {
+		w, err := s.store.Open(sum.ID)
 		if err != nil {
 			continue
 		}
@@ -38,8 +74,8 @@ func (a *App) Activity() (workspace.Activity, error) {
 // CreateWorkspace starts a workspace tutored by the agent in the settings.
 // The icon is "" (the tutor picks one during the interview) or one of
 // workspace.Icons, as when the topic comes from an idea.
-func (a *App) CreateWorkspace(title, icon string) (string, error) {
-	provider := a.Settings().Provider
+func (s *WorkspaceService) CreateWorkspace(title, icon string) (string, error) {
+	provider := s.settings.Load().Provider
 	title = strings.TrimSpace(title)
 	if title == "" {
 		return "", errors.New("give the topic a name")
@@ -47,13 +83,13 @@ func (a *App) CreateWorkspace(title, icon string) (string, error) {
 	if icon != "" && !slices.Contains(workspace.Icons, icon) {
 		return "", fmt.Errorf("unknown icon %q", icon)
 	}
-	existing, _ := a.store.List()
+	existing, _ := s.store.List()
 	for _, e := range existing {
 		if strings.EqualFold(e.Title, title) {
 			return "", fmt.Errorf("you already have a workspace called “%s”; pick another name", e.Title)
 		}
 	}
-	w, err := a.store.Create(title, provider)
+	w, err := s.store.Create(title, provider)
 	if err != nil {
 		return "", err
 	}
@@ -61,7 +97,7 @@ func (a *App) CreateWorkspace(title, icon string) (string, error) {
 		return "", err
 	}
 	// The tutor starts the interview right away.
-	a.send(w, workspace.PlanThread, message{
+	s.agents.send(w, workspace.PlanThread, message{
 		Role:  workspace.RoleNotice,
 		Shown: "Workspace created. Your tutor is getting started.",
 		Agent: fmt.Sprintf("[app] I want to learn: %s. This is a new workspace; start the interview.", title),
@@ -71,11 +107,10 @@ func (a *App) CreateWorkspace(title, icon string) (string, error) {
 
 // DeleteWorkspace stops the workspace's agents and language servers, then
 // deletes its files for good.
-func (a *App) DeleteWorkspace(id string) error {
-	a.agents.endWorkspace(id)
-	a.servers.stopWorkspace(id)
-	a.mcp.forget(id)
-	return a.store.Delete(id)
+func (s *WorkspaceService) DeleteWorkspace(id string) error {
+	s.agents.endWorkspace(id)
+	s.servers.stopWorkspace(id)
+	return s.store.Delete(id)
 }
 
 // WorkspaceSnapshot is everything the workspace screen shows, read at one
@@ -99,8 +134,8 @@ type WorkspaceSnapshot struct {
 	Seq uint64 `json:"seq"`
 }
 
-func (a *App) Workspace(id string) (WorkspaceSnapshot, error) {
-	w, err := a.store.Open(id)
+func (s *WorkspaceService) Workspace(id string) (WorkspaceSnapshot, error) {
+	w, err := s.store.Open(id)
 	if err != nil {
 		return WorkspaceSnapshot{}, err
 	}
@@ -112,12 +147,12 @@ func (a *App) Workspace(id string) (WorkspaceSnapshot, error) {
 	st.Tasks, _ = w.TaskStatuses()
 	st.Lessons, _ = w.LessonStatuses()
 	st.Questions = w.PendingQuestions()
-	st.Busy, st.Checks, st.Seq = a.agents.state(id)
+	st.Busy, st.Checks, st.Seq = s.agents.state(id)
 	return st, nil
 }
 
-func (a *App) ApproveProposal(wsID string) error {
-	w, err := a.store.Open(wsID)
+func (s *WorkspaceService) ApproveProposal(wsID string) error {
+	w, err := s.store.Open(wsID)
 	if err != nil {
 		return err
 	}
@@ -126,29 +161,29 @@ func (a *App) ApproveProposal(wsID string) error {
 		return err
 	}
 	emit(workspaceChanged, WorkspaceEvent{Workspace: wsID})
-	a.prepareImage(w, c.Language)
+	s.prepareImage(w, c.Language)
 	post(w, workspace.ChatItem{
 		Thread: workspace.PlanThread.String(), Role: workspace.RoleNotice, Mark: workspace.MarkPlanApproved,
 		Text: fmt.Sprintf("You approved the plan (revision %d).", c.Revision),
 	})
-	a.keepReady(w, "The learner just approved the plan.")
+	s.writers.keepReady(w, "The learner just approved the plan.")
 	return nil
 }
 
 // prepareImage builds a language's sandbox image in the background, so the
 // first test run is fast. Plans prepare theirs when approved, and workspaces
 // when the app starts (ServiceStartup).
-func (a *App) prepareImage(w *workspace.Workspace, language string) {
+func (s *WorkspaceService) prepareImage(w *workspace.Workspace, language string) {
 	if tc, err := w.Toolchain(language); err == nil {
-		go a.runner.Prepare(context.Background(), tc)
+		go s.runner.Prepare(context.Background(), tc)
 	}
 }
 
 // SaveMission saves the learner's own edit of their mission, then asks the
 // planning tutor to propose curriculum changes if the plan no longer fits it.
 // The curriculum itself only changes through a proposal the learner approves.
-func (a *App) SaveMission(wsID, mission string) error {
-	w, err := a.store.Open(wsID)
+func (s *WorkspaceService) SaveMission(wsID, mission string) error {
+	w, err := s.store.Open(wsID)
 	if err != nil {
 		return err
 	}
@@ -157,7 +192,7 @@ func (a *App) SaveMission(wsID, mission string) error {
 		return err
 	}
 	emit(workspaceChanged, WorkspaceEvent{Workspace: wsID})
-	a.send(w, workspace.PlanThread, message{
+	s.agents.send(w, workspace.PlanThread, message{
 		Role:  workspace.RoleNotice,
 		Shown: "You edited your mission.",
 		Agent: "[app] I edited my mission by hand. Read it; it's mine now, so don't change it back. " +
@@ -166,8 +201,8 @@ func (a *App) SaveMission(wsID, mission string) error {
 	return nil
 }
 
-func (a *App) RejectProposal(wsID, feedback string) error {
-	w, err := a.store.Open(wsID)
+func (s *WorkspaceService) RejectProposal(wsID, feedback string) error {
+	w, err := s.store.Open(wsID)
 	if err != nil {
 		return err
 	}
@@ -176,6 +211,30 @@ func (a *App) RejectProposal(wsID, feedback string) error {
 	}
 	emit(workspaceChanged, WorkspaceEvent{Workspace: wsID})
 	text := "I'd like changes to the proposed curriculum: " + feedback
-	a.send(w, workspace.PlanThread, message{Role: workspace.RoleUser, Shown: text, Agent: text})
+	s.agents.send(w, workspace.PlanThread, message{Role: workspace.RoleUser, Shown: text, Agent: text})
+	return nil
+}
+
+// WriteObjectiveNow has a writer write an objective's lesson and task now,
+// because the learner opened it ahead of the suggested order. It returns
+// once the writer is asked; the lesson and task arrive as events, and a
+// writer that fails posts why in its thread.
+func (s *WorkspaceService) WriteObjectiveNow(wsID, objectiveID string) error {
+	w, err := s.store.Open(wsID)
+	if err != nil {
+		return err
+	}
+	c, err := w.Curriculum()
+	if err != nil {
+		return err
+	}
+	if c == nil {
+		return errors.New("there's no plan yet")
+	}
+	o, _, ok := c.Objective(objectiveID)
+	if !ok {
+		return fmt.Errorf("%q isn't in the plan", objectiveID)
+	}
+	s.writers.write(w, o, "The learner opened it and is waiting for it, so be quick. Write the lesson first, as they read it first.")
 	return nil
 }

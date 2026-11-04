@@ -2,7 +2,7 @@ import type { Curriculum, LessonStatus } from "@/lib/api";
 
 // The backend's names for a workspace's chat threads (internal/workspace).
 // They are the wire format: ChatMessage and ThreadBusy events carry them, and
-// App.Chat, SendMessage and StopAgent take them.
+// ChatService.Chat, SendMessage and StopAgent take them.
 
 /** The planning conversation: mission, curriculum and anything not written yet (workspace.PlanThread). */
 export const PLAN_THREAD = "plan";

@@ -1,7 +1,7 @@
 import type { CSSProperties } from "react";
 import { cn } from "cn";
 import { afterSetup } from "@/lib/chat";
-import { App, type ChatItem } from "@/lib/api";
+import { ChatService, type ChatItem } from "@/lib/api";
 import { PLAN_THREAD } from "@/lib/workspace";
 import { describeItem, type OpenItem } from "@/features/workspace/open-item";
 import { useChatPanel } from "@/features/workspace/use-chat-panel";
@@ -129,7 +129,7 @@ export function WorkspaceView({ id, tutor, onSettings, onBack }: Props) {
           hint={
             hintTask && {
               level: Math.min(hintTask.hintLevel + 1, 4),
-              onHint: (level) => App.RequestHint(id, hintTask.id, level).then(live.refresh).catch(fail),
+              onHint: (level) => ChatService.RequestHint(id, hintTask.id, level).then(live.refresh).catch(fail),
             }
           }
           // The setup interview stays out of the chat panel.
@@ -149,12 +149,12 @@ export function WorkspaceView({ id, tutor, onSettings, onBack }: Props) {
               check={live.toolchainCheck}
               newItem={nav.newItem}
               busy={threadBusy}
-              onStop={() => App.StopAgent(id, thread).catch(fail)}
+              onStop={() => ChatService.StopAgent(id, thread).catch(fail)}
               onOpen={nav.open}
             />
           }
           composer={composer}
-          onSend={(text) => App.SendMessage(id, text, thread).catch(fail)}
+          onSend={(text) => ChatService.SendMessage(id, text, thread).catch(fail)}
           onCollapse={() => chat.setOpen(false)}
           tutor={tutor}
           onSettings={onSettings}
@@ -205,8 +205,8 @@ function CenterPane({ id, center, live, planItems, onOpen, onBack, onAskTutor }:
           lang={center.lang}
           onAnswer={live.answerQuestions}
           onDismiss={live.dismissQuestions}
-          onStop={() => App.StopAgent(id, PLAN_THREAD).catch(live.fail)}
-          onSend={(text) => App.SendMessage(id, text, PLAN_THREAD)}
+          onStop={() => ChatService.StopAgent(id, PLAN_THREAD).catch(live.fail)}
+          onSend={(text) => ChatService.SendMessage(id, text, PLAN_THREAD)}
         />
       );
 

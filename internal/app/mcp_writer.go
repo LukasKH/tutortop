@@ -58,13 +58,13 @@ func (t *threadTools) createTask(ctx context.Context, _ *mcp.CallToolRequest, sp
 // while it runs and after.
 func (t *threadTools) qualityGate(ctx context.Context, spec workspace.TaskSpec, tc runner.Toolchain) (runner.GateReport, error) {
 	status := SandboxCheck{Kind: CheckTask, Thread: t.thread.String(), Title: spec.Title, Running: true}
-	t.app.agents.showCheck(t.w.ID, status)
-	rep, err := t.app.runner.Gate(ctx, runner.GateInput{
+	t.agents.showCheck(t.w.ID, status)
+	rep, err := t.runner.Gate(ctx, runner.GateInput{
 		Toolchain: tc, Starter: spec.Starter, Reference: spec.Reference,
 		Tests: spec.Tests, HiddenTests: spec.HiddenTests, Mutants: spec.Mutants,
 	})
 	status.Running, status.Passed = false, rep.Passed
-	t.app.agents.showCheck(t.w.ID, status)
+	t.agents.showCheck(t.w.ID, status)
 	return rep, err
 }
 
@@ -81,7 +81,7 @@ func (t *threadTools) createLesson(ctx context.Context, _ *mcp.CallToolRequest, 
 	if err := t.w.ValidateLesson(spec); err != nil {
 		return nil, nil, fixAndRetry(createLessonTool, err)
 	}
-	if err := t.app.links.check(ctx, createLessonTool, append(markdownLinks(spec.Body), spec.PrimarySource.URL)); err != nil {
+	if err := t.links.check(ctx, createLessonTool, append(markdownLinks(spec.Body), spec.PrimarySource.URL)); err != nil {
 		return nil, nil, err
 	}
 	info, err := t.w.SaveLesson(spec)
