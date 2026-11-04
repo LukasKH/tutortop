@@ -78,8 +78,8 @@ func TestNamesStayInsideTheWorkspace(t *testing.T) {
 func TestChat(t *testing.T) {
 	w := newWorkspace(t)
 	items := []workspace.ChatItem{
-		{ID: "1", Thread: workspace.PlanThread, Role: workspace.RoleUser, Text: "hi"},
-		{ID: "2", Thread: workspace.PlanThread, Role: workspace.RoleAssistant, Text: "hello"},
+		{ID: "1", Thread: workspace.PlanThread.String(), Role: workspace.RoleUser, Text: "hi"},
+		{ID: "2", Thread: workspace.PlanThread.String(), Role: workspace.RoleAssistant, Text: "hello"},
 		{ID: "3", Thread: "0001-task", Role: workspace.RoleNotice, Text: "elsewhere"},
 	}
 	for _, it := range items {
@@ -87,7 +87,7 @@ func TestChat(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	got, err := w.Chat(workspace.PlanThread)
+	got, err := w.Chat(workspace.PlanThread.String())
 	if err != nil || len(got) != 2 || got[0].Text != "hi" || got[1].Role != workspace.RoleAssistant {
 		t.Fatalf("plan thread: %+v, %v", got, err)
 	}
@@ -104,7 +104,7 @@ func TestAppendChatAfterDelete(t *testing.T) {
 	if err := s.Delete(w.ID); err != nil {
 		t.Fatal(err)
 	}
-	if err := w.AppendChat(workspace.ChatItem{Thread: workspace.PlanThread, Role: workspace.RoleAssistant}); err == nil {
+	if err := w.AppendChat(workspace.ChatItem{Thread: workspace.PlanThread.String(), Role: workspace.RoleAssistant}); err == nil {
 		t.Error("appended to a deleted workspace")
 	}
 	if _, err := os.Stat(w.Dir); !os.IsNotExist(err) {
@@ -116,16 +116,16 @@ func TestAppendChatAfterDelete(t *testing.T) {
 // id from the old agent is dropped.
 func TestSessionsFollowTheProvider(t *testing.T) {
 	w := newWorkspace(t) // claude
-	if err := w.SetSession("claude", workspace.PlanThread, "c1"); err != nil {
+	if err := w.SetSession("claude", workspace.PlanThread.String(), "c1"); err != nil {
 		t.Fatal(err)
 	}
-	if got, _ := w.UseProvider("claude"); got[workspace.PlanThread] != "c1" {
+	if got, _ := w.UseProvider("claude"); got[workspace.PlanThread.String()] != "c1" {
 		t.Fatalf("same provider lost its sessions: %v", got)
 	}
 	if got, _ := w.UseProvider("codex"); len(got) != 0 {
 		t.Fatalf("switching kept sessions: %v", got)
 	}
-	if err := w.SetSession("claude", workspace.PlanThread, "late"); err != nil {
+	if err := w.SetSession("claude", workspace.PlanThread.String(), "late"); err != nil {
 		t.Fatal(err)
 	}
 	if err := w.SetSession("codex", "0001-task", "x1"); err != nil {
