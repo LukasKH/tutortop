@@ -47,6 +47,8 @@ func (w *Workspace) Completions() ([]Completion, error) {
 			if n := questions[a.LessonID]; n > 0 && len(qs) == n {
 				out = append(out, Completion{Kind: "lesson", At: a.At})
 			}
+		case AttemptRun, AttemptHint:
+			// Neither finishes anything.
 		}
 	}
 	return out, nil

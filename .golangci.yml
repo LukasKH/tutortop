@@ -6,6 +6,30 @@ linters:
     - govet
     - staticcheck
     - unused
+    # STYLEGUIDE.md, "Types and control flow".
+    - exhaustive
+    - gocognit
+    - nestif
+
+  # gocognit (min-complexity 30) and nestif (min-complexity 5) keep their
+  # defaults.
+  settings:
+    exhaustive:
+      # A default: doesn't count as covering the missing cases. It would also
+      # swallow any constant added later, so the switches that must decide
+      # about it would go unflagged. List every case; a default: may still
+      # handle values outside the constants.
+      default-signifies-exhaustive: false
+
+  exclusions:
+    rules:
+      # internal/app is being rewritten and split into Wails services, which
+      # turn these on. Until the service split; remove then.
+      - path: ^internal/app/
+        linters:
+          - exhaustive
+          - gocognit
+          - nestif
 
 formatters:
   enable:

@@ -24,6 +24,26 @@ type TaskDefaults struct {
 	Shape string `yaml:"shape" json:"shape,omitempty" jsonschema:"kata (standalone function exercises) or project (grow one program over many tasks)"`
 }
 
+// validate fills the defaults and adds what's wrong to p.
+func (d *TaskDefaults) validate(p *problems) {
+	if d.Size == "" {
+		d.Size = "medium"
+	}
+	if d.Shape == "" {
+		d.Shape = "kata"
+	}
+	switch d.Size {
+	case "small", "medium", "large":
+	default:
+		p.addf("task_defaults.size must be small, medium or large")
+	}
+	switch d.Shape {
+	case "kata", "project":
+	default:
+		p.addf("task_defaults.shape must be kata or project")
+	}
+}
+
 type Module struct {
 	ID    string `yaml:"id" json:"id" jsonschema:"short kebab-case id, e.g. basics"`
 	Title string `yaml:"title" json:"title"`
@@ -31,6 +51,35 @@ type Module struct {
 	// sources a school course lists, so the learner can read the originals.
 	References []Source    `yaml:"references,omitempty" json:"references,omitempty" jsonschema:"1-4 official documentation pages, specifications or primary sources this module is based on, each a page you have read; the app checks every link opens. Title them so the learner knows what they'll find, e.g. 'Go blog: Working with Errors in Go 1.13'"`
 	Objectives []Objective `yaml:"objectives" json:"objectives"`
+}
+
+// validate fills the defaults of the module's objectives and adds what's
+// wrong to p. seen holds the ids taken so far.
+func (m *Module) validate(p *problems, seen map[string]bool, language func(string) error) {
+	if !moduleID.MatchString(m.ID) {
+		p.addf("module id %q must be kebab-case", m.ID)
+	}
+	if seen[m.ID] {
+		p.addf("duplicate id %q", m.ID)
+	}
+	seen[m.ID] = true
+	if len(m.Objectives) == 0 {
+		p.addf("module %q has no objectives", m.ID)
+	}
+	if len(m.References) == 0 {
+		p.addf("module %q needs references: 1-4 official documentation pages or primary sources it's based on", m.ID)
+	}
+	if len(m.References) > 4 {
+		p.addf("module %q: keep it to 4 references at most, the most useful ones", m.ID)
+	}
+	for _, r := range m.References {
+		if err := r.check(); err != "" {
+			p.addf("module %q: reference %q: %s", m.ID, r.Title, err)
+		}
+	}
+	for oi := range m.Objectives {
+		m.Objectives[oi].validate(p, seen, language)
+	}
 }
 
 type Source struct {
@@ -59,6 +108,36 @@ type Objective struct {
 	Language string `yaml:"language,omitempty" json:"language,omitempty" jsonschema:"overrides the curriculum language"`
 }
 
+// validate fills the objective's defaults and adds what's wrong to p. seen
+// holds the ids taken so far.
+func (o *Objective) validate(p *problems, seen map[string]bool, language func(string) error) {
+	if !objectiveID.MatchString(o.ID) {
+		p.addf("objective id %q must be lowercase, dotted or dashed", o.ID)
+	}
+	if seen[o.ID] {
+		p.addf("duplicate id %q", o.ID)
+	}
+	seen[o.ID] = true
+	switch n := len([]rune(o.Name)); {
+	case n == 0:
+		p.addf("objective %q needs a name: 2-4 words for the menu, like 'Wrapping errors'", o.ID)
+	case n > maxNameLen:
+		p.addf("objective %q: name %q is too long; keep it to 2-4 words (%d characters at most)", o.ID, o.Name, maxNameLen)
+	}
+	if o.Verify == "" {
+		o.Verify = "tests"
+	}
+	if o.Verify != "tests" {
+		p.addf("objective %q: verify must be 'tests' (other check kinds aren't supported yet). Reshape the objective so unit tests can prove it.", o.ID)
+	}
+	if o.Language == "" {
+		return
+	}
+	if err := language(o.Language); err != nil {
+		p.addf("objective %q: %v", o.ID, err)
+	}
+}
+
 // maxNameLen keeps objective names short enough for one line in the menu.
 const maxNameLen = 28
 
@@ -77,77 +156,15 @@ func (c *Curriculum) Validate(language func(string) error) error {
 	if err := language(c.Language); err != nil {
 		p.addf("language: %v", err)
 	}
-	if c.TaskDefaults.Size == "" {
-		c.TaskDefaults.Size = "medium"
-	}
-	if c.TaskDefaults.Shape == "" {
-		c.TaskDefaults.Shape = "kata"
-	}
-	switch c.TaskDefaults.Size {
-	case "small", "medium", "large":
-	default:
-		p.addf("task_defaults.size must be small, medium or large")
-	}
-	switch c.TaskDefaults.Shape {
-	case "kata", "project":
-	default:
-		p.addf("task_defaults.shape must be kata or project")
-	}
+	c.TaskDefaults.validate(&p)
 	if len(c.Modules) == 0 {
 		p.addf("the curriculum needs at least one module")
 	}
 
+	// Module and objective ids share one namespace.
 	seen := map[string]bool{}
 	for mi := range c.Modules {
-		m := &c.Modules[mi]
-		if !moduleID.MatchString(m.ID) {
-			p.addf("module id %q must be kebab-case", m.ID)
-		}
-		if seen[m.ID] {
-			p.addf("duplicate id %q", m.ID)
-		}
-		seen[m.ID] = true
-		if len(m.Objectives) == 0 {
-			p.addf("module %q has no objectives", m.ID)
-		}
-		if len(m.References) == 0 {
-			p.addf("module %q needs references: 1-4 official documentation pages or primary sources it's based on", m.ID)
-		}
-		if len(m.References) > 4 {
-			p.addf("module %q: keep it to 4 references at most, the most useful ones", m.ID)
-		}
-		for _, r := range m.References {
-			if err := r.check(); err != "" {
-				p.addf("module %q: reference %q: %s", m.ID, r.Title, err)
-			}
-		}
-		for oi := range m.Objectives {
-			o := &m.Objectives[oi]
-			if !objectiveID.MatchString(o.ID) {
-				p.addf("objective id %q must be lowercase, dotted or dashed", o.ID)
-			}
-			if seen[o.ID] {
-				p.addf("duplicate id %q", o.ID)
-			}
-			seen[o.ID] = true
-			switch n := len([]rune(o.Name)); {
-			case n == 0:
-				p.addf("objective %q needs a name: 2-4 words for the menu, like 'Wrapping errors'", o.ID)
-			case n > maxNameLen:
-				p.addf("objective %q: name %q is too long; keep it to 2-4 words (%d characters at most)", o.ID, o.Name, maxNameLen)
-			}
-			if o.Verify == "" {
-				o.Verify = "tests"
-			}
-			if o.Verify != "tests" {
-				p.addf("objective %q: verify must be 'tests' (other check kinds aren't supported yet). Reshape the objective so unit tests can prove it.", o.ID)
-			}
-			if o.Language != "" {
-				if err := language(o.Language); err != nil {
-					p.addf("objective %q: %v", o.ID, err)
-				}
-			}
-		}
+		c.Modules[mi].validate(&p, seen, language)
 	}
 	return p.err("curriculum")
 }

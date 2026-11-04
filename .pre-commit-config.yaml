@@ -3,7 +3,8 @@ default_install_hook_types: [pre-commit, commit-msg]
 repos:
   - repo: local
     hooks:
-      # go vet's analyzers, Staticcheck and gofmt/goimports, configured in .golangci.yml.
+      # go vet's analyzers, Staticcheck, exhaustive, gocognit, nestif and
+      # gofmt/goimports, configured in .golangci.yml.
       - id: golangci-lint
         name: Go vet and lint
         entry: golangci-lint run ./internal/...

@@ -135,7 +135,7 @@ func (r *Runner) Gate(ctx context.Context, in GateInput) (GateReport, error) {
 		add("starter code fails at least one test", false, "The starter already passes every test, so there's nothing to solve.")
 	case StatusError:
 		add("starter code compiles", false, "The starter must compile so the learner sees test failures, not build errors.\n"+text.Tail(res.Output, 1500))
-	default:
+	case StatusFailed:
 		p, t := res.Counts()
 		add("starter code fails at least one test", true, fmt.Sprintf("%d/%d passing", p, t))
 	}
@@ -158,7 +158,7 @@ func (r *Runner) Gate(ctx context.Context, in GateInput) (GateReport, error) {
 				steps[i] = GateStep{name, false, "Tests pass for this wrong solution (" + m.Description + "). Add a test that catches it."}
 			case StatusError:
 				steps[i] = GateStep{name, false, "Mutant doesn't compile, so it proves nothing. Make it a compiling, plausible mistake.\n" + text.Tail(res.Output, 800)}
-			default:
+			case StatusFailed:
 				steps[i] = GateStep{name, true, ""}
 			}
 			return nil
