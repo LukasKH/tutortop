@@ -73,6 +73,22 @@ How code in Tutortop is written. Reviews check changes against it. Rules marked 
   ```
 
 - Existing helpers: `decode[T]` (internal/agent), `readJSON[T]` and `readYAML[T]` (internal/workspace), `rpcConn.Call[T]`. Use them, or add one like them, rather than unmarshalling into a pointer. The helper itself is the one place that calls the standard library with `&v`.
+- Pass a pointer instead when:
+  - **decoding into a value that already holds data**, such as merging a file over defaults. The standard library's decoders take a pointer for this reason, even the new `encoding/json/v2`.
+  - **decoding many items in a loop.** Reuse one value instead of creating a new one each time, so it isn't allocated on every pass. `Unmarshal` leaves fields that are missing from the input untouched, so reset the value first:
+
+    ```go
+    var ev goTestEvent
+    for line := range strings.Lines(out) {
+    	ev = goTestEvent{} // or the previous line's fields leak into this one
+    	if json.Unmarshal([]byte(line), &ev) != nil {
+    		continue
+    	}
+    	…
+    }
+    ```
+
+  - **an interface needs the method.** Interface methods can't have type parameters (Go spec), so a seam's method takes or returns a concrete type, and the generic call stays in a helper.
 
 ### Types and control flow
 
