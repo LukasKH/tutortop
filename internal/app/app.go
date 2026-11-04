@@ -5,7 +5,6 @@ package app
 import (
 	"cmp"
 	"context"
-	_ "embed"
 	"errors"
 	"fmt"
 	"os"
@@ -22,20 +21,6 @@ import (
 	"github.com/adrg/xdg"
 )
 
-// The tutor's instructions: shared rules plus one role per kind of thread.
-var (
-	//go:embed prompts/tutor.md
-	tutorPrompt string
-	//go:embed prompts/plan.md
-	planRole string
-	//go:embed prompts/task.md
-	taskRole string
-	//go:embed prompts/lesson.md
-	lessonRole string
-	//go:embed prompts/writer.md
-	writerRole string
-)
-
 type App struct {
 	store  *workspace.Store
 	runner *runner.Runner
@@ -47,9 +32,8 @@ type App struct {
 	linkCheck func(ctx context.Context, urls []string) []string
 
 	mu          sync.Mutex
-	sessions    map[threadKey]*agentSession // live tutor per chat thread
+	sessions    map[threadKey]*session      // each thread's running agent (session.go)
 	lastResults map[threadKey]runner.Result // latest check per task, for tutor context
-	checks      map[threadKey]Gate          // a writer's latest sandbox check, by objective, while it works
 	servers     map[string]*languageServer  // running language servers by id
 
 	settingsMu   sync.Mutex
@@ -58,8 +42,8 @@ type App struct {
 }
 
 func New() (*App, error) {
-	a := &App{runner: runner.New(), sessions: map[threadKey]*agentSession{}, lastResults: map[threadKey]runner.Result{},
-		checks: map[threadKey]Gate{}, servers: map[string]*languageServer{}, startAgent: agent.Start, linkCheck: checkLinks,
+	a := &App{runner: runner.New(), sessions: map[threadKey]*session{}, lastResults: map[threadKey]runner.Result{},
+		servers: map[string]*languageServer{}, startAgent: agent.Start, linkCheck: checkLinks,
 		settingsPath: filepath.Join(xdg.ConfigHome, "tutortop", "settings.yaml"), models: map[string]modelList{}}
 	// The workspaces folder: TUTORTOP_HOME, else the one chosen in the
 	// settings, else ~/Tutortop. It's fixed for the run: live sessions open
@@ -79,7 +63,7 @@ func (a *App) ServiceShutdown() error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	for _, s := range a.sessions {
-		s.close()
+		a.end(s)
 	}
 	for _, ls := range a.servers {
 		ls.srv.Close()
@@ -209,8 +193,7 @@ func (a *App) DeleteWorkspace(id string) error {
 	var servers []*languageServer
 	for key, s := range a.sessions {
 		if key.ws == id {
-			delete(a.sessions, key)
-			s.close()
+			a.end(s)
 		}
 	}
 	for key := range a.lastResults {
@@ -263,21 +246,7 @@ func (a *App) Workspace(id string) (WorkspaceState, error) {
 	st.Tasks, _ = w.TaskStatuses()
 	st.Lessons, _ = w.LessonStatuses()
 	st.Questions = w.PendingQuestions()
-	st.Busy = map[string]bool{}
-	st.Checks = map[string]Gate{}
-	a.mu.Lock()
-	for key, s := range a.sessions {
-		if key.ws == id && s.busy {
-			st.Busy[key.thread] = true
-		}
-	}
-	for key, c := range a.checks {
-		if key.ws == id {
-			st.Checks[key.thread] = c
-		}
-	}
-	a.mu.Unlock()
-
+	st.Busy, st.Checks = a.activity(id)
 	if st.Curriculum != nil {
 		a.prepare(w, st.Curriculum.Language)
 	}
@@ -297,7 +266,7 @@ func (a *App) ApproveProposal(wsID string) error {
 	a.prepare(w, c.Language)
 	// The tutor panel hides the plan thread up to the first of these notices
 	// (afterSetup in frontend/src/lib/chat.ts); keep the wording's start.
-	a.post(w, workspace.ChatItem{Thread: workspace.PlanThread, Role: workspace.RoleNotice, Text: fmt.Sprintf("You approved the plan (revision %d).", c.Revision)})
+	a.post(w, workspace.ChatItem{Thread: workspace.PlanThread.String(), Role: workspace.RoleNotice, Text: fmt.Sprintf("You approved the plan (revision %d).", c.Revision)})
 	a.keepReady(w, "The learner just approved the plan.")
 	return nil
 }

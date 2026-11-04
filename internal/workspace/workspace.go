@@ -7,7 +7,7 @@
 //	tasks/0001-slug/{task.yaml,README.md,starter/,tests/,work/}             tasks; work/ is the learner's code
 //	.tutortop/{workspace.json,attempts.jsonl,proposal.yaml,questions.json}  app state
 //	.tutortop/toolchains/<language>.yaml                                    languages the tutor set up (beyond Go and Python)
-//	.tutortop/chat/<thread>.jsonl                                           one chat per thread: "plan" or a task id
+//	.tutortop/chat/<thread>.jsonl                                           one chat per thread, by its name (Thread)
 //
 // Private files the learner and tutor shouldn't see (reference solutions,
 // hidden tests, mutants) live outside the workspace in the app data dir.
@@ -163,21 +163,6 @@ type Meta struct {
 	Sessions  map[string]string `json:"sessions,omitempty"`
 	CreatedAt time.Time         `json:"createdAt"`
 }
-
-// PlanThread is the planning conversation: interview, mission and
-// curriculum. Every task also gets its own thread, named by its task id.
-const PlanThread = "plan"
-
-// WriterThread is the background conversation that writes one objective's
-// lesson and exercise. The learner doesn't chat in it; it ends when it's done.
-func WriterThread(objectiveID string) string { return "write-" + objectiveID }
-
-// ObjectiveOfWriter returns the objective a writer thread writes for, if the
-// thread is a writer.
-func ObjectiveOfWriter(thread string) (string, bool) { return strings.CutPrefix(thread, "write-") }
-
-// IsWriterThread reports whether a thread is an objective's writer.
-func IsWriterThread(thread string) bool { _, ok := ObjectiveOfWriter(thread); return ok }
 
 type Workspace struct {
 	ID         string

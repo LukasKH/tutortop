@@ -88,8 +88,8 @@ func (h *mcpHost) newServer(w *workspace.Workspace, thread string) *mcp.Server {
 
 	// Only an objective's writer publishes its lesson and task, so the
 	// tutoring and planning chats stay about the learner.
-	if objective, ok := workspace.ObjectiveOfWriter(thread); ok {
-		t.objective = objective
+	if th := workspace.ParseThread(thread); th.Kind == workspace.WriterKind {
+		t.objective = th.ID
 		mcp.AddTool(s, createTaskTool, t.createTask)
 		mcp.AddTool(s, createLessonTool, t.createLesson)
 		return s

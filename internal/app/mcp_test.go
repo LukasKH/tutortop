@@ -21,11 +21,11 @@ func TestThreadsGetTheirKindsTools(t *testing.T) {
 	}
 	chat := []string{"ask_user", "get_state", "propose_curriculum", "set_icon", "set_toolchain"}
 	writer := []string{"create_lesson", "create_task", "get_state"}
-	for thread, want := range map[string][]string{
-		workspace.PlanThread:                chat,
-		"0001-some-task":                    chat,
-		workspace.LessonThread("0001-x"):    chat,
-		workspace.WriterThread("go.errors"): writer,
+	for thread, want := range map[workspace.Thread][]string{
+		workspace.PlanThread:                   chat,
+		workspace.TaskThread("0001-some-task"): chat,
+		workspace.LessonThread("0001-x"):       chat,
+		workspace.WriterThread("go.errors"):    writer,
 	} {
 		var got []string
 		for tool, err := range toolSession(t, a, w, thread).Tools(context.Background(), nil) {
@@ -67,7 +67,7 @@ func TestAskUserTakesOneToFourQuestions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ask := toolCaller(t, a, w, "0001-some-task")
+	ask := toolCaller(t, a, w, workspace.TaskThread("0001-some-task"))
 	questions := func(n int) map[string]any {
 		qs := []any{}
 		for range n {
@@ -140,7 +140,7 @@ func goWorkspace(t *testing.T, a *App) *workspace.Workspace {
 // toolCaller connects to one thread's MCP tools, the way that thread's agent
 // would, and returns a function that calls a tool and reports its text and
 // whether it was an error.
-func toolCaller(t *testing.T, a *App, w *workspace.Workspace, thread string) func(name string, args any) (string, bool) {
+func toolCaller(t *testing.T, a *App, w *workspace.Workspace, thread workspace.Thread) func(name string, args any) (string, bool) {
 	t.Helper()
 	cs := toolSession(t, a, w, thread)
 	return func(name string, args any) (string, bool) {
@@ -160,10 +160,10 @@ func toolCaller(t *testing.T, a *App, w *workspace.Workspace, thread string) fun
 }
 
 // toolSession connects to one thread's MCP server over HTTP, as its agent does.
-func toolSession(t *testing.T, a *App, w *workspace.Workspace, thread string) *mcp.ClientSession {
+func toolSession(t *testing.T, a *App, w *workspace.Workspace, thread workspace.Thread) *mcp.ClientSession {
 	t.Helper()
 	cs, err := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "1"}, nil).
-		Connect(context.Background(), &mcp.StreamableClientTransport{Endpoint: a.mcp.URL(w, thread)}, nil)
+		Connect(context.Background(), &mcp.StreamableClientTransport{Endpoint: a.mcp.URL(w, thread.String())}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

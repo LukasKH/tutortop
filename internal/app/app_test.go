@@ -19,9 +19,12 @@ import (
 // Set TUTORTOP_RUNNER=local to run without Docker.
 func TestToolsEndToEnd(t *testing.T) {
 	a := newTestApp(t)
-	var prompts []string
+	var (
+		prompts []string
+		mu      sync.Mutex // the plan and writers prompt at once
+	)
 	a.startAgent = func(_ context.Context, _ string, _ agent.Options, _ func(agent.Event)) (agent.Session, error) {
-		return &fakeSession{prompts: &prompts}, nil
+		return &fakeSession{prompts: &prompts, mu: &mu}, nil
 	}
 	if err := a.runner.Check(context.Background()); err != nil {
 		t.Skip(err)
@@ -248,7 +251,7 @@ func TestThreadsGetOwnSessions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := a.SendMessage(w.ID, "hello plan", workspace.PlanThread); err != nil {
+	if err := a.SendMessage(w.ID, "hello plan", workspace.PlanThread.String()); err != nil {
 		t.Fatal(err)
 	}
 	if err := a.SendMessage(w.ID, "hello task", "0001-some-task"); err != nil {
@@ -264,7 +267,7 @@ func TestThreadsGetOwnSessions(t *testing.T) {
 	deadline := time.Now().Add(2 * time.Second)
 	for {
 		mu.Lock()
-		plan, task := sessions[a.mcp.URL(w, workspace.PlanThread)], sessions[a.mcp.URL(w, "0001-some-task")]
+		plan, task := sessions[a.mcp.URL(w, workspace.PlanThread.String())], sessions[a.mcp.URL(w, "0001-some-task")]
 		done := plan != nil && task != nil && len(plan.prompts) == 1 && len(task.prompts) == 2
 		mu.Unlock()
 		if done {
@@ -281,7 +284,7 @@ func TestThreadsGetOwnSessions(t *testing.T) {
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	plan, _ := a.Chat(w.ID, workspace.PlanThread)
+	plan, _ := a.Chat(w.ID, workspace.PlanThread.String())
 	task, _ := a.Chat(w.ID, "0001-some-task")
 	if len(plan) != 1 || len(task) != 2 {
 		t.Fatalf("plan chat %d items, task chat %d items", len(plan), len(task))

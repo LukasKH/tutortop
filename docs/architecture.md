@@ -108,9 +108,20 @@ Components are styled with utility classes in their markup. The one exception is
 
 ## The agent and its tools
 
-The tutor is the learner's own CLI, signed in already. `App` starts one agent process per chat thread. The threads are `plan` for the mission and curriculum, one per task, one per lesson, and one writer per objective (`write-<objective>`).
+The tutor is the learner's own CLI, signed in already. `App` starts one agent process per thread, a conversation with its own chat. `workspace.Thread` names the four kinds, and its name is the chat's file name and what the frontend sends: `plan` for the mission and curriculum, the task id for a task, `lesson-<id>` for a lesson, and `write-<objective>` for an objective's writer.
 
 Writers have no chat window. They prepare an objective's lesson and exercise in the background, and the app keeps the next two unpassed objectives written so the learner doesn't wait.
+
+### Sessions
+
+A thread's agent process runs in a session (`internal/app/session.go`), which answers the thread's messages one turn at a time, in order. When the learner sends a message, `SendMessage` adds a `[context]` block about the open task or lesson (`prompts.go`), posts the message to the chat and queues it with `enqueue`. That starts the session if the thread has none. The session's loop hands each message to the agent, and its `transcript` streams the reply into the chat as `chat:message` events.
+
+- A session starts with the first message for its thread. Chats resume their saved conversation; a writer starts fresh.
+- The thread is busy (`thread:busy`) from the moment a message is queued until every queued message is answered, including while the process starts. The session's count of pending messages is the only source of this state.
+- When the settings change, an idle session restarts with the next message. A busy one finishes its queue first.
+- A session ends when its process exits, its workspace is deleted or the app quits. A writer also ends as soon as it's idle, and starting any thread but the plan ends the workspace's idle task and lesson sessions.
+
+To add a kind of thread, add it and its name to `internal/workspace/thread.go`, give it a role in `prompts.go` (and `prompts/`), decide in `session.go` whether it resumes and when it ends, and give it its tools in `mcp.go`'s `newServer`.
 
 The agent changes the app's state only through MCP tools, built on the [official Go SDK](https://github.com/modelcontextprotocol/go-sdk). `App` serves them over HTTP on `127.0.0.1`, with a random token in each thread's URL, so a thread can only reach its own workspace. The tool handlers write to the workspace and emit events.
 

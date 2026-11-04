@@ -38,7 +38,7 @@ func TestLiveInterview(t *testing.T) {
 		}
 		questions = st.Questions
 	}
-	chat, _ := a.Chat(id, workspace.PlanThread)
+	chat, _ := a.Chat(id, workspace.PlanThread.String())
 	for _, c := range chat {
 		t.Logf("%-9s %-7s %s", c.Role, c.Status, text.Truncate(c.Text, 300))
 	}
