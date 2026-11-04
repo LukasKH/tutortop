@@ -26,6 +26,67 @@ type TaskSpec struct {
 	Mutants     []runner.Mutant `json:"mutants" jsonschema:"at least 2 plausible wrong solutions (same filenames as reference). Each must compile and be caught by the tests."`
 }
 
+// check reports every problem with the spec's shape at once, for a task in
+// lang run by tc.
+func (spec *TaskSpec) check(tc runner.Toolchain, lang string) error {
+	var p problems
+	if strings.TrimSpace(spec.Title) == "" {
+		p.addf("title is required")
+	}
+	spec.Statement.check(&p)
+	spec.checkStarter(&p, tc)
+	spec.checkTests(&p, tc, lang)
+	spec.checkMutants(&p)
+	return p.err("task")
+}
+
+// checkStarter checks the starter has files, the reference has the same, and
+// none is a test.
+func (spec *TaskSpec) checkStarter(p *problems, tc runner.Toolchain) {
+	if len(spec.Starter) == 0 {
+		p.addf("starter needs at least one file")
+	}
+	for name := range spec.Starter {
+		if _, ok := spec.Reference[name]; !ok {
+			p.addf("reference is missing %s (it must have the same files as starter)", name)
+		}
+		if tc.IsTestFile(name) {
+			p.addf("starter file %s looks like a test file", name)
+		}
+	}
+}
+
+// checkTests checks every test file is named like one and belongs to one set
+// only.
+func (spec *TaskSpec) checkTests(p *problems, tc runner.Toolchain, lang string) {
+	for _, set := range []runner.Files{spec.Tests, spec.HiddenTests} {
+		for name := range set {
+			if !tc.IsTestFile(name) {
+				p.addf("%s isn't named like a %s test file", name, lang)
+			}
+			if _, clash := spec.Starter[name]; clash {
+				p.addf("%s is both a test and a starter file", name)
+			}
+		}
+	}
+	for name := range spec.HiddenTests {
+		if _, clash := spec.Tests[name]; clash {
+			p.addf("%s is both a visible and a hidden test file", name)
+		}
+	}
+}
+
+// checkMutants checks the mutants change only solution files.
+func (spec *TaskSpec) checkMutants(p *problems) {
+	for _, m := range spec.Mutants {
+		for name := range m.Files {
+			if _, ok := spec.Starter[name]; !ok {
+				p.addf("mutant %q changes %s, which isn't a solution file", m.Name, name)
+			}
+		}
+	}
+}
+
 // TaskInfo is task.yaml.
 type TaskInfo struct {
 	ID        string    `yaml:"id" json:"id"`
@@ -72,49 +133,7 @@ func (w *Workspace) ValidateSpec(spec *TaskSpec) (runner.Toolchain, error) {
 	if tc, err = w.Toolchain(lang); err != nil {
 		return tc, err
 	}
-
-	var p problems
-	if strings.TrimSpace(spec.Title) == "" {
-		p.addf("title is required")
-	}
-	spec.Statement.check(&p)
-	if len(spec.Starter) == 0 {
-		p.addf("starter needs at least one file")
-	}
-	for name := range spec.Starter {
-		if _, ok := spec.Reference[name]; !ok {
-			p.addf("reference is missing %s (it must have the same files as starter)", name)
-		}
-		if tc.IsTestFile(name) {
-			p.addf("starter file %s looks like a test file", name)
-		}
-	}
-	for _, set := range []runner.Files{spec.Tests, spec.HiddenTests} {
-		for name := range set {
-			if !tc.IsTestFile(name) {
-				p.addf("%s isn't named like a %s test file", name, lang)
-			}
-			if _, clash := spec.Starter[name]; clash {
-				p.addf("%s is both a test and a starter file", name)
-			}
-		}
-	}
-	for name := range spec.HiddenTests {
-		if _, clash := spec.Tests[name]; clash {
-			p.addf("%s is both a visible and a hidden test file", name)
-		}
-	}
-	for _, m := range spec.Mutants {
-		for name := range m.Files {
-			if _, ok := spec.Starter[name]; !ok {
-				p.addf("mutant %q changes %s, which isn't a solution file", m.Name, name)
-			}
-		}
-	}
-	if err := p.err("task"); err != nil {
-		return tc, err
-	}
-	return tc, nil
+	return tc, spec.check(tc, lang)
 }
 
 // SaveTask writes a task that already passed the quality gate, with the
