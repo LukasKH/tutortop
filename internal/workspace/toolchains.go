@@ -13,16 +13,19 @@ import (
 // Languages other than the built-in ones (runner.Builtin) are set up by the
 // tutor per workspace and kept in .tutortop/toolchains/<language>.yaml.
 
-// Toolchain returns how a language's code is checked in this workspace.
+// Toolchain returns how a language's code is checked in this workspace. The
+// workspace's own toolchain comes first: one the tutor set up before the app
+// shipped the language keeps checking the tasks that passed the quality gate
+// with it. New ones can't be set up for a built-in language (set_toolchain).
 func (w *Workspace) Toolchain(language string) (runner.Toolchain, error) {
+	spec, err := w.toolchainSpec(language)
+	if err == nil {
+		return spec.Toolchain()
+	}
 	if tc, ok := runner.Builtin(language); ok {
 		return tc, nil
 	}
-	spec, err := w.toolchainSpec(language)
-	if err != nil {
-		return runner.Toolchain{}, err
-	}
-	return spec.Toolchain()
+	return runner.Toolchain{}, err
 }
 
 func (w *Workspace) toolchainSpec(language string) (runner.ToolchainSpec, error) {

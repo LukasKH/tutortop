@@ -49,9 +49,10 @@ func (tc Toolchain) IsTestFile(name string) bool {
 }
 
 // builtins are the languages the app ships with. The app's descriptions for
-// the agent name them through BuiltinLanguages. Struct tags and the tutor's
-// prompt name them by hand; TestWrittenOutLanguagesMatchTheBuiltins in
-// internal/app fails until they name a new one.
+// the agent name them through BuiltinLanguages. Struct tags and the prompts
+// name them by hand; TestWrittenOutLanguagesMatchTheBuiltins in internal/app
+// fails until they name a new one. docs/architecture.md has the steps for
+// adding one.
 var builtins = map[string]Toolchain{
 	"go":     goToolchain,
 	"python": pythonToolchain,

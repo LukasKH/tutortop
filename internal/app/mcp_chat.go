@@ -100,6 +100,9 @@ func (t *threadTools) setToolchain(ctx context.Context, _ *mcp.CallToolRequest, 
 	if err != nil {
 		return nil, nil, err
 	}
+	if _, ok := runner.Builtin(tc.Language); ok {
+		return nil, nil, fmt.Errorf("%s is built in; use it directly", tc.Language)
+	}
 	check := SandboxCheck{Kind: CheckToolchain, Thread: t.thread.String(), Title: tc.Name, Running: true}
 	emit(checkStatus, CheckEvent{Workspace: t.w.ID, Check: check})
 	report, err := t.app.checkToolchain(ctx, tc, in.Example)

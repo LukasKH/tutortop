@@ -150,3 +150,15 @@ Each tool is a `*mcp.Tool` with its name and description, a handler method on `t
 **Run** and **Submit** call `App.RunChecks`. It saves the learner's code, runs the visible tests (plus the hidden ones on submit) in the sandbox and records the attempt. The sandbox images are built ahead, in the background, so the first check is fast: when the app starts (`ServiceStartup`, for every workspace's plan language) and when the learner approves a plan. Reading a workspace never starts a build, since the frontend repeats reads freely.
 
 The editor's completions and errors come from a language server running in the task's sandbox image. Go doesn't read the LSP messages. It relays them between the server's stdio and the frontend, sending them out as `lsp:message` events and taking them in through `App.SendLanguageServer`.
+
+### Languages
+
+A toolchain says how one language's tests run in the sandbox and how their results are read (`runner.Toolchain`). The built-in ones are in `internal/runner/toolchain.go`. Any other language is set up by the tutor with `set_toolchain` and saved in the workspace as `.tutortop/toolchains/<language>.yaml` (`runner.ToolchainSpec`, `internal/workspace/toolchains.go`); its tests must write a JUnit report.
+
+To add a built-in language:
+
+1. Add a `Toolchain` to `toolchain.go` and to `builtins`. Its Dockerfile installs the language, the test framework and a language server, and runs as user 1000 (`runner`) in `/work` with no network, like the others. Tag the image `tutortop-<language>:1`, and bump the tag whenever the Dockerfile changes. `script` runs the tests `repeat` times, shuffled if the framework can; a framework that writes JUnit can use `junitScript` and `parseJUnitRuns`, as Python does.
+2. Run `go test ./internal/app -run TestWrittenOutLanguagesMatchTheBuiltins`. Struct tags and prompts name the built-in languages by hand, and the test lists every one that names the others but not the new one. It also wants a conventions line for it in `prompts/tutor.md` (`- **<Name>**: …`).
+3. A language with its own report format needs its own `parse`, tested on recorded output in `internal/runner` (see `TestRunGo` and `TestParseJUnit`); `readable` in `runner.go` turns Go's JSON back into text for the learner. Add a picture to `workspace.Icons` if there's none for it.
+
+A workspace whose tutor set the language up before it was built in keeps its own toolchain: `Workspace.Toolchain` looks in the workspace first, because that workspace's tasks passed the quality gate with it. `set_toolchain` refuses to set up a built-in language anew.

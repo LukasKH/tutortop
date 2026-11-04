@@ -163,6 +163,23 @@ func TestSessionsFollowTheProvider(t *testing.T) {
 	}
 }
 
+// A language the workspace set up before the app shipped it keeps the
+// toolchain its tasks passed the quality gate with.
+func TestOwnToolchainOutranksANewBuiltin(t *testing.T) {
+	w := newWorkspace(t)
+	if tc, err := w.Toolchain("python"); err != nil || tc.Name != "Python" {
+		t.Fatalf("built-in python = %+v, %v", tc, err)
+	}
+	// As if python weren't built in when the tutor set it up.
+	own := runner.ToolchainSpec{Language: "python", Name: "My Python", Dockerfile: "FROM python:3.12", TestCommand: "pytest --junitxml=/tmp/junit.xml", TestFiles: "test_*.py"}
+	if err := w.SaveToolchain(own); err != nil {
+		t.Fatal(err)
+	}
+	if tc, err := w.Toolchain("python"); err != nil || tc.Name != "My Python" {
+		t.Fatalf("python = %+v, %v; want the workspace's own", tc, err)
+	}
+}
+
 // ---- helpers shared by the package's tests ----
 
 // newWorkspace makes a workspace in temporary folders.
