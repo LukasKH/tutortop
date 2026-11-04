@@ -62,9 +62,8 @@ export function WorkspaceView({ id, tutor, onSettings, onBack }: Props) {
 
   // Questions that aren't in the centre wait in the chat of the thread that
   // asked. The plan's also show on "Your plan" while another chat is shown.
-  const questionsThread = questions?.thread || PLAN_THREAD;
   const questionsWaiting = !!questions && !questionsInCenter(view, item, questions);
-  const planAsked = questionsWaiting && questionsThread === PLAN_THREAD;
+  const planAsked = questionsWaiting && questions.thread === PLAN_THREAD;
   const planAttention: Attention = {
     attention: thread !== PLAN_THREAD && (!!unread[PLAN_THREAD] || !!busy[PLAN_THREAD] || planAsked),
     questions: planAsked ? (questions?.questions ?? []).length : 0,
@@ -139,7 +138,7 @@ export function WorkspaceView({ id, tutor, onSettings, onBack }: Props) {
               <div className="max-w-[88%] self-center text-center text-[12px] text-balance wrap-anywhere whitespace-pre-wrap text-muted-foreground">
                 Questions are open in the main panel.
               </div>
-            ) : questions && questionsWaiting && questionsThread === thread ? (
+            ) : questions && questionsWaiting && questions.thread === thread ? (
               <QuestionsForm key={JSON.stringify(questions)} layout="chat" form={questions} onAnswer={live.answerQuestions} onDismiss={live.dismissQuestions} />
             ) : null
           }
