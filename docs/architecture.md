@@ -71,7 +71,7 @@ frontend/src/
   components/ui/        shadcn primitives (Button, Dialog, Tabs, ...), restyled to the app's look
   components/           the app's shared components: Markdown, Page and PageHeader, Splitter, ...
   hooks/                shared React hooks
-  lib/                  api.ts (the Wails bindings and events), thread names, chat helpers, wording
+  lib/                  api.ts (the Wails bindings and events), agents and models, thread names, chat helpers, wording
   styles/               globals.css (theme and base), prose.css (rendered markdown)
 ```
 
@@ -96,13 +96,17 @@ The open item is an `OpenItem`: a task, a lesson, or an objective's lesson or ex
 
 To add:
 
-- **A centre page:** add a kind to `Center`, decide when it shows in `centerOf`, and render it in `CenterPane`. The compiler points at the missing `case`.
-- **An event:** after adding it in Go and regenerating the bindings, listen with `useEvent` in the hook that owns the state it changes. For the workspace's state, add an `Action` and its case in `reduceWorkspace`.
-- **A backend call:** call `App.<Method>` from the hook or component that owns the state. Add read-only methods to `SAFE_TO_REPEAT` in `lib/api.ts` so they wait out a restart. In the workspace screen, pass failures to `fail`, which shows them above the centre pane.
+- **A centre page:**
+  1. Get its data. `WorkspaceState` carries only the mission of the tutor's documents, so a page for `NOTES.md` or `GLOSSARY.md` needs a field on it in Go (`App.Workspace`) or its own `App` method that the page calls itself, like `LessonPanel`. Either needs the bindings regenerated.
+  2. If the learner chooses the page, as they choose "Your plan", add a value to `CenterView` in `use-open-item.ts` and a link in `Sidebar`, whose callback in `workspace-view.tsx` calls `nav.setView` (see `onShowPlan` and `planOpen`). The chat shows the plan thread for every view but `item`.
+  3. Add a kind to `Center` and decide in `centerOf` when it shows. Until the first plan is approved, `centerOf` returns early with `setup`, `proposal` or `plan`; add a case there if the page is needed then too.
+  4. Render it in `CenterPane`. The compiler points at the missing `case`. Add a `centerOf` case to `use-open-item.test.ts`.
+- **An event:** after adding it in Go and regenerating the bindings, listen with `useEvent(AppEvents.<Name>, ...)` in the hook that owns the state it changes, and ignore other workspaces' events. In the workspace screen, an event that changes the snapshot only calls `refresh`, like `workspace:changed`. One that updates state directly adds a field to `LiveWorkspace`, an `Action` and its case in `reduceWorkspace`, with a test in `workspace-state.test.ts`. If the snapshot also carries that state, stamp the action with `performance.now()`, record when it changed (like `busyAt`) and merge the snapshot's value with `newer`, as `busy` does, so an older snapshot doesn't undo it.
+- **A backend call:** after adding the Go method and regenerating the bindings, `App.<Method>` exists with its types. Re-export any new Go type it takes or returns from `lib/api.ts`, under its Go name. Call it from the hook or component that owns the state. Add read-only methods to `SAFE_TO_REPEAT` in `lib/api.ts` so they wait out a restart. In the workspace screen, pass failures to `fail`, which shows them above the centre pane. If the call changes what the snapshot shows, have Go emit `workspace:changed` or call `refresh` after it, as the hint button does.
 
 ### Tests
 
-`npm test` runs [Vitest](https://vitest.dev). Tests sit next to the module they test (`*.test.ts`) and cover logic that can break: the workspace reducer, open-item rules, chat merging, and hooks that react to events. Hook tests render with `@testing-library/react` in jsdom (`// @vitest-environment jsdom`) and replace `useEvent` with a fake to send events; `use-open-item.test.ts` shows how. `features/workspace/fixtures.ts` builds workspace snapshots.
+`npm test` runs [Vitest](https://vitest.dev). Tests sit next to the module they test (`*.test.ts`) and cover logic that can break: the workspace reducer, open-item rules, chat merging and when the tutor shows as thinking, and hooks that react to events. Hook tests render with `@testing-library/react` in jsdom (`// @vitest-environment jsdom`) and replace `useEvent` with a fake to send events; `use-open-item.test.ts` shows how. `features/workspace/fixtures.ts` builds workspace snapshots.
 
 Components are styled with utility classes in their markup. The one exception is rendered markdown (lessons, task statements, tutor replies), which `prose.css` styles by element because `Markdown` renders plain HTML. Add shadcn components with `npx shadcn@latest add <name>`; they land in `components/ui/`.
 
