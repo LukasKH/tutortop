@@ -59,6 +59,21 @@ How code in Tutortop is written. Reviews check changes against it. Rules marked 
   return &threadAgents{settings: settings, mcp: mcp, cli: cli, agents: map[threadKey]*threadAgent{}, seq: firstSeq()}
   ```
 
+### Return values, not out-parameters
+
+- A function that produces a value returns it, typed, so the call reads as one line: the result and its error on the left, the type on the right. Use a generic function or method (Go 1.27 allows type parameters on methods) instead of declaring a variable and passing a pointer to fill.
+
+  ```go
+  // Don't
+  var meta Meta
+  err := json.Unmarshal(b, &meta)
+
+  // Do
+  meta, err := decode[Meta](b)
+  ```
+
+- Existing helpers: `decode[T]` (internal/agent), `readJSON[T]` and `readYAML[T]` (internal/workspace), `rpcConn.Call[T]`. Use them, or add one like them, rather than unmarshalling into a pointer. The helper itself is the one place that calls the standard library with `&v`.
+
 ### Types and control flow
 
 - An enum-like value gets a named type and constants. A switch over one covers every case **(lint: exhaustive)**.
