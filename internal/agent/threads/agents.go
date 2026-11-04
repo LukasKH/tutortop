@@ -65,73 +65,6 @@ func NewAgents(settingsStore *settings.Store, tools *mcp.Server, cli CLI) *Agent
 	return &Agents{settings: settingsStore, mcp: tools, cli: cli, agents: map[threadKey]*threadAgent{}, seq: firstSeq()}
 }
 
-// firstSeq is where Agents.seq starts. Counting from the time in
-// microseconds keeps the numbers rising across a restart, for a page that
-// outlives one in server mode.
-func firstSeq() uint64 {
-	return uint64(time.Now().UnixMicro())
-}
-
-// agentConfig is what a thread's agent is started with. One started with an
-// older config restarts once it's idle.
-type agentConfig struct {
-	Provider string
-	Model    string
-	Effort   string
-}
-
-// configOf is the agent, model and effort the settings choose.
-func configOf(s settings.Settings) agentConfig {
-	c := s.Models[s.Provider]
-	return agentConfig{Provider: s.Provider, Model: c.Model, Effort: c.Effort}
-}
-
-// CLI opens a session with an agent's CLI. InstalledCLI opens the
-// learner's own; tests fake it.
-type CLI interface {
-	Start(ctx context.Context, provider string, opts agent.Options, onEvent func(agent.Event)) (agent.Session, error)
-}
-
-// InstalledCLI starts the agent CLI installed on the computer.
-type InstalledCLI struct{}
-
-func (InstalledCLI) Start(ctx context.Context, provider string, opts agent.Options, onEvent func(agent.Event)) (agent.Session, error) {
-	return agent.Start(ctx, provider, opts, onEvent)
-}
-
-// queue queues a message for a thread's agent, starting the agent if it
-// isn't running. It doesn't wait for the start: the CLI opens in the
-// background, and if it doesn't, one notice is posted in the thread's chat.
-// It fails only if too many messages are already waiting.
-func (ag *Agents) queue(w *workspace.Workspace, t workspace.Thread, msg string) error {
-	key := threadKey{w.ID, t.String()}
-	cfg := configOf(ag.settings.Load())
-	ag.mu.Lock()
-	defer ag.mu.Unlock()
-	ta := ag.agents[key]
-	if ta != nil && ta.pending > 0 && t.Kind == workspace.WriterKind {
-		return nil // already writing its objective
-	}
-	// The settings changed since it started: restart it with the new ones.
-	// A busy agent finishes its queue first.
-	if ta != nil && ta.pending == 0 && ta.cfg != cfg {
-		ag.end(ta)
-		ta = nil
-	}
-	if ta == nil {
-		ta = ag.start(w, t, cfg)
-	}
-	// Queued under ag.mu, so an agent that ends can't take a message after
-	// it has left the agents.
-	select {
-	case ta.queue <- msg:
-	default:
-		return errors.New("too many messages are waiting; let the tutor catch up first")
-	}
-	ag.setPending(ta, ta.pending+1)
-	return nil
-}
-
 // Send posts a message in a thread's chat and queues it for that thread's
 // agent, without waiting for the agent to start. Once the message is in the
 // chat, whatever goes wrong with it is posted there too.
@@ -150,19 +83,6 @@ type Message struct {
 	Role  workspace.ChatRole // workspace.RoleUser for the learner's words, RoleNotice for app events
 	Shown string
 	Agent string
-}
-
-// stop interrupts the current turn in a thread. Its agent posts a notice
-// once the cut-off reply is saved, and takes the next message as usual.
-func (ag *Agents) stop(wsID, thread string) {
-	ag.mu.Lock()
-	ta := ag.agents[threadKey{wsID, thread}]
-	ag.mu.Unlock()
-	if ta == nil || !ta.opened() {
-		return
-	}
-	ta.stopped.Store(true)
-	ta.cli.Cancel()
 }
 
 // The UI learns which threads are busy, and how writers' sandbox checks go,
@@ -219,6 +139,65 @@ func (ag *Agents) EndWorkspace(wsID string) {
 	ag.mcp.Forget(wsID)
 }
 
+// CLI opens a session with an agent's CLI. InstalledCLI opens the
+// learner's own; tests fake it.
+type CLI interface {
+	Start(ctx context.Context, provider string, opts agent.Options, onEvent func(agent.Event)) (agent.Session, error)
+}
+
+// InstalledCLI starts the agent CLI installed on the computer.
+type InstalledCLI struct{}
+
+func (InstalledCLI) Start(ctx context.Context, provider string, opts agent.Options, onEvent func(agent.Event)) (agent.Session, error) {
+	return agent.Start(ctx, provider, opts, onEvent)
+}
+
+// queue queues a message for a thread's agent, starting the agent if it
+// isn't running. It doesn't wait for the start: the CLI opens in the
+// background, and if it doesn't, one notice is posted in the thread's chat.
+// It fails only if too many messages are already waiting.
+func (ag *Agents) queue(w *workspace.Workspace, t workspace.Thread, msg string) error {
+	key := threadKey{w.ID, t.String()}
+	cfg := configOf(ag.settings.Load())
+	ag.mu.Lock()
+	defer ag.mu.Unlock()
+	ta := ag.agents[key]
+	if ta != nil && ta.pending > 0 && t.Kind == workspace.WriterKind {
+		return nil // already writing its objective
+	}
+	// The settings changed since it started: restart it with the new ones.
+	// A busy agent finishes its queue first.
+	if ta != nil && ta.pending == 0 && ta.cfg != cfg {
+		ag.end(ta)
+		ta = nil
+	}
+	if ta == nil {
+		ta = ag.start(w, t, cfg)
+	}
+	// Queued under ag.mu, so an agent that ends can't take a message after
+	// it has left the agents.
+	select {
+	case ta.queue <- msg:
+	default:
+		return errors.New("too many messages are waiting; let the tutor catch up first")
+	}
+	ag.setPending(ta, ta.pending+1)
+	return nil
+}
+
+// stop interrupts the current turn in a thread. Its agent posts a notice
+// once the cut-off reply is saved, and takes the next message as usual.
+func (ag *Agents) stop(wsID, thread string) {
+	ag.mu.Lock()
+	ta := ag.agents[threadKey{wsID, thread}]
+	ag.mu.Unlock()
+	if ta == nil || !ta.opened() {
+		return
+	}
+	ta.stopped.Store(true)
+	ta.cli.Cancel()
+}
+
 // endAll ends every agent, as the app quits.
 func (ag *Agents) endAll() {
 	ag.mu.Lock()
@@ -226,6 +205,27 @@ func (ag *Agents) endAll() {
 	for _, ta := range ag.agents {
 		ag.end(ta)
 	}
+}
+
+// firstSeq is where Agents.seq starts. Counting from the time in
+// microseconds keeps the numbers rising across a restart, for a page that
+// outlives one in server mode.
+func firstSeq() uint64 {
+	return uint64(time.Now().UnixMicro())
+}
+
+// agentConfig is what a thread's agent is started with. One started with an
+// older config restarts once it's idle.
+type agentConfig struct {
+	Provider string
+	Model    string
+	Effort   string
+}
+
+// configOf is the agent, model and effort the settings choose.
+func configOf(s settings.Settings) agentConfig {
+	c := s.Models[s.Provider]
+	return agentConfig{Provider: s.Provider, Model: c.Model, Effort: c.Effort}
 }
 
 // A threadAgent is one thread's running agent: its CLI session and the
