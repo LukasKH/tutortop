@@ -1,9 +1,11 @@
+## Best practices
+- Ensure pre commits do not fail
+- Always aim to follow established defaults and best practices in with in the technologies of this project. Avoid hand-rolled complex logic unless necessary.
+- Start each file with what it offers: its exported types and functions, the main one first. Helpers and internal details go below the code that uses them, close to their caller. In Go, keep a type's constructor and methods together with the type. In TypeScript, a module-level value that's used while the module loads must stay above its first use. "newspaper" or step-down style
+
 ### Tools
 - Use rg over grep
 
+
 ### Tests
 - Test behaviour that can actually break; skip anything the types already guarantee.
-- Tests on main are smoke tests: a few whole flows driven through the `App` methods the frontend calls, with a fake agent and the real sandbox, plus the agent permission rules. A new feature extends one of these flows instead of adding unit tests for its functions.
-- Unit tests written while building a feature are fine on the branch. Before merging, delete those that don't guard a flow.
-- The Go↔frontend contract is the generated `frontend/bindings`. After changing an exported `App` method or a type it returns, run `wails3 generate bindings -clean=true -ts -i` and commit the result; CI regenerates them and fails if they differ.
-- Tests that call the real Claude Code or Codex CLIs go behind `//go:build live` and run by hand with `task test:live`.
