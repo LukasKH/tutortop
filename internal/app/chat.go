@@ -149,7 +149,7 @@ func (a *App) post(w *workspace.Workspace, item workspace.ChatItem) {
 
 // postFailure shows a problem in a thread as a red notice.
 func (a *App) postFailure(w *workspace.Workspace, thread, msg string) {
-	a.post(w, workspace.ChatItem{Thread: thread, Role: workspace.RoleNotice, Status: "failed", Text: msg})
+	a.post(w, workspace.ChatItem{Thread: thread, Role: workspace.RoleNotice, Status: workspace.ChatFailed, Text: msg})
 }
 
 // transcript turns one session's agent events into chat items. Streaming
@@ -195,12 +195,19 @@ func (t *transcript) handle(ev agent.Event) {
 		if item == nil {
 			return
 		}
-		item.Status = string(tool.Status)
+		item.Status = chatStatus[tool.Status]
 		emit(chatMessage, ChatEvent{Workspace: w.ID, Item: *item})
 		if tool.Status != agent.ToolRunning {
 			_ = w.AppendChat(*item)
 		}
 	}
+}
+
+// chatStatus is how a tool call's status shows in the chat.
+var chatStatus = map[agent.ToolStatus]workspace.ChatStatus{
+	agent.ToolRunning: workspace.ChatRunning,
+	agent.ToolDone:    workspace.ChatDone,
+	agent.ToolFailed:  workspace.ChatFailed,
 }
 
 func (t *transcript) endText() {
@@ -218,7 +225,7 @@ func (t *transcript) endTurn() {
 	t.endText()
 	for _, item := range t.tools {
 		if item != nil {
-			item.Status = string(agent.ToolDone)
+			item.Status = workspace.ChatDone
 			_ = t.ws.AppendChat(*item)
 		}
 	}

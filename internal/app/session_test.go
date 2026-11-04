@@ -60,7 +60,7 @@ func TestWriterEndsAfterItsTurn(t *testing.T) {
 	if err := a.PrepareObjective(w.ID, "go.errors"); err != nil {
 		t.Fatal(err)
 	}
-	a.writerCheck(w.ID, Gate{Objective: "go.errors", Title: "Wrap errors", Running: true})
+	a.writerCheck(w.ID, Gate{Kind: GateTask, Objective: "go.errors", Title: "Wrap errors", Running: true})
 	if st, _ := a.Workspace(w.ID); !st.Busy["write-go.errors"] || !st.Checks["go.errors"].Running {
 		t.Fatalf("busy %v, checks %v", st.Busy, st.Checks)
 	}
@@ -197,7 +197,7 @@ func TestFailedAgentIsReplaced(t *testing.T) {
 	failures := func() (n int) {
 		chat, _ := a.Chat(w.ID, "plan")
 		for _, c := range chat {
-			if c.Status == "failed" {
+			if c.Status == workspace.ChatFailed {
 				n++
 			}
 		}

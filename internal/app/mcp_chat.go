@@ -100,7 +100,7 @@ func (t *threadTools) setToolchain(ctx context.Context, _ *mcp.CallToolRequest, 
 	if err != nil {
 		return nil, nil, err
 	}
-	gate := Gate{Kind: "toolchain", Title: tc.Name, Running: true}
+	gate := Gate{Kind: GateToolchain, Title: tc.Name, Running: true}
 	emit(gateStatus, GateEvent{Workspace: t.w.ID, Gate: gate})
 	report, err := t.app.checkToolchain(ctx, tc, in.Example)
 	var lspErr error

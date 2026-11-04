@@ -37,11 +37,11 @@ export interface Environment {
 }
 
 /**
- * Gate tells the UI a new task, or a new language's sandbox (Kind
- * "toolchain"), is being checked.
+ * Gate is a sandbox check the learner watches. WorkspaceState.Checks keeps
+ * writers' latest ones.
  */
 export interface Gate {
-    "kind"?: string;
+    "kind": GateKind;
 
     /**
      * for a task: whose writer is checking it
@@ -59,6 +59,26 @@ export interface GateEvent {
     "workspace": string;
     "gate": Gate;
 }
+
+/**
+ * GateKind is what a Gate checks.
+ */
+export enum GateKind {
+    /**
+     * The Go zero value for the underlying type of the enum.
+     */
+    $zero = "",
+
+    /**
+     * a writer's new task, in the quality gate
+     */
+    GateTask = "task",
+
+    /**
+     * a language the tutor sets up with set_toolchain
+     */
+    GateToolchain = "toolchain",
+};
 
 /**
  * LSPEvent carries one message from a language server to the editor, or

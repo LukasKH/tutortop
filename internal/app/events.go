@@ -28,6 +28,24 @@ type GateEvent struct {
 	Gate      Gate   `json:"gate"`
 }
 
+// Gate is a sandbox check the learner watches. WorkspaceState.Checks keeps
+// writers' latest ones.
+type Gate struct {
+	Kind      GateKind `json:"kind"`
+	Objective string   `json:"objective,omitempty"` // for a task: whose writer is checking it
+	Title     string   `json:"title"`
+	Running   bool     `json:"running"`
+	Passed    bool     `json:"passed"`
+}
+
+// GateKind is what a Gate checks.
+type GateKind string
+
+const (
+	GateTask      GateKind = "task"      // a writer's new task, in the quality gate
+	GateToolchain GateKind = "toolchain" // a language the tutor sets up with set_toolchain
+)
+
 // TaskEvent announces a newly published task.
 type TaskEvent struct {
 	Workspace string             `json:"workspace"`

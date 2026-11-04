@@ -6,6 +6,10 @@ export {
     App
 };
 
+export {
+    GateKind
+} from "./models.js";
+
 export type {
     BusyEvent,
     ChatEvent,

@@ -18,13 +18,22 @@ const (
 
 // ChatItem is one entry in the conversation shown in the UI.
 type ChatItem struct {
-	ID     string    `json:"id"`
-	Thread string    `json:"thread"`
-	Role   ChatRole  `json:"role"`
-	Text   string    `json:"text"`
-	Status string    `json:"status,omitempty"` // for tools: running | done | failed
-	At     time.Time `json:"at"`
+	ID     string     `json:"id"`
+	Thread string     `json:"thread"`
+	Role   ChatRole   `json:"role"`
+	Text   string     `json:"text"`
+	Status ChatStatus `json:"status,omitempty"` // tools always have one; notices only ChatFailed
+	At     time.Time  `json:"at"`
 }
+
+// ChatStatus is how a tool's call went, or marks a notice as a failure.
+type ChatStatus string
+
+const (
+	ChatRunning ChatStatus = "running" // a tool call still at work
+	ChatDone    ChatStatus = "done"
+	ChatFailed  ChatStatus = "failed" // a tool call that failed, or a notice about a problem
+)
 
 func (w *Workspace) AppendChat(item ChatItem) error {
 	if !validName(item.Thread) {

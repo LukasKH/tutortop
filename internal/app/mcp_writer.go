@@ -57,7 +57,7 @@ func (t *threadTools) createTask(ctx context.Context, _ *mcp.CallToolRequest, sp
 // gate runs a task's quality gate, showing it on the objective's page while
 // it runs and after.
 func (t *threadTools) gate(ctx context.Context, spec workspace.TaskSpec, tc runner.Toolchain) (runner.GateReport, error) {
-	status := Gate{Objective: spec.ObjectiveID, Title: spec.Title, Running: true}
+	status := Gate{Kind: GateTask, Objective: spec.ObjectiveID, Title: spec.Title, Running: true}
 	t.app.writerCheck(t.w.ID, status)
 	rep, err := t.app.runner.Gate(ctx, runner.GateInput{
 		Toolchain: tc, Starter: spec.Starter, Reference: spec.Reference,
