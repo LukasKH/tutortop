@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useEffectEvent, useState } from "react";
 import { App, AppEvents, useEvent, type ChatItem } from "@/lib/api";
 import { mergeChat, upsertChat } from "@/lib/chat";
 import { objectiveOfWriter, PLAN_THREAD } from "@/lib/workspace";
@@ -15,21 +15,20 @@ export function useChatThreads(id: string, thread: string, { ready, visible, onE
 
   // Load the shown thread's transcript whenever it changes, merged with
   // anything that arrived live and isn't saved yet.
+  const fail = useEffectEvent(onError);
   useEffect(() => {
     if (!ready) return;
     let current = true;
     App.Chat(id, thread)
       .then((saved) => current && setThreads((t) => ({ ...t, [thread]: mergeChat(saved, t[thread] ?? []) })))
-      .catch((e) => current && onError(e));
+      .catch((e) => current && fail(e));
     return () => {
       current = false;
     };
   }, [id, thread, ready]);
 
   // What the learner can see counts as read.
-  useEffect(() => {
-    if (visible) setUnread((u) => (u[thread] ? { ...u, [thread]: false } : u));
-  }, [thread, visible]);
+  if (visible && unread[thread]) setUnread({ ...unread, [thread]: false });
 
   useEvent(AppEvents.ChatMessage, ({ workspace, item }) => {
     const t = item.thread || PLAN_THREAD;

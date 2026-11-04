@@ -57,6 +57,15 @@ export function WorkspaceView({ id, tutor, onSettings, onBack }: Props) {
   const thread = ws && !planContext ? taskId! : PLAN_THREAD;
   const { threads, unread } = useChatThreads(id, thread, { ready: ws !== null, visible: chat.open, onError: fail });
 
+  const openTaskSolved = () => !!ws?.tasks?.find((t) => t.id === taskId)?.passed;
+
+  function openTask(key: string) {
+    setTaskId(key);
+    setView("task");
+    setNewTask((t) => (t?.id === key ? null : t));
+    dismissFinishedGate();
+  }
+
   useEvent(AppEvents.CurriculumProposed, ({ workspace }) => {
     if (workspace === id) refresh().then((s) => s?.proposal && setView("proposal"));
   });
@@ -78,15 +87,6 @@ export function WorkspaceView({ id, tutor, onSettings, onBack }: Props) {
     if ((todo?.part === "lesson" && todo.objective === lesson.objective) || !taskId) openTask(key);
     else if (openTaskSolved()) setNewTask({ id: key, title: lesson.title, kind: "lesson" });
   });
-
-  const openTaskSolved = () => !!ws?.tasks?.find((t) => t.id === taskId)?.passed;
-
-  function openTask(key: string) {
-    setTaskId(key);
-    setView("task");
-    setNewTask((t) => (t?.id === key ? null : t));
-    dismissFinishedGate();
-  }
 
   if (!ws) {
     return (

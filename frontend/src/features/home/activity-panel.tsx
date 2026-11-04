@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { cn } from "cn";
 import { plural } from "@/lib/format";
 import { type Activity } from "@/lib/api";
@@ -7,7 +8,8 @@ import { FlameIcon } from "lucide-react";
 // calendar, and in December an advent calendar with stars for days 1-24.
 // Everything counts finished tasks and lessons, never time spent.
 
-export function ActivityPanel({ activity, now = new Date() }: { activity: Activity; now?: Date }) {
+export function ActivityPanel({ activity }: { activity: Activity }) {
+  const [now] = useState(() => new Date());
   const counts = new Map((activity.days ?? []).map((d) => [d.date, d]));
   const advent = now.getMonth() === 11;
   const { streak, best, today, total } = activity;

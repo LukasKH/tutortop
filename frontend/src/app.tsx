@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { App, type Settings } from "@/lib/api";
 import { Home } from "@/features/home/home";
-import { SettingsDialog, tutorLabel, loadModels } from "@/features/settings/settings-dialog";
+import { SettingsDialog } from "@/features/settings/settings-dialog";
+import { loadModels, tutorLabel } from "@/lib/models";
 import { WorkspaceView } from "@/features/workspace/workspace-view";
 import { useStored } from "@/hooks/use-stored";
 

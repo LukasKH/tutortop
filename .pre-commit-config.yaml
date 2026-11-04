@@ -31,6 +31,15 @@ repos:
         files: ^frontend/
         stages: [pre-commit]
 
+      # Oxlint with React's hooks rules (frontend/.oxlintrc.json), as in Vite's React template.
+      - id: frontend-lint
+        name: Frontend lint
+        entry: npm --prefix frontend run lint
+        language: system
+        pass_filenames: false
+        files: ^frontend/
+        stages: [pre-commit]
+
       # Prettier, with the Tailwind plugin sorting class names (frontend/.prettierrc.json).
       - id: frontend-format
         name: Frontend formatting

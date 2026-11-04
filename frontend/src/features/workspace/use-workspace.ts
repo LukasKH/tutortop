@@ -28,7 +28,7 @@ export function useWorkspace(id: string) {
 
   // Refetches can overlap during a burst of events; only the newest one wins.
   const seq = useRef(0);
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(() => {
     const mine = ++seq.current;
     const asked = performance.now();
     // Keep what events said after the snapshot was asked for.
@@ -39,19 +39,21 @@ export function useWorkspace(id: string) {
       }
       return next;
     };
-    try {
-      const s = await App.Workspace(id);
-      if (mine !== seq.current) return null;
-      setWs(s);
-      setBusy((cur) => newer<boolean | undefined>(s.busy ?? {}, cur, "busy:"));
-      setChecks((cur) => newer<Gate | undefined>(s.checks ?? {}, cur, "check:"));
-      setQuestions(s.questions ?? null);
-      setError("");
-      return s;
-    } catch (e) {
-      fail(e);
-      return null;
-    }
+    return App.Workspace(id).then(
+      (s) => {
+        if (mine !== seq.current) return null;
+        setWs(s);
+        setBusy((cur) => newer<boolean | undefined>(s.busy ?? {}, cur, "busy:"));
+        setChecks((cur) => newer<Gate | undefined>(s.checks ?? {}, cur, "check:"));
+        setQuestions(s.questions ?? null);
+        setError("");
+        return s;
+      },
+      (e) => {
+        fail(e);
+        return null;
+      },
+    );
   }, [id, fail]);
 
   useEffect(() => {
