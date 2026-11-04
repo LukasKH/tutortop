@@ -1,6 +1,6 @@
 # Architecture
 
-Tutortop is a Go program with a React frontend, shipped as one desktop app by [Wails v3](https://wails.io). Go does the real work. It reads and writes the workspace files, runs the learner's coding agent and runs checks in a sandbox. The frontend draws the UI and asks Go for everything else.
+Tutortop is a Go program with a React frontend, shipped as one desktop app by [Wails v3](https://wails.io). The [glossary](GLOSSARY.md) defines the words used here and in the code. Go does the real work. It reads and writes the workspace files, runs the learner's coding agent and runs checks in a sandbox. The frontend draws the UI and asks Go for everything else.
 
 ```
  React frontend (frontend/src)
