@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/LukasKH/tutortop/internal/agent/threads"
+	"github.com/LukasKH/tutortop/internal/mcp/mcptest"
 	"github.com/LukasKH/tutortop/internal/settings"
 	"github.com/LukasKH/tutortop/internal/text"
 	"github.com/LukasKH/tutortop/internal/workspace"
@@ -20,7 +22,7 @@ func TestLiveInterview(t *testing.T) {
 		provider = "claude"
 	}
 
-	a := newTestApp(t)
+	a := newTestAppWith(t, mcptest.Links(), threads.InstalledCLI{})
 	defer a.Chat.ServiceShutdown()
 
 	if err := a.Settings.SaveSettings(settings.Settings{Provider: provider}); err != nil {

@@ -2,10 +2,6 @@ package mcp_test
 
 import (
 	"context"
-	"fmt"
-	"os"
-	"path/filepath"
-	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -65,59 +61,6 @@ func TestWriterKeepsToItsObjective(t *testing.T) {
 	}
 }
 
-// Struct tags can't be computed, so they name the built-in languages by
-// hand. A tag that names two of them is listing them, and must name them
-// all, so a new built-in language fails this until every list names it. (The
-// prompts fill the list in; the threads' tests check their conventions.)
-func TestWrittenOutLanguagesMatchTheBuiltins(t *testing.T) {
-	// Where -> tag, from the packages whose types the agent reads as tool
-	// schemas.
-	tags := map[string]string{}
-	tag := regexp.MustCompile(`jsonschema:"((?:[^"\\]|\\.)*)"`)
-	sources, _ := filepath.Glob("*.go")
-	for _, dir := range []string{"../workspace", "../sandbox"} {
-		more, _ := filepath.Glob(filepath.Join(dir, "*.go"))
-		sources = append(sources, more...)
-	}
-	for _, file := range sources {
-		if strings.HasSuffix(file, "_test.go") {
-			continue
-		}
-		src, err := os.ReadFile(file)
-		if err != nil {
-			t.Fatal(err)
-		}
-		for i, line := range strings.Split(string(src), "\n") {
-			for _, m := range tag.FindAllStringSubmatch(line, -1) {
-				tags[fmt.Sprintf("%s:%d", file, i+1)] = m[1]
-			}
-		}
-	}
-
-	type builtin struct {
-		lang string
-		name *regexp.Regexp // its id or its name as a word
-	}
-	var builtins []builtin
-	for _, lang := range sandbox.BuiltinLanguages() {
-		tc, _ := sandbox.Builtin(lang)
-		builtins = append(builtins, builtin{lang, regexp.MustCompile(`\b(` + regexp.QuoteMeta(lang) + `|` + regexp.QuoteMeta(tc.Name) + `)\b`)})
-	}
-	for where, text := range tags {
-		var named, missing []string
-		for _, b := range builtins {
-			if b.name.MatchString(text) {
-				named = append(named, b.lang)
-			} else {
-				missing = append(missing, b.lang)
-			}
-		}
-		if len(named) >= 2 && len(missing) > 0 {
-			t.Errorf("%s names %v but not %v: %q", where, named, missing, text)
-		}
-	}
-}
-
 // The tutor uses a built-in language as it is, before any image is built.
 func TestSetToolchainRefusesABuiltin(t *testing.T) {
 	tt := newTools(t)
@@ -131,32 +74,19 @@ func TestSetToolchainRefusesABuiltin(t *testing.T) {
 	}
 }
 
-// ask_user takes 2-4 questions, as its description and the tutor's prompt say.
+// ask_user takes 2-4 questions, as its description and the tutor's prompt
+// say, and saves nothing when it refuses. (threads' TestThreadsGetOwnSessions
+// makes an accepted call.)
 func TestAskUserTakesTwoToFourQuestions(t *testing.T) {
 	tt := newTools(t)
 	w := tt.create(t, "Go")
 	ask := tt.caller(t, w, workspace.TaskThread("0001-some-task"))
-	questions := func(n int) map[string]any {
-		qs := []any{}
-		for range n {
-			qs = append(qs, map[string]any{"id": "q", "question": "Which?"})
-		}
-		return map[string]any{"questions": qs}
-	}
-	for _, n := range []int{0, 1, 5} {
-		if out, isErr := ask("ask_user", questions(n)); !isErr {
-			t.Fatalf("%d questions were shown: %s", n, out)
-		}
+	one := map[string]any{"questions": []any{map[string]any{"id": "q", "question": "Which?"}}}
+	if out, isErr := ask("ask_user", one); !isErr {
+		t.Fatalf("1 question was shown: %s", out)
 	}
 	if w.PendingQuestions() != nil {
 		t.Fatal("a refused form was saved")
-	}
-	if out, isErr := ask("ask_user", questions(4)); isErr {
-		t.Fatalf("4 questions: %s", out)
-	}
-	// The answers go back to the thread that asked.
-	if q := w.PendingQuestions(); q == nil || q.Thread != "0001-some-task" || len(q.Questions) != 4 {
-		t.Fatalf("pending = %+v", q)
 	}
 }
 

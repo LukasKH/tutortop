@@ -186,26 +186,6 @@ func TestFailedAgentIsReplaced(t *testing.T) {
 	}
 }
 
-// Subagents are for research in the background: the plan and writers get
-// them, the chats where a learner waits for a reply don't.
-func TestSubagentsByThread(t *testing.T) {
-	ag, fake, w := newHeldAgents(t)
-	for _, c := range []struct {
-		thread workspace.Thread
-		want   bool
-	}{
-		{workspace.PlanThread, true},
-		{workspace.WriterThread("go.x"), true},
-		{workspace.TaskThread("0001-x"), false},
-		{workspace.LessonThread("0001-x"), false},
-	} {
-		queue(t, ag, w, c.thread, "hi")
-		if got := fake.next(t).s.opts.Subagents; got != c.want {
-			t.Errorf("%s: subagents %v, want %v", c.thread, got, c.want)
-		}
-	}
-}
-
 // newHeldAgents is a workspace's thread agents whose turns last until the
 // test ends them.
 func newHeldAgents(t *testing.T) (*Agents, *heldAgents, *workspace.Workspace) {

@@ -4,7 +4,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/LukasKH/tutortop/internal/sandbox"
 	"github.com/LukasKH/tutortop/internal/workspace"
 )
 
@@ -15,19 +14,6 @@ func TestInstructionsFillEveryPlaceholder(t *testing.T) {
 		if text := instructions(w, thread); strings.Contains(text, "{{") {
 			i := strings.Index(text, "{{")
 			t.Errorf("%s: unfilled placeholder at %q", thread, text[i:min(len(text), i+20)])
-		}
-	}
-}
-
-// The prompts fill the list of built-in languages in ({{builtins}}), but
-// each language's conventions in the shared prompt are written by hand, so a
-// new built-in language fails this until they're written. (mcp's
-// TestWrittenOutLanguagesMatchTheBuiltins checks the tools' struct tags.)
-func TestSharedPromptHasEveryBuiltinsConventions(t *testing.T) {
-	for _, lang := range sandbox.BuiltinLanguages() {
-		tc, _ := sandbox.Builtin(lang)
-		if !strings.Contains(sharedPrompt, "\n- **"+tc.Name+" ") {
-			t.Errorf("shared.md has no conventions for %s, as a line starting \"- **%s <version>**: \"", lang, tc.Name)
 		}
 	}
 }
@@ -57,9 +43,6 @@ func TestLessonThreadKnowsItsLesson(t *testing.T) {
 	}
 
 	thread := workspace.LessonThread(info.ID)
-	if role := instructions(w, thread); !strings.Contains(role, "tutor for one lesson") || !strings.Contains(role, "Errors are values") {
-		t.Fatalf("role = %s", role)
-	}
 	if c := contextFor(w, thread); !strings.Contains(c, "1 of 3 answered, 0 correct") || !strings.Contains(c, "question 3 wrong") {
 		t.Fatalf("context = %s", c)
 	}

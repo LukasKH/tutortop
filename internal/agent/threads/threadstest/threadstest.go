@@ -4,6 +4,7 @@ package threadstest
 
 import (
 	"context"
+	"slices"
 	"sync"
 
 	"github.com/LukasKH/tutortop/internal/agent"
@@ -19,22 +20,28 @@ func (f CLI) Start(ctx context.Context, provider string, opts agent.Options, onE
 // Quiet is a CLI whose sessions take every message and never answer.
 func Quiet() CLI {
 	return func(context.Context, string, agent.Options, func(agent.Event)) (agent.Session, error) {
-		return &Session{Prompts: new([]string), Mu: &sync.Mutex{}}, nil
+		return &Session{}, nil
 	}
 }
 
-// Session is an agent session that takes every message, adding it to
-// Prompts, and never answers.
+// Session is an agent session that takes every message and never answers.
 type Session struct {
-	Prompts *[]string
-	Mu      *sync.Mutex // guards Prompts when the test reads them concurrently
+	mu      sync.Mutex
+	prompts []string
 }
 
 func (s *Session) Prompt(_ context.Context, text string) error {
-	s.Mu.Lock()
-	defer s.Mu.Unlock()
-	*s.Prompts = append(*s.Prompts, text)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.prompts = append(s.prompts, text)
 	return nil
+}
+
+// Prompts returns the messages the session has taken so far.
+func (s *Session) Prompts() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return slices.Clone(s.prompts)
 }
 
 func (s *Session) ID() string   { return "" }

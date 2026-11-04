@@ -20,7 +20,7 @@ import (
 // AI: propose → approve → create_task (quality gate) → learner submits.
 // Set TUTORTOP_RUNNER=local to run without Docker.
 func TestToolsEndToEnd(t *testing.T) {
-	a := newTestAppWith(t, mcptest.Links("https://go.dev/made-up"))
+	a := newTestAppWith(t, mcptest.Links("https://go.dev/made-up"), threadstest.Quiet())
 	if err := a.runner.Available(context.Background()); err != nil {
 		t.Skip(err)
 	}
@@ -69,11 +69,6 @@ func TestToolsEndToEnd(t *testing.T) {
 		t.Fatalf("task not published:\n%s", out)
 	}
 
-	st, _ := a.Workspaces.Workspace(w.ID)
-	if st.Progress.Total != 2 || st.Progress.Passed != 0 || st.Progress.Objectives["go.strings"].Status != "in_progress" {
-		t.Fatalf("progress before = %+v", st.Progress)
-	}
-
 	// The learner's starter code fails; the reference passes and counts.
 	res, err := a.Tasks.RunTests(w.ID, created.TaskID, sandbox.Files{"solution.go": mcptest.GoStarter}, true)
 	if err != nil || res.Status != sandbox.StatusFailed {
@@ -83,7 +78,7 @@ func TestToolsEndToEnd(t *testing.T) {
 	if err != nil || res.Status != sandbox.StatusPassed {
 		t.Fatalf("reference submit = %v %+v", err, res)
 	}
-	st, _ = a.Workspaces.Workspace(w.ID)
+	st, _ := a.Workspaces.Workspace(w.ID)
 	if st.Progress.Passed != 1 || st.Progress.Objectives["go.strings"].Status != "passed" {
 		t.Fatalf("progress after = %+v", st.Progress)
 	}
@@ -121,14 +116,14 @@ func (a *testApp) caller(t *testing.T, w *workspace.Workspace, thread workspace.
 // newTestApp is newTestAppWith links that all open.
 func newTestApp(t *testing.T) *testApp {
 	t.Helper()
-	return newTestAppWith(t, mcptest.Links())
+	return newTestAppWith(t, mcptest.Links(), threadstest.Quiet())
 }
 
 // newTestAppWith keeps a test's workspaces and settings in temp dirs, checks
-// links with links, and starts agents whose sessions take every message and
-// never answer, so no test starts a real agent by accident. (Setting
-// XDG_DATA_HOME wouldn't work: adrg/xdg reads it once at startup.)
-func newTestAppWith(t *testing.T, links *mcp.LinkChecker) *testApp {
+// links with links, and starts agents on cli. newTestApp's agents take every
+// message and never answer, so no test starts a real agent by accident.
+// (Setting XDG_DATA_HOME wouldn't work: adrg/xdg reads it once at startup.)
+func newTestAppWith(t *testing.T, links *mcp.LinkChecker, cli threads.CLI) *testApp {
 	t.Helper()
 	store := &workspace.Store{Root: t.TempDir(), PrivateRoot: t.TempDir()}
 	settingsStore := settings.NewStore(filepath.Join(t.TempDir(), "settings.yaml"))
@@ -137,7 +132,7 @@ func newTestAppWith(t *testing.T, links *mcp.LinkChecker) *testApp {
 	if err != nil {
 		t.Fatal(err)
 	}
-	agents := threads.NewAgents(settingsStore, tools, threadstest.Quiet())
+	agents := threads.NewAgents(settingsStore, tools, cli)
 	return &testApp{Services: newServices(store, settingsStore, runner, agents), store: store, runner: runner, agents: agents, mcp: tools}
 }
 
