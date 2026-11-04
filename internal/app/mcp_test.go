@@ -3,10 +3,13 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"reflect"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
 
+	"github.com/LukasKH/tutortop/internal/runner"
 	"github.com/LukasKH/tutortop/internal/workspace"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -58,6 +61,36 @@ func TestWriterKeepsToItsObjective(t *testing.T) {
 	}
 	if lessons, _ := w.Lessons(); len(lessons) != 0 {
 		t.Fatalf("lessons = %+v", lessons)
+	}
+}
+
+// Struct tags can't be computed and the tutor's prompt is prose, so these
+// name the built-in languages by hand. A new built-in language fails this
+// until they name it too.
+func TestWrittenOutLanguagesMatchTheBuiltins(t *testing.T) {
+	tag := func(typ reflect.Type, field string) string {
+		f, _ := typ.FieldByName(field)
+		return f.Tag.Get("jsonschema")
+	}
+	var prompt string
+	for line := range strings.Lines(tutorPrompt) {
+		if strings.Contains(line, "are built in") {
+			prompt = strings.ToLower(line)
+		}
+	}
+	texts := map[string]string{
+		"get_state's toolchains": tag(reflect.TypeFor[stateOutput](), "Toolchains"),
+		"ToolchainSpec.Language": tag(reflect.TypeFor[runner.ToolchainSpec](), "Language"),
+		"Curriculum.Language":    tag(reflect.TypeFor[workspace.Curriculum](), "Language"),
+		"tutor.md":               prompt,
+	}
+	for _, lang := range runner.BuiltinLanguages() {
+		word := regexp.MustCompile(`\b` + regexp.QuoteMeta(lang) + `\b`)
+		for where, text := range texts {
+			if !word.MatchString(text) {
+				t.Errorf("%s doesn't name %s: %q", where, lang, text)
+			}
+		}
 	}
 }
 

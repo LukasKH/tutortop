@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
+	"maps"
 	"path"
 	"slices"
 	"strings"
@@ -47,17 +48,24 @@ func (tc Toolchain) IsTestFile(name string) bool {
 	return ok
 }
 
+// builtins are the languages the app ships with. The app's descriptions for
+// the agent name them through BuiltinLanguages. Struct tags and the tutor's
+// prompt name them by hand; TestWrittenOutLanguagesMatchTheBuiltins in
+// internal/app fails until they name a new one.
 var builtins = map[string]Toolchain{
 	"go":     goToolchain,
 	"python": pythonToolchain,
 }
 
-// Builtin returns a toolchain the app ships with: "go" or "python". Other
-// languages are set up per workspace with a ToolchainSpec.
+// Builtin returns a toolchain the app ships with. Other languages are set up
+// per workspace with a ToolchainSpec.
 func Builtin(language string) (Toolchain, bool) {
 	tc, ok := builtins[language]
 	return tc, ok
 }
+
+// BuiltinLanguages lists the ids of the languages the app ships with, sorted.
+func BuiltinLanguages() []string { return slices.Sorted(maps.Keys(builtins)) }
 
 // ---- Go ----
 

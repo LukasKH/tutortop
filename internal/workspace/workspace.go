@@ -6,7 +6,7 @@
 //	curriculum.yaml                                                         the approved plan
 //	tasks/0001-slug/{task.yaml,README.md,starter/,tests/,work/}             tasks; work/ is the learner's code
 //	.tutortop/{workspace.json,attempts.jsonl,proposal.yaml,questions.json}  app state
-//	.tutortop/toolchains/<language>.yaml                                    languages the tutor set up (beyond Go and Python)
+//	.tutortop/toolchains/<language>.yaml                                    languages the tutor set up (beyond the built-in ones)
 //	.tutortop/chat/<thread>.jsonl                                           one chat per thread, by its name (Thread)
 //
 // Private files the learner and tutor shouldn't see (reference solutions,

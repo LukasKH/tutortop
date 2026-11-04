@@ -10,8 +10,8 @@ import (
 	"github.com/LukasKH/tutortop/internal/runner"
 )
 
-// Languages other than the built-in Go and Python are set up by the tutor per
-// workspace and kept in .tutortop/toolchains/<language>.yaml.
+// Languages other than the built-in ones (runner.Builtin) are set up by the
+// tutor per workspace and kept in .tutortop/toolchains/<language>.yaml.
 
 // Toolchain returns how a language's code is checked in this workspace.
 func (w *Workspace) Toolchain(language string) (runner.Toolchain, error) {
@@ -31,7 +31,7 @@ func (w *Workspace) toolchainSpec(language string) (runner.ToolchainSpec, error)
 	}
 	spec, err := readYAML[runner.ToolchainSpec](w.path(".tutortop", "toolchains", language+".yaml"))
 	if errors.Is(err, os.ErrNotExist) {
-		return spec, fmt.Errorf("unsupported language %q (built in: go, python; set up others with set_toolchain first)", language)
+		return spec, fmt.Errorf("unsupported language %q (built in: %s; set up others with set_toolchain first)", language, strings.Join(runner.BuiltinLanguages(), ", "))
 	}
 	return spec, err
 }
