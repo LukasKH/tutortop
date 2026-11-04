@@ -13,7 +13,12 @@ import (
 )
 
 // rpcConn is newline-delimited JSON-RPC over a process's stdin/stdout, as
-// used by `codex app-server`.
+// used by `codex app-server`: calls to the CLI, and the CLI's notifications
+// and requests (approvals) to us.
+//
+// It's hand-rolled because Codex leaves out the "jsonrpc":"2.0" field, which
+// JSON-RPC 2.0 libraries require, and because it's small. An ACP agent should
+// use github.com/coder/acp-go-sdk instead, which has its own connection.
 type rpcConn struct {
 	send   func(v any) error
 	nextID atomic.Int64

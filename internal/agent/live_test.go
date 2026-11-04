@@ -36,7 +36,7 @@ func TestLive(t *testing.T) {
 				case EventText:
 					text.WriteString(ev.Text)
 				case EventTool:
-					tools = append(tools, ev.Tool.Status+": "+ev.Tool.Title)
+					tools = append(tools, string(ev.Tool.Status)+": "+ev.Tool.Title)
 				}
 			})
 			if err != nil && strings.Contains(err.Error(), "not signed in") {

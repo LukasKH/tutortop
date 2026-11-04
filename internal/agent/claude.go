@@ -23,11 +23,10 @@ import (
 // Authentication is whatever the learner's Claude Code is signed in with.
 type claudeSession struct {
 	*process
-	id        string
-	cwd       string
-	mcpName   string
-	mcpPrefix string
-	onEvent   func(Event)
+	id      string
+	policy  policy
+	mcpName string
+	onEvent func(Event)
 
 	reqID       atomic.Int64
 	interrupted atomic.Bool
@@ -94,8 +93,7 @@ func startClaude(ctx context.Context, opts Options, onEvent func(Event)) (Sessio
 		return nil, err
 	}
 	s := &claudeSession{
-		process: proc, id: sessionID, cwd: opts.Cwd, onEvent: onEvent,
-		mcpName: opts.MCPName, mcpPrefix: "mcp__" + opts.MCPName + "__",
+		process: proc, id: sessionID, policy: newPolicy(opts), mcpName: opts.MCPName, onEvent: onEvent,
 		pending: map[string]chan claudeControlResponse{},
 	}
 	go s.readLoop()
@@ -364,19 +362,17 @@ func (s *claudeSession) answerControl(id string, raw json.RawMessage) {
 	_ = s.send(map[string]any{"type": "control_response", "response": reply})
 }
 
-// canUseTool decides tool uses Claude Code asks about. Edits under tasks/
-// never get here: the deny rule in startClaude refuses them first. Paths
-// outside the workspace do get here, because acceptEdits only covers the
-// workspace.
+// canUseTool decides tool uses Claude Code asks about: Claude's own tools
+// outside claudeAllowed are refused, the rest go to the policy. Edits under
+// tasks/ never get here: the deny rule in startClaude refuses them first.
+// Paths outside the workspace do get here, because acceptEdits only covers
+// the workspace.
 func (s *claudeSession) canUseTool(name string, input json.RawMessage) error {
-	if strings.HasPrefix(name, s.mcpPrefix) {
-		return nil
-	}
-	if !claudeAllowed[name] {
-		return errors.New("not available in Tutortop. Use the tutortop tools: create_task runs code in the sandbox")
-	}
 	t := claudeTool(name, input)
-	return allowTool(s.cwd, t.Kind, t.Paths)
+	if t.MCPServer == "" && !claudeAllowed[name] {
+		return errUnavailable
+	}
+	return s.policy.allow(t)
 }
 
 // Tools the tutor may use without asking. Everything else is denied: the tutor
@@ -421,4 +417,25 @@ func claudeTool(name string, input json.RawMessage) Tool {
 		}
 	}
 	return t
+}
+
+func claudeModels(context.Context) ([]Model, error) { return claudeModelList, nil }
+
+var claudeModelList = []Model{
+	{ID: "", Name: "Default", Description: "Whatever Claude Code is set to use", Efforts: claudeEfforts},
+	{ID: "fable", Name: "Fable", Description: "Most capable", Efforts: claudeEfforts, DefaultEffort: "medium"},
+	{ID: "opus", Name: "Opus", Description: "Very capable, for complex work", Efforts: claudeEfforts, DefaultEffort: "medium"},
+	{ID: "sonnet", Name: "Sonnet", Description: "Fast and capable for everyday work", Efforts: claudeEfforts, DefaultEffort: "medium"},
+	{ID: "haiku", Name: "Haiku", Description: "Fastest and lightest", Efforts: claudeEfforts, DefaultEffort: "medium"},
+}
+
+// Claude Code takes model aliases that always point at the latest model of a
+// family, so this list doesn't go stale with each release. Every current model
+// takes the same efforts (as listed by `claude --help`), defaulting to medium.
+var claudeEfforts = []Effort{
+	{"low", "Fastest, light reasoning"},
+	{"medium", "Balanced"},
+	{"high", "Deeper reasoning"},
+	{"xhigh", "Extra deep reasoning"},
+	{"max", "Deepest reasoning, slowest"},
 }
