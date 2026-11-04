@@ -77,7 +77,7 @@ task test:live               # talks to the real Claude Code and Codex CLIs; use
 
 ### Contributing
 
-The pre-commit hooks and GitHub Actions run:
+Code follows [STYLEGUIDE.md](STYLEGUIDE.md). The pre-commit hooks and GitHub Actions run:
 
 - golangci-lint: go vet's analyzers, Staticcheck, and gofmt/goimports formatting (`.golangci.yml`).
 - `go test -race -short ./internal/...`.
