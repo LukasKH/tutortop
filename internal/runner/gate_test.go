@@ -158,10 +158,5 @@ func TestSplitNamesRejectsDuplicates(t *testing.T) {
 // gateLocal runs the gate on the host.
 func gateLocal(t *testing.T, in GateInput) GateReport {
 	t.Helper()
-	needGo(t)
-	rep, err := (&Runner{Engine: "local"}).Gate(t.Context(), in)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return rep
+	return onHost(t, func(r *Runner) (GateReport, error) { return r.Gate(t.Context(), in) })
 }

@@ -1,6 +1,7 @@
 package runner
 
 import (
+	"errors"
 	"fmt"
 	"os/exec"
 	"strings"
@@ -129,19 +130,32 @@ func TestRunRejectsPathsOutsideTheTask(t *testing.T) {
 // runLocal runs a job on the host.
 func runLocal(t *testing.T, job Job) Result {
 	t.Helper()
-	needGo(t)
-	res, err := (&Runner{Engine: "local"}).Run(t.Context(), job)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return res
+	return onHost(t, func(r *Runner) (Result, error) { return r.Run(t.Context(), job) })
 }
 
-// needGo skips tests that run Go tests on the host when there's no go command.
-func needGo(t *testing.T) {
+// onHost runs Go tests on the host with the local engine, and skips without
+// the go command.
+//
+// While containers start and stop on the same machine, as they do in the
+// app's tests next to these, a go command started from a test binary is now
+// and then killed (SIGKILL, exit status 137) before it prints anything. The
+// cause lies outside this package, so such a run is tried again.
+func onHost[T any](t *testing.T, run func(*Runner) (T, error)) T {
 	t.Helper()
 	if _, err := exec.LookPath("go"); err != nil {
 		t.Skip("needs the go command")
+	}
+	for try := 1; ; try++ {
+		v, err := run(&Runner{Engine: "local"})
+		var exit *exec.ExitError
+		if errors.As(err, &exit) && exit.ExitCode() == 137 && try < 3 {
+			t.Logf("the go command was killed; trying again")
+			continue
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		return v
 	}
 }
 
