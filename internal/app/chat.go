@@ -238,8 +238,13 @@ const mcpName = "tutortop"
 
 // toolLabel turns an agent tool call into a short line for the learner, or
 // hides it. The tutor reading files or keeping its todo list is noise;
-// changes to the learner's mission or plan are worth seeing.
+// changes to the learner's mission or plan are worth seeing. Our own tools
+// show as their mcpTools entry says.
 func toolLabel(t agent.Tool) (string, bool) {
+	if t.MCPServer == mcpName {
+		line := chatLine(t.MCPTool)
+		return line, line != hidden
+	}
 	switch t.Kind {
 	case agent.ToolRead, agent.ToolSearch, agent.ToolThink:
 		return "", false
@@ -260,9 +265,6 @@ func toolLabel(t agent.Tool) (string, bool) {
 		case strings.Contains(file, "learning-records") || learningRecord.MatchString(base):
 			return "Recorded what you learned", true
 		}
-	}
-	if t.MCPServer == mcpName && !shownInChat(t.MCPTool) {
-		return "", false
 	}
 	return t.Title, t.Title != ""
 }

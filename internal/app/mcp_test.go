@@ -47,11 +47,11 @@ func TestThreadsGetTheirKindsTools(t *testing.T) {
 	}
 }
 
-// Our own tools show in the chat only if their mcpTools entry says so; other
-// servers' tools aren't ours to hide.
+// Our own tools show in the chat as their mcpTools entry says, whatever the
+// agent titles them; other servers' tools aren't ours to hide.
 func TestOwnToolsShowInTheChatAsListed(t *testing.T) {
 	call := func(server, tool string) agent.Tool {
-		return agent.Tool{Kind: agent.ToolOther, Title: server + " · " + tool, MCPServer: server, MCPTool: tool}
+		return agent.Tool{Kind: agent.ToolOther, Title: "Called " + tool, MCPServer: server, MCPTool: tool}
 	}
 	if label, ok := toolLabel(call(mcpName, "ask_user")); ok {
 		t.Errorf("ask_user shows as %q", label)

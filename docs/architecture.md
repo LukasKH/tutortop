@@ -135,13 +135,13 @@ To add a kind of thread, add it and its name to `internal/workspace/thread.go`, 
 
 The agent changes the app's state only through MCP tools, built on the [official Go SDK](https://github.com/modelcontextprotocol/go-sdk). `App` serves them over HTTP on `127.0.0.1`, with a random token in each thread's URL, so a thread can only reach its own workspace. The tool handlers write to the workspace and emit events.
 
-`mcpTools` in `internal/app/mcp.go` lists every tool with whether its calls show in the chat and the kinds of thread that get it:
+`mcpTools` in `internal/app/mcp.go` lists every tool with the line its calls show as in the chat, if any, and the kinds of thread that get it:
 
 - Every kind gets `get_state`.
 - The chats (plan, task and lesson threads) also get `ask_user`, `set_icon`, `propose_curriculum` and `set_toolchain` (`mcp_chat.go`).
 - Writers also get `create_task` and `create_lesson` (`mcp_writer.go`), for their own objective only.
 
-Each tool is a `*mcp.Tool` with its name and description, a handler method on `threadTools`, and its input and output types, kept together. The SDK derives the input schema from the input type's `json` and `jsonschema` tags and rejects calls that don't match it. A handler that returns an error sends the error's text back to the agent, which fixes its call and tries again. To add a tool, write those pieces next to the others and add a line to `mcpTools`: `shown` if the learner should see its calls in the chat (under the agent's title for them), `hidden` if they're noise or show in their own UI, then the kinds that get it. A tool for the plan only is a line with `workspace.PlanKind`.
+Each tool is a `*mcp.Tool` with its name and description, a handler method on `threadTools`, and its input and output types, kept together. The SDK derives the input schema from the input type's `json` and `jsonschema` tags and rejects calls that don't match it. A handler that returns an error sends the error's text back to the agent, which fixes its call and tries again. To add a tool, write those pieces next to the others and add a line to `mcpTools`: the line the learner sees in the chat for each call ("Saved your notes"), or `hidden` if the calls are noise or show in their own UI, then the kinds that get it. A tool for the plan only is a line with `workspace.PlanKind`.
 
 `create_task` publishes a task only after it passes the quality gate in the sandbox. The reference solution has to pass three times in shuffled order, the starter code has to fail, and the tests have to catch at least two wrong solutions.
 
