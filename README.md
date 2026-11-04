@@ -79,7 +79,7 @@ task test:live               # talks to the real Claude Code and Codex CLIs; use
 
 Code follows [STYLEGUIDE.md](STYLEGUIDE.md). The pre-commit hooks and GitHub Actions run:
 
-- golangci-lint: go vet's analyzers, Staticcheck, and gofmt/goimports formatting (`.golangci.yml`).
+- golangci-lint: go vet's analyzers, Staticcheck, exhaustive (switches over enum-like types cover every case), gocognit and nestif (functions stay shallow), and gofmt/goimports formatting (`.golangci.yml`).
 - `go test -race -short ./internal/...`.
 - A TypeScript typecheck, an Oxlint lint, a Prettier format check and the Vitest tests of the frontend, when frontend files change.
 
