@@ -1,7 +1,7 @@
 import { useEffect, useEffectEvent } from "react";
 import { Events } from "@wailsio/runtime";
 import { App as Bindings } from "@bindings/github.com/LukasKH/tutortop/internal/app";
-import type { Environment, Gate, ProviderStatus, Settings, WorkspaceState } from "@bindings/github.com/LukasKH/tutortop/internal/app";
+import type { Environment, ProviderStatus, SandboxCheck, Settings, WorkspaceState } from "@bindings/github.com/LukasKH/tutortop/internal/app";
 import type { Model } from "@bindings/github.com/LukasKH/tutortop/internal/agent";
 import type {
   Activity,
@@ -24,14 +24,13 @@ import type { Result, TestResult } from "@bindings/github.com/LukasKH/tutortop/i
 /** Who said a chat item: the learner, the tutor, a tool call worth showing, or the app; and how a tool call went. */
 export { ChatRole, ChatStatus } from "@bindings/github.com/LukasKH/tutortop/internal/workspace";
 /** What a sandbox check is for: a writer's new task or a toolchain. */
-export { GateKind } from "@bindings/github.com/LukasKH/tutortop/internal/app";
+export { CheckKind } from "@bindings/github.com/LukasKH/tutortop/internal/app";
 
 export type {
   Activity,
   ChatItem,
   Curriculum,
   Environment,
-  Gate,
   LessonDetail,
   LessonStatus,
   Model,
@@ -42,6 +41,7 @@ export type {
   Questions,
   QuizResult,
   Result,
+  SandboxCheck,
   Source,
   Settings,
   Summary,

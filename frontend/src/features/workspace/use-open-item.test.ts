@@ -21,21 +21,21 @@ afterEach(() => {
 /** Renders the hook on a snapshot, with the item stored from an earlier session. rerender({ ws }) passes a newer snapshot. */
 function render(ws: WorkspaceState, stored?: string) {
   if (stored) localStorage.setItem("tutortop.open-item.ws", JSON.stringify(stored));
-  const dismissFinishedGate = vi.fn();
+  const dismissFinishedCheck = vi.fn();
   const refresh = vi.fn(async () => ws);
-  const hook = renderHook((p) => useOpenItem("ws", { ws: p.ws, refresh, dismissFinishedGate }), { initialProps: { ws } });
-  return { ...hook, dismissFinishedGate, refresh };
+  const hook = renderHook((p) => useOpenItem("ws", { ws: p.ws, refresh, dismissFinishedCheck }), { initialProps: { ws } });
+  return { ...hook, dismissFinishedCheck, refresh };
 }
 
 describe("published work", () => {
   test("opens at once when its page was open, waiting for it, even from the plan page", () => {
-    const { result, rerender, dismissFinishedGate } = render(workspace(), "todo:exercise:a");
+    const { result, rerender, dismissFinishedCheck } = render(workspace(), "todo:exercise:a");
     act(() => result.current.setView("plan"));
     emit(AppEvents.TaskPublished, { task: task("t1", "a") });
     rerender({ ws: workspace({ tasks: [task("t1", "a")] }) });
     expect(result.current.view).toBe("item");
     expect(result.current.item).toEqual({ kind: "task", id: "t1" });
-    expect(dismissFinishedGate).toHaveBeenCalled();
+    expect(dismissFinishedCheck).toHaveBeenCalled();
   });
 
   test("opens at once when nothing is open", () => {

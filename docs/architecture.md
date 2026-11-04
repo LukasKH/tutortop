@@ -42,7 +42,7 @@ All events live in `internal/app/events.go`. Each has a payload struct, a name c
 | --- | --- | --- |
 | `chat:message` | `ChatEvent` | a chat message is added or updated, including each streamed piece of a reply |
 | `thread:busy` | `BusyEvent` | a thread's tutor or writer starts or stops working |
-| `gate:status` | `GateEvent` | a new task or toolchain is being checked in the sandbox, or the check finished |
+| `check:status` | `CheckEvent` | a sandbox check (`SandboxCheck`) started or finished: a writer's new task in the quality gate, or a language a chat sets up |
 | `task:published` | `TaskEvent` | a writer published a task |
 | `lesson:published` | `LessonEvent` | a writer published a lesson |
 | `questions:asked` | `QuestionsEvent` | the tutor called `ask_user` |
@@ -85,7 +85,7 @@ A feature's state and its backend calls live in hooks next to its components. Th
 
 | Hook | State | Comes from |
 | --- | --- | --- |
-| `use-workspace.ts` | the snapshot (`App.Workspace`), busy threads, writers' checks and failures, the planning check, open questions, the last error | refetched on `workspace:changed`, `task:published` and `lesson:published`; `thread:busy`, `gate:status`, `chat:message` and `questions:asked` update it directly |
+| `use-workspace.ts` | the snapshot (`App.Workspace`), busy threads, writers' checks and failures, a chat's toolchain check, open questions, the last error | refetched on `workspace:changed`, `task:published` and `lesson:published`; `thread:busy`, `check:status`, `chat:message` and `questions:asked` update it directly |
 | `use-open-item.ts` | the open item, the centre's view (item, plan or proposal), the chat thread that goes with them, new work to point out | the learner, remembered per workspace; `task:published`, `lesson:published` and `curriculum:proposed` |
 | `use-chat-threads.ts` | conversations by thread, and which are unread | `App.Chat` for the shown thread; `chat:message` |
 | `use-chat-panel.ts`, `tutor/use-composer.ts` | the tutor panel's width and whether it's folded; the message draft | the learner |

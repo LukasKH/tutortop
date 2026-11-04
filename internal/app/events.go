@@ -22,28 +22,32 @@ type BusyEvent struct {
 	Busy      bool   `json:"busy"`
 }
 
-// GateEvent tells how a sandbox check of a new task or toolchain is going.
-type GateEvent struct {
-	Workspace string `json:"workspace"`
-	Gate      Gate   `json:"gate"`
+// CheckEvent tells how a sandbox check is going.
+type CheckEvent struct {
+	Workspace string       `json:"workspace"`
+	Check     SandboxCheck `json:"check"`
 }
 
-// Gate is a sandbox check the learner watches. WorkspaceState.Checks keeps
-// writers' latest ones.
-type Gate struct {
-	Kind      GateKind `json:"kind"`
-	Objective string   `json:"objective,omitempty"` // for a task: whose writer is checking it
-	Title     string   `json:"title"`
-	Running   bool     `json:"running"`
-	Passed    bool     `json:"passed"`
+// SandboxCheck is a check in the sandbox that an agent waits for and the
+// learner watches: a writer's new task in the quality gate, or a language a
+// chat sets up with set_toolchain. WorkspaceState.Checks keeps writers'
+// latest ones.
+type SandboxCheck struct {
+	Kind CheckKind `json:"kind"`
+	// Thread is the thread whose agent waits for it: an objective's writer
+	// for a task, the chat that called set_toolchain for a toolchain.
+	Thread  string `json:"thread"`
+	Title   string `json:"title"`
+	Running bool   `json:"running"`
+	Passed  bool   `json:"passed"`
 }
 
-// GateKind is what a Gate checks.
-type GateKind string
+// CheckKind is what a SandboxCheck checks.
+type CheckKind string
 
 const (
-	GateTask      GateKind = "task"      // a writer's new task, in the quality gate
-	GateToolchain GateKind = "toolchain" // a language the tutor sets up with set_toolchain
+	CheckTask      CheckKind = "task"      // a writer's new task, in the quality gate
+	CheckToolchain CheckKind = "toolchain" // a language a chat sets up with set_toolchain
 )
 
 // TaskEvent announces a newly published task.
@@ -79,7 +83,7 @@ type event[Data any] string
 const (
 	chatMessage        event[ChatEvent]      = "chat:message"
 	threadBusy         event[BusyEvent]      = "thread:busy"
-	gateStatus         event[GateEvent]      = "gate:status"
+	checkStatus        event[CheckEvent]     = "check:status"
 	taskPublished      event[TaskEvent]      = "task:published"
 	lessonPublished    event[LessonEvent]    = "lesson:published"
 	questionsAsked     event[QuestionsEvent] = "questions:asked"
@@ -93,7 +97,7 @@ const (
 func init() {
 	application.RegisterEvent[ChatEvent](string(chatMessage))
 	application.RegisterEvent[BusyEvent](string(threadBusy))
-	application.RegisterEvent[GateEvent](string(gateStatus))
+	application.RegisterEvent[CheckEvent](string(checkStatus))
 	application.RegisterEvent[TaskEvent](string(taskPublished))
 	application.RegisterEvent[LessonEvent](string(lessonPublished))
 	application.RegisterEvent[QuestionsEvent](string(questionsAsked))

@@ -14,14 +14,14 @@ import "../github.com/wailsapp/wails/v3/internal/eventcreate.js";
 export const ChatMessage = "chat:message";
 
 /**
+ * Name of the custom event "check:status".
+ */
+export const CheckStatus = "check:status";
+
+/**
  * Name of the custom event "curriculum:proposed".
  */
 export const CurriculumProposed = "curriculum:proposed";
-
-/**
- * Name of the custom event "gate:status".
- */
-export const GateStatus = "gate:status";
 
 /**
  * Name of the custom event "lesson:published".

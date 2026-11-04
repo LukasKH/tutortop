@@ -100,8 +100,8 @@ func (t *threadTools) setToolchain(ctx context.Context, _ *mcp.CallToolRequest, 
 	if err != nil {
 		return nil, nil, err
 	}
-	gate := Gate{Kind: GateToolchain, Title: tc.Name, Running: true}
-	emit(gateStatus, GateEvent{Workspace: t.w.ID, Gate: gate})
+	check := SandboxCheck{Kind: CheckToolchain, Thread: t.thread.String(), Title: tc.Name, Running: true}
+	emit(checkStatus, CheckEvent{Workspace: t.w.ID, Check: check})
 	report, err := t.app.checkToolchain(ctx, tc, in.Example)
 	var lspErr error
 	if err == nil && report == "" && len(tc.LanguageServer) > 0 {
@@ -109,8 +109,8 @@ func (t *threadTools) setToolchain(ctx context.Context, _ *mcp.CallToolRequest, 
 		maps.Copy(files, in.Example.Tests)
 		lspErr = t.app.probeLanguageServer(ctx, tc, files)
 	}
-	gate.Running, gate.Passed = false, err == nil && report == ""
-	emit(gateStatus, GateEvent{Workspace: t.w.ID, Gate: gate})
+	check.Running, check.Passed = false, err == nil && report == ""
+	emit(checkStatus, CheckEvent{Workspace: t.w.ID, Check: check})
 	if err != nil {
 		return nil, nil, sandboxProblem(err)
 	}

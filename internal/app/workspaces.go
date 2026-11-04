@@ -113,7 +113,7 @@ type WorkspaceState struct {
 	Questions  *workspace.Questions     `json:"questions"`
 	Busy       map[string]bool          `json:"busy"` // thread -> its tutor or writer is working
 	// Checks are writers' latest sandbox checks of new tasks, by objective.
-	Checks map[string]Gate `json:"checks"`
+	Checks map[string]SandboxCheck `json:"checks"`
 }
 
 func (a *App) Workspace(id string) (WorkspaceState, error) {

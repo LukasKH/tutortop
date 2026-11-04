@@ -44,7 +44,7 @@ export function WorkspaceView({ id, tutor, onSettings, onBack }: Props) {
   // Conversations by thread, loaded for the shown thread and streamed in by event.
   const { threads, unread } = useChatThreads(id, nav.thread, { ready: live.ws !== null, visible: chat.open, onError: live.fail });
 
-  const { ws, busy, questions, gate, fail } = live;
+  const { ws, busy, questions, fail } = live;
   if (!ws) {
     return (
       <Placeholder error={live.error} loading="Opening workspace…">
@@ -143,7 +143,15 @@ export function WorkspaceView({ id, tutor, onSettings, onBack }: Props) {
               <QuestionsForm key={JSON.stringify(questions)} layout="chat" form={questions} onAnswer={live.answerQuestions} onDismiss={live.dismissQuestions} />
             ) : null
           }
-          status={<StatusLine gate={gate} newItem={nav.newItem} busy={!!busy[thread]} onStop={() => App.StopAgent(id, thread).catch(fail)} onOpen={nav.open} />}
+          status={
+            <StatusLine
+              check={live.toolchainCheck}
+              newItem={nav.newItem}
+              busy={!!busy[thread]}
+              onStop={() => App.StopAgent(id, thread).catch(fail)}
+              onOpen={nav.open}
+            />
+          }
           composer={composer}
           onSend={(text) => App.SendMessage(id, text, thread).catch(fail)}
           onCollapse={() => chat.setOpen(false)}
@@ -193,7 +201,7 @@ function CenterPane({ id, center, ws, live, nav, planItems, onAskTutor }: Center
         <Setup
           items={planItems}
           busy={!!live.busy[PLAN_THREAD]}
-          gate={live.gate}
+          check={live.toolchainCheck}
           questions={live.questions}
           lang={details.lang}
           onAnswer={live.answerQuestions}

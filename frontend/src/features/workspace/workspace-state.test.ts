@@ -1,11 +1,17 @@
 import { describe, expect, test } from "vitest";
-import { ChatRole, ChatStatus, GateKind, type ChatItem, type Gate } from "@/lib/api";
+import { ChatRole, ChatStatus, CheckKind, type ChatItem, type SandboxCheck } from "@/lib/api";
 import { initialWorkspace, reduceWorkspace, writingObjectives, type Action, type LiveWorkspace } from "@/features/workspace/workspace-state";
 import { workspace } from "@/features/workspace/fixtures";
 
 const run = (...actions: Action[]): LiveWorkspace => actions.reduce(reduceWorkspace, initialWorkspace);
 
-const check = (objective: string, running: boolean): Gate => ({ kind: GateKind.GateTask, objective, title: "Task", running, passed: false });
+const check = (objective: string, running: boolean): SandboxCheck => ({
+  kind: CheckKind.CheckTask,
+  thread: `write-${objective}`,
+  title: "Task",
+  running,
+  passed: false,
+});
 
 describe("snapshots and events", () => {
   test("a writer that finishes during a refetch doesn't spin forever", () => {
@@ -25,7 +31,7 @@ describe("snapshots and events", () => {
   });
 
   test("a writer's check from an event survives an older snapshot", () => {
-    const s = run({ type: "gate", gate: check("a", true), at: 3 }, { type: "snapshot", ws: workspace({ checks: {} }), asked: 2 });
+    const s = run({ type: "check", check: check("a", true), at: 3 }, { type: "snapshot", ws: workspace({ checks: {} }), asked: 2 });
     expect(s.checks.a?.running).toBe(true);
   });
 
@@ -44,7 +50,7 @@ describe("writers", () => {
   const failed: ChatItem = { id: "1", thread: "write-a", role: ChatRole.RoleNotice, text: "Agent crashed", status: ChatStatus.ChatFailed, at: "" };
 
   test("a failed writer is remembered until it starts again, and its check starts afresh", () => {
-    let s = run({ type: "gate", gate: check("a", false), at: 1 }, { type: "chat", item: failed });
+    let s = run({ type: "check", check: check("a", false), at: 1 }, { type: "chat", item: failed });
     expect(s.writeFailed.a).toBe("Agent crashed");
     s = reduceWorkspace(s, { type: "busy", thread: "write-a", busy: true, at: 2 });
     expect(s.writeFailed.a).toBeUndefined();
@@ -57,16 +63,27 @@ describe("writers", () => {
   });
 });
 
-describe("the planning tutor's sandbox check", () => {
-  const toolchain = (running: boolean): Gate => ({ kind: GateKind.GateToolchain, title: "Go", running, passed: !running });
+describe("a chat's toolchain check", () => {
+  const toolchain = (thread: string, running: boolean): SandboxCheck => ({ kind: CheckKind.CheckToolchain, thread, title: "Rust", running, passed: !running });
+  const checked = (c: SandboxCheck): Action => ({ type: "check", check: c, at: 1 });
+  const idle = (thread: string): Action => ({ type: "busy", thread, busy: false, at: 2 });
 
-  test("a finished check clears once the plan thread stops; a running one stays", () => {
-    expect(run({ type: "gate", gate: toolchain(false), at: 1 }, { type: "busy", thread: "plan", busy: false, at: 2 }).gate).toBeNull();
-    expect(run({ type: "gate", gate: toolchain(true), at: 1 }, { type: "busy", thread: "plan", busy: false, at: 2 }).gate?.running).toBe(true);
+  test("a finished check clears once the thread that ran it stops; a running one stays", () => {
+    expect(run(checked(toolchain("plan", false)), idle("plan")).toolchainCheck).toBeNull();
+    expect(run(checked(toolchain("lesson-l1", false)), idle("lesson-l1")).toolchainCheck).toBeNull();
+    expect(run(checked(toolchain("plan", true)), idle("plan")).toolchainCheck?.running).toBe(true);
+  });
+
+  test("another thread stopping leaves it", () => {
+    expect(run(checked(toolchain("lesson-l1", false)), idle("plan")).toolchainCheck?.thread).toBe("lesson-l1");
+  });
+
+  test("isn't an objective's check", () => {
+    expect(run(checked(toolchain("plan", true))).checks).toEqual({});
   });
 
   test("dismissing only clears a finished check", () => {
-    expect(run({ type: "gate", gate: toolchain(true), at: 1 }, { type: "dismissFinishedGate" }).gate).not.toBeNull();
-    expect(run({ type: "gate", gate: toolchain(false), at: 1 }, { type: "dismissFinishedGate" }).gate).toBeNull();
+    expect(run(checked(toolchain("plan", true)), { type: "dismissFinishedCheck" }).toolchainCheck).not.toBeNull();
+    expect(run(checked(toolchain("plan", false)), { type: "dismissFinishedCheck" }).toolchainCheck).toBeNull();
   });
 });

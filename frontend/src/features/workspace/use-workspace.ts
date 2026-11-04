@@ -36,8 +36,8 @@ export function useWorkspace(id: string) {
   useEvent(AppEvents.ThreadBusy, ({ workspace, thread, busy }) => {
     if (workspace === id) dispatch({ type: "busy", thread, busy, at: performance.now() });
   });
-  useEvent(AppEvents.GateStatus, ({ workspace, gate }) => {
-    if (workspace === id) dispatch({ type: "gate", gate, at: performance.now() });
+  useEvent(AppEvents.CheckStatus, ({ workspace, check }) => {
+    if (workspace === id) dispatch({ type: "check", check, at: performance.now() });
   });
   useEvent(AppEvents.ChatMessage, ({ workspace, item }) => {
     if (workspace === id) dispatch({ type: "chat", item });
@@ -66,8 +66,8 @@ export function useWorkspace(id: string) {
     refresh,
     answerQuestions,
     dismissQuestions,
-    /** Clears a finished planning check from the status line, e.g. once the learner moves on. */
-    dismissFinishedGate: () => dispatch({ type: "dismissFinishedGate" }),
+    /** Clears a finished toolchain check from the status line, e.g. once the learner moves on. */
+    dismissFinishedCheck: () => dispatch({ type: "dismissFinishedCheck" }),
   };
 }
 

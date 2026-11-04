@@ -16,7 +16,7 @@ export type NewItem = { item: OpenItem; title: string };
  * workspace), the centre's view, and the chat thread that goes with them.
  * New lessons and exercises open, or are pointed out, as they're published.
  */
-export function useOpenItem(id: string, { ws, refresh, dismissFinishedGate }: Pick<Workspace, "ws" | "refresh" | "dismissFinishedGate">) {
+export function useOpenItem(id: string, { ws, refresh, dismissFinishedCheck }: Pick<Workspace, "ws" | "refresh" | "dismissFinishedCheck">) {
   // Each snapshot checks the open item still exists, and what it picks
   // instead is remembered, so a default doesn't move on its own. Until the
   // first snapshot, the stored item is unchecked. Older versions stored it
@@ -41,7 +41,7 @@ export function useOpenItem(id: string, { ws, refresh, dismissFinishedGate }: Pi
     setStoredKey(itemKey(next));
     setView("item");
     setNewItem((n) => (n && sameItem(n.item, next) ? null : n));
-    dismissFinishedGate();
+    dismissFinishedCheck();
   }
 
   // New work opens at once when it's what the learner is waiting for: its

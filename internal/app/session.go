@@ -40,8 +40,8 @@ type session struct {
 	agent agent.Session // set before ready is closed; nil if the start failed
 
 	// Guarded by App.mu.
-	pending int   // messages queued or being answered; the thread is busy while it's above 0
-	gate    *Gate // a writer's latest sandbox check of its task
+	pending int           // messages queued or being answered; the thread is busy while it's above 0
+	check   *SandboxCheck // a writer's latest sandbox check of its task
 }
 
 // started reports whether the agent process is up, without blocking.
@@ -239,8 +239,8 @@ func (a *App) end(s *session) {
 
 // activity returns which of a workspace's threads are busy, and its writers'
 // latest sandbox checks by objective.
-func (a *App) activity(wsID string) (busy map[string]bool, checks map[string]Gate) {
-	busy, checks = map[string]bool{}, map[string]Gate{}
+func (a *App) activity(wsID string) (busy map[string]bool, checks map[string]SandboxCheck) {
+	busy, checks = map[string]bool{}, map[string]SandboxCheck{}
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	for _, s := range a.sessions {
@@ -250,8 +250,8 @@ func (a *App) activity(wsID string) (busy map[string]bool, checks map[string]Gat
 		if s.pending > 0 {
 			busy[s.key.name] = true
 		}
-		if s.gate != nil {
-			checks[s.thread.ID] = *s.gate
+		if s.check != nil {
+			checks[s.thread.ID] = *s.check
 		}
 	}
 	return busy, checks

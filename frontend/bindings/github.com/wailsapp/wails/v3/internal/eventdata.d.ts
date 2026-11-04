@@ -13,8 +13,8 @@ declare module "@wailsio/runtime" {
     namespace Events {
         interface CustomEvents {
             "chat:message": app$0.ChatEvent;
+            "check:status": app$0.CheckEvent;
             "curriculum:proposed": app$0.WorkspaceEvent;
-            "gate:status": app$0.GateEvent;
             "lesson:published": app$0.LessonEvent;
             "lsp:message": app$0.LSPEvent;
             "questions:asked": app$0.QuestionsEvent;

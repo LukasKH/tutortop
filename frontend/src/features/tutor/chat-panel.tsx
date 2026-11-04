@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef, type ReactNode } from "react";
-import { type ChatItem, type Gate } from "@/lib/api";
+import { type ChatItem, type SandboxCheck } from "@/lib/api";
 import type { OpenItem } from "@/features/workspace/open-item";
 import type { NewItem } from "@/features/workspace/use-open-item";
 import type { Composer } from "@/features/tutor/use-composer";
@@ -161,20 +161,20 @@ export function ChatRail({ attention, busy, onExpand }: { attention: boolean; bu
 }
 
 type StatusProps = {
-  gate: Gate | null;
+  /** The sandbox check of a language a chat is setting up (set_toolchain). */
+  check: SandboxCheck | null;
   newItem: NewItem | null;
   busy: boolean;
   onStop: () => void;
   onOpen: (item: OpenItem) => void;
 };
 
-/** One quiet line above the composer: sandbox checks, a new task, or the tutor working. */
-export function StatusLine({ gate, newItem, busy, onStop, onOpen }: StatusProps) {
+/** One quiet line above the composer: a language being set up, new work, or the tutor working. */
+export function StatusLine({ check, newItem, busy, onStop, onOpen }: StatusProps) {
   let text = "";
   let action: ReactNode = null;
-  const setup = gate?.kind === "toolchain";
-  if (gate?.running) {
-    text = setup ? `Setting up ${gate.title} in the sandbox. The first time can take a few minutes…` : `Checking “${gate.title}” in the sandbox…`;
+  if (check?.running) {
+    text = `Setting up ${check.title} in the sandbox. The first time can take a few minutes…`;
   } else if (newItem) {
     text = `${newItem.item.kind === "lesson" ? "New lesson" : "New exercise"}: ${newItem.title}`;
     action = (
@@ -182,11 +182,11 @@ export function StatusLine({ gate, newItem, busy, onStop, onOpen }: StatusProps)
         Open
       </Button>
     );
-  } else if (gate && !gate.passed) {
-    // Normal: the tutor (in the plan thread) reads the gate report and resubmits.
-    text = setup ? `Fixing the ${gate.title} setup…` : `Fixing “${gate.title}” after the sandbox checks…`;
-  } else if (gate?.passed) {
-    text = setup ? `${gate.title} is set up` : `“${gate.title}” is ready`;
+  } else if (check && !check.passed) {
+    // Normal: the tutor reads the check's report and calls set_toolchain again.
+    text = `Fixing the ${check.title} setup…`;
+  } else if (check?.passed) {
+    text = `${check.title} is set up`;
   }
   if (!text && !busy) return null;
   return (

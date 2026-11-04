@@ -22,6 +22,34 @@ export interface ChatEvent {
     "item": workspace$0.ChatItem;
 }
 
+/**
+ * CheckEvent tells how a sandbox check is going.
+ */
+export interface CheckEvent {
+    "workspace": string;
+    "check": SandboxCheck;
+}
+
+/**
+ * CheckKind is what a SandboxCheck checks.
+ */
+export enum CheckKind {
+    /**
+     * The Go zero value for the underlying type of the enum.
+     */
+    $zero = "",
+
+    /**
+     * a writer's new task, in the quality gate
+     */
+    CheckTask = "task",
+
+    /**
+     * a language a chat sets up with set_toolchain
+     */
+    CheckToolchain = "toolchain",
+};
+
 export interface Environment {
     "providers": ProviderStatus[] | null;
     "sandboxOk": boolean;
@@ -35,50 +63,6 @@ export interface Environment {
     "defaultRoot": string;
     "rootFromEnv": boolean;
 }
-
-/**
- * Gate is a sandbox check the learner watches. WorkspaceState.Checks keeps
- * writers' latest ones.
- */
-export interface Gate {
-    "kind": GateKind;
-
-    /**
-     * for a task: whose writer is checking it
-     */
-    "objective"?: string;
-    "title": string;
-    "running": boolean;
-    "passed": boolean;
-}
-
-/**
- * GateEvent tells how a sandbox check of a new task or toolchain is going.
- */
-export interface GateEvent {
-    "workspace": string;
-    "gate": Gate;
-}
-
-/**
- * GateKind is what a Gate checks.
- */
-export enum GateKind {
-    /**
-     * The Go zero value for the underlying type of the enum.
-     */
-    $zero = "",
-
-    /**
-     * a writer's new task, in the quality gate
-     */
-    GateTask = "task",
-
-    /**
-     * a language the tutor sets up with set_toolchain
-     */
-    GateToolchain = "toolchain",
-};
 
 /**
  * LSPEvent carries one message from a language server to the editor, or
@@ -123,6 +107,25 @@ export interface ProviderStatus {
 export interface QuestionsEvent {
     "workspace": string;
     "questions": workspace$0.Questions;
+}
+
+/**
+ * SandboxCheck is a check in the sandbox that an agent waits for and the
+ * learner watches: a writer's new task in the quality gate, or a language a
+ * chat sets up with set_toolchain. WorkspaceState.Checks keeps writers'
+ * latest ones.
+ */
+export interface SandboxCheck {
+    "kind": CheckKind;
+
+    /**
+     * Thread is the thread whose agent waits for it: an objective's writer
+     * for a task, the chat that called set_toolchain for a toolchain.
+     */
+    "thread": string;
+    "title": string;
+    "running": boolean;
+    "passed": boolean;
 }
 
 /**
@@ -193,5 +196,5 @@ export interface WorkspaceState {
     /**
      * Checks are writers' latest sandbox checks of new tasks, by objective.
      */
-    "checks": { [_ in string]?: Gate } | null;
+    "checks": { [_ in string]?: SandboxCheck } | null;
 }
