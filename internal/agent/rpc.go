@@ -8,6 +8,8 @@ import (
 	"io"
 	"sync"
 	"sync/atomic"
+
+	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
 )
 
 // rpcConn is newline-delimited JSON-RPC over a process's stdin/stdout, as
@@ -84,7 +86,7 @@ func (c *rpcConn) answer(m rpcMessage) {
 	result, err := c.onRequest(m.Method, m.Params)
 	reply := map[string]any{"id": m.ID}
 	if err != nil {
-		reply["error"] = rpcError{Code: -32601, Message: err.Error()}
+		reply["error"] = rpcError{Code: jsonrpc.CodeMethodNotFound, Message: err.Error()}
 	} else {
 		reply["result"] = result
 	}

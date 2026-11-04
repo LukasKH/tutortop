@@ -159,7 +159,7 @@ func (w *Workspace) SaveTask(spec TaskSpec, lang string, names runner.TestNames)
 			return TaskInfo{}, err
 		}
 	}
-	if err := writeFileAtomic(filepath.Join(pub, "README.md"), []byte(spec.Statement.Markdown(spec.Title, lang))); err != nil {
+	if err := WriteFileAtomic(filepath.Join(pub, "README.md"), []byte(spec.Statement.Markdown(spec.Title, lang))); err != nil {
 		return TaskInfo{}, err
 	}
 	if err := os.MkdirAll(priv, 0o755); err != nil {
@@ -291,7 +291,7 @@ func writeFiles(dir string, files runner.Files) error {
 		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
 			return err
 		}
-		if err := writeFileAtomic(p, []byte(content)); err != nil {
+		if err := WriteFileAtomic(p, []byte(content)); err != nil {
 			return err
 		}
 	}

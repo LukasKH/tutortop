@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/xml"
 	"fmt"
+	"io/fs"
 	"maps"
 	"path"
 	"regexp"
@@ -54,7 +55,7 @@ func (s ToolchainSpec) Toolchain() (Toolchain, error) {
 		add("test_files must be a glob matching a file's base name, like test_*.py, not a regexp or a path")
 	}
 	for name := range s.ExtraFiles {
-		if !isLocalSlash(name) {
+		if !fs.ValidPath(name) {
 			add("extra file %q must be a relative path", name)
 		}
 	}
@@ -171,8 +172,4 @@ func parseJUnitRuns(stdout string, hidden map[string]bool) ([]TestResult, bool) 
 		out = append(out, *results[k])
 	}
 	return out, true
-}
-
-func isLocalSlash(name string) bool {
-	return name != "" && !strings.HasPrefix(name, "/") && !slices.Contains(strings.Split(name, "/"), "..")
 }

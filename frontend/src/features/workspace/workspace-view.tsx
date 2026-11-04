@@ -38,25 +38,23 @@ type Props = {
 
 /** A workspace: the curriculum rail, the open lesson, exercise or plan page, and the tutor beside it. */
 export function WorkspaceView({ id, tutor, onSettings, onBack }: Props) {
-  // The open task or lesson (by key), remembered per workspace. Each snapshot checks it still exists.
-  const [taskId, setTaskId] = useStored<string | null>(`task.${id}`, null);
-  const [view, setView] = useState<CenterView>("task");
+  const { ws, error, fail, refresh, busy, checks, writeFailed, gate, dismissFinishedGate, questions, answerQuestions, dismissQuestions } = useWorkspace(id);
+  // The open task or lesson (by key), remembered per workspace. Each snapshot
+  // checks it still exists; until the first one, the stored key is unchecked.
+  const [storedId, setTaskId] = useStored<string | null>(`task.${id}`, null);
+  const taskId = ws ? resolveOpen(ws, storedId) : storedId;
+  // Until the learner picks a view, a proposal waiting for review comes first.
+  const [chosenView, setView] = useState<CenterView | null>(null);
+  const view = chosenView ?? (ws?.proposal ? "proposal" : "task");
   const [newTask, setNewTask] = useState<NewItem | null>(null);
   const [draft, setDraft] = useState("");
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const chat = useChatPanel();
-  const { ws, error, fail, refresh, busy, checks, writeFailed, gate, dismissFinishedGate, questions, answerQuestions, dismissQuestions } = useWorkspace(
-    id,
-    (s, first) => {
-      setTaskId((cur) => resolveOpen(s, cur));
-      if (first && s.proposal) setView("proposal");
-    },
-  );
 
   // The chat follows the centre pane: an open exercise or lesson has its own
   // conversation; the plan page, plan review, and anything not written yet
   // use the planning conversation. Writing happens apart from the chat. Until the
-  // workspace loads, the stored id is unchecked.
+  // workspace loads, the stored key is unchecked.
   const todo = todoOfKey(taskId);
   const planContext = view !== "task" || !taskId || !!todo;
   const thread = ws && !planContext ? taskId! : PLAN_THREAD;

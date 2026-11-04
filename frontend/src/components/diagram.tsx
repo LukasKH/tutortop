@@ -8,14 +8,11 @@ export function Diagram({ code }: { code: string }) {
 
   useEffect(() => {
     let live = true;
+    // Only code that parses is rendered: a failed render leaves Mermaid's error drawing on the page.
     loadMermaid()
-      .then((mermaid) => mermaid.render(id, code))
-      .then((r) => live && (setSvg(r.svg), setFailed(false)))
-      .catch(() => {
-        live && setFailed(true);
-        // A failed render leaves its scratch element behind.
-        document.getElementById(`d${id}`)?.remove();
-      });
+      .then(async (mermaid) => ((await mermaid.parse(code, { suppressErrors: true })) ? (await mermaid.render(id, code)).svg : null))
+      .then((svg) => live && (svg ? (setSvg(svg), setFailed(false)) : setFailed(true)))
+      .catch(() => live && setFailed(true));
     return () => {
       live = false;
     };

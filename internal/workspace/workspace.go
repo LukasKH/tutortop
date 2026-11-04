@@ -369,7 +369,7 @@ func writeJSON(p string, v any) error {
 	if err != nil {
 		return err
 	}
-	return writeFileAtomic(p, b)
+	return WriteFileAtomic(p, b)
 }
 
 func removeIfExists(p string) error {
@@ -384,12 +384,12 @@ func writeYAML(p string, v any) error {
 	if err != nil {
 		return err
 	}
-	return writeFileAtomic(p, b)
+	return WriteFileAtomic(p, b)
 }
 
-// writeFileAtomic writes via a temporary file and a rename, so a crash never
+// WriteFileAtomic writes via a temporary file and a rename, so a crash never
 // leaves a half-written or empty file behind.
-func writeFileAtomic(p string, data []byte) error {
+func WriteFileAtomic(p string, data []byte) error {
 	f, err := os.CreateTemp(filepath.Dir(p), "."+filepath.Base(p)+".tmp-*")
 	if err != nil {
 		return err
