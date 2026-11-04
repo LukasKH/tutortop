@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 
@@ -15,16 +16,16 @@ import (
 )
 
 // The tutor changes the app's state only through the MCP tools served here.
-// newServer lists which thread gets which tool. Each tool is an *mcp.Tool
-// (its name, and a description the agent reads as instructions), a method on
-// threadTools that handles it, and its input and output types, kept together:
-// get_state below, the chat tools in mcp_chat.go, the writer tools in
-// mcp_writer.go.
+// mcpTools lists which kind of thread gets which tool. Each tool is an
+// *mcp.Tool (its name, and a description the agent reads as instructions), a
+// method on threadTools that handles it, and its input and output types, kept
+// together: get_state below, the chat tools in mcp_chat.go, the writer tools
+// in mcp_writer.go.
 //
-// To add a tool, write those three next to the others, then add it to
-// newServer under the threads that need it. The SDK derives the input schema
-// from the input type's json and jsonschema tags and rejects calls that don't
-// match it, so the handler only checks what the schema can't say.
+// To add a tool, write those three next to the others, then add a line to
+// mcpTools with the kinds of thread that get it. The SDK derives the input
+// schema from the input type's json and jsonschema tags and rejects calls
+// that don't match it, so the handler only checks what the schema can't say.
 
 // mcpHost serves one MCP server per chat thread on localhost. Each gets a
 // random token in its URL, so an agent can only reach its own workspace, and
@@ -80,27 +81,44 @@ func (h *mcpHost) forget(wsID string) {
 	}
 }
 
-// newServer builds the tools for one thread.
+// newServer builds one thread's server with the tools of its kind.
 func (h *mcpHost) newServer(w *workspace.Workspace, thread workspace.Thread) *mcp.Server {
 	t := &threadTools{app: h.app, w: w, thread: thread}
 	s := mcp.NewServer(&mcp.Implementation{Name: "tutortop", Version: "0.1.1"}, nil)
-	mcp.AddTool(s, getStateTool, t.getState)
-
-	// Only an objective's writer publishes its lesson and task, so the
-	// tutoring and planning chats stay about the learner.
-	if thread.Kind == workspace.WriterKind {
-		mcp.AddTool(s, createTaskTool, t.createTask)
-		mcp.AddTool(s, createLessonTool, t.createLesson)
-		return s
+	for _, tool := range mcpTools {
+		if slices.Contains(tool.kinds, thread.Kind) {
+			tool.add(s, t)
+		}
 	}
-
-	// Chats (the plan, a task's or a lesson's) talk with the learner and
-	// shape the plan.
-	mcp.AddTool(s, askUserTool, t.askUser)
-	mcp.AddTool(s, setIconTool, t.setIcon)
-	mcp.AddTool(s, proposeCurriculumTool, t.proposeCurriculum)
-	mcp.AddTool(s, setToolchainTool, t.setToolchain)
 	return s
+}
+
+// mcpTools lists every tool with the kinds of thread that get it. Chats (the
+// plan, a task's, a lesson's) talk with the learner and shape the plan. Only
+// an objective's writer publishes its lesson and task, so the chats stay
+// about the learner.
+var mcpTools = []threadTool{
+	toolFor(getStateTool, (*threadTools).getState, workspace.PlanKind, workspace.TaskKind, workspace.LessonKind, workspace.WriterKind),
+	toolFor(askUserTool, (*threadTools).askUser, workspace.PlanKind, workspace.TaskKind, workspace.LessonKind),
+	toolFor(setIconTool, (*threadTools).setIcon, workspace.PlanKind, workspace.TaskKind, workspace.LessonKind),
+	toolFor(proposeCurriculumTool, (*threadTools).proposeCurriculum, workspace.PlanKind, workspace.TaskKind, workspace.LessonKind),
+	toolFor(setToolchainTool, (*threadTools).setToolchain, workspace.PlanKind, workspace.TaskKind, workspace.LessonKind),
+	toolFor(createTaskTool, (*threadTools).createTask, workspace.WriterKind),
+	toolFor(createLessonTool, (*threadTools).createLesson, workspace.WriterKind),
+}
+
+// threadTool is one tool and the kinds of thread that get it.
+type threadTool struct {
+	kinds []workspace.ThreadKind
+	add   func(*mcp.Server, *threadTools) // adds the tool, handled by one thread's threadTools
+}
+
+func toolFor[In, Out any](tool *mcp.Tool, handle func(*threadTools, context.Context, *mcp.CallToolRequest, In) (*mcp.CallToolResult, Out, error), kinds ...workspace.ThreadKind) threadTool {
+	return threadTool{kinds: kinds, add: func(s *mcp.Server, t *threadTools) {
+		mcp.AddTool(s, tool, func(ctx context.Context, req *mcp.CallToolRequest, in In) (*mcp.CallToolResult, Out, error) {
+			return handle(t, ctx, req, in)
+		})
+	}}
 }
 
 // threadTools handles the tool calls of one thread.
