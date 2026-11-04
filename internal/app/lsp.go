@@ -54,7 +54,7 @@ func (a *App) StartLanguageServer(wsID, taskID string) (LanguageServerInfo, erro
 	if err != nil {
 		return LanguageServerInfo{}, err
 	}
-	ls := &languageServer{id: rand.Text(), key: threadKey{wsID, taskID}, srv: srv, started: time.Now()}
+	ls := &languageServer{id: rand.Text(), key: taskKey{wsID, taskID}, srv: srv, started: time.Now()}
 
 	a.mu.Lock()
 	var stale []*languageServer
@@ -110,7 +110,7 @@ const maxLanguageServers = 2
 
 type languageServer struct {
 	id      string
-	key     threadKey
+	key     taskKey // the task whose code it serves
 	srv     *runner.Server
 	started time.Time
 

@@ -29,9 +29,9 @@ type App struct {
 	linkCheck func(ctx context.Context, urls []string) []string
 
 	mu          sync.Mutex
-	sessions    map[threadKey]*session      // each thread's running agent (session.go)
-	lastResults map[threadKey]runner.Result // latest check per task, for tutor context
-	servers     map[string]*languageServer  // running language servers by id
+	sessions    map[threadKey]*session     // each thread's running agent (session.go)
+	lastResults map[taskKey]runner.Result  // latest check per task, for tutor context
+	servers     map[string]*languageServer // running language servers by id
 
 	settingsMu   sync.Mutex
 	settingsPath string
@@ -39,7 +39,7 @@ type App struct {
 }
 
 func New() (*App, error) {
-	a := &App{runner: runner.New(), sessions: map[threadKey]*session{}, lastResults: map[threadKey]runner.Result{},
+	a := &App{runner: runner.New(), sessions: map[threadKey]*session{}, lastResults: map[taskKey]runner.Result{},
 		servers: map[string]*languageServer{}, startAgent: agent.Start, linkCheck: checkLinks,
 		settingsPath: filepath.Join(xdg.ConfigHome, "tutortop", "settings.yaml"), models: map[string]modelList{}}
 	// The workspaces folder: TUTORTOP_HOME, else the one chosen in the

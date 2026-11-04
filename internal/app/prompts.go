@@ -61,7 +61,7 @@ func (a *App) contextFor(w *workspace.Workspace, t workspace.Thread) string {
 	switch t.Kind {
 	case workspace.TaskKind:
 		a.mu.Lock()
-		last, ok := a.lastResults[threadKey{w.ID, t.ID}]
+		last, ok := a.lastResults[taskKey{w.ID, t.ID}]
 		a.mu.Unlock()
 		if !ok {
 			return taskContext(w, t.ID, nil)

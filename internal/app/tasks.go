@@ -52,7 +52,7 @@ func (a *App) RunChecks(wsID, taskID string, files runner.Files, submit bool) (r
 		return res, err
 	}
 	a.mu.Lock()
-	a.lastResults[threadKey{wsID, taskID}] = res
+	a.lastResults[taskKey{wsID, taskID}] = res
 	a.mu.Unlock()
 	kind := workspace.KindRun
 	if submit {
@@ -88,3 +88,6 @@ func hintSummary(w *workspace.Workspace, taskID string) string {
 	}
 	return fmt.Sprintf("I used %d hint(s) on this task, highest level %d.", h.Count, h.Highest)
 }
+
+// taskKey names one task of one workspace.
+type taskKey struct{ ws, task string }
