@@ -60,7 +60,8 @@ func TestValidateSpec(t *testing.T) {
 func TestValidateSpecNeedsAPlan(t *testing.T) {
 	w := newWorkspace(t)
 	spec := taskSpec("a")
-	wantProblems(t, firstErr(w.ValidateSpec(&spec)), "no approved curriculum")
+	_, err := w.ValidateSpec(&spec)
+	wantProblems(t, err, "no approved curriculum")
 }
 
 func TestValidateSpecDefaultsSize(t *testing.T) {
@@ -198,5 +199,3 @@ func TestSaveWork(t *testing.T) {
 		}
 	}
 }
-
-func firstErr[T any](_ T, err error) error { return err }
