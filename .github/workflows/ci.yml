@@ -10,6 +10,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+      # internal/app imports Wails, which links GTK and WebKitGTK on Linux.
+      - name: Install GTK and WebKitGTK
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends pkg-config libgtk-4-dev libwebkitgtk-6.0-dev
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
@@ -25,6 +28,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+      # internal/app imports Wails, which links GTK and WebKitGTK on Linux.
+      - name: Install GTK and WebKitGTK
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends pkg-config libgtk-4-dev libwebkitgtk-6.0-dev
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
@@ -38,6 +44,9 @@ jobs:
         working-directory: frontend
     steps:
       - uses: actions/checkout@v6
+      # internal/app imports Wails, which links GTK and WebKitGTK on Linux.
+      - name: Install GTK and WebKitGTK
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends pkg-config libgtk-4-dev libwebkitgtk-6.0-dev
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
