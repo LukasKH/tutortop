@@ -18,7 +18,7 @@ func TestSetToolchainEnablesALanguage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	call := toolCaller(t, a, w, workspace.PlanThread)
+	call := a.caller(t, w, workspace.PlanThread)
 	plan := map[string]any{
 		"language": "javascript",
 		"modules": []any{map[string]any{"id": "basics", "title": "Basics", "references": []any{map[string]any{"title": "Docs", "url": "https://go.dev/doc/"}}, "objectives": []any{
@@ -77,7 +77,7 @@ func TestSetToolchainEnablesALanguage(t *testing.T) {
 	if err := a.Workspaces.ApproveProposal(w.ID); err != nil {
 		t.Fatal(err)
 	}
-	out, _ = toolCaller(t, a, w, workspace.WriterThread("js.add"))("create_task", map[string]any{
+	out, _ = a.caller(t, w, workspace.WriterThread("js.add"))("create_task", map[string]any{
 		"objectiveId": "js.add",
 		"title":       "Add numbers",
 		"statement": map[string]any{

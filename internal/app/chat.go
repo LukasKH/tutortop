@@ -14,6 +14,7 @@ import (
 
 	"github.com/LukasKH/tutortop/internal/agent"
 	"github.com/LukasKH/tutortop/internal/events"
+	"github.com/LukasKH/tutortop/internal/mcp"
 	"github.com/LukasKH/tutortop/internal/workspace"
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
@@ -229,17 +230,13 @@ func (t *transcript) endTurn() {
 	events.Emit(events.WorkspaceChanged, events.Workspace{Workspace: t.ws.ID})
 }
 
-// mcpName is the name the tutor knows Tutortop's MCP server by.
-const mcpName = "tutortop"
-
 // toolLabel turns an agent tool call into a short line for the learner, or
 // hides it. The tutor reading files or keeping its todo list is noise;
 // changes to the learner's mission or plan are worth seeing. Our own tools
-// show as their mcpTools entry says.
+// show as their entry in the tool table says (mcp.ChatLine).
 func toolLabel(t agent.Tool) (string, bool) {
-	if t.MCPServer == mcpName {
-		line := chatLine(t.MCPTool)
-		return line, line != hidden
+	if t.MCPServer == mcp.Name {
+		return mcp.ChatLine(t.MCPTool)
 	}
 	switch t.Kind {
 	case agent.ToolRead, agent.ToolSearch, agent.ToolThink:

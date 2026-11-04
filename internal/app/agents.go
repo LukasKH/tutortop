@@ -9,6 +9,7 @@ import (
 
 	"github.com/LukasKH/tutortop/internal/agent"
 	"github.com/LukasKH/tutortop/internal/events"
+	"github.com/LukasKH/tutortop/internal/mcp"
 	"github.com/LukasKH/tutortop/internal/settings"
 	"github.com/LukasKH/tutortop/internal/workspace"
 )
@@ -43,7 +44,7 @@ import (
 // interrupts the current turn.
 type threadAgents struct {
 	settings *settings.Store // the agent, model and effort, read for every message
-	mcp      *mcpHost
+	mcp      *mcp.Server
 	cli      agentCLI
 
 	mu     sync.Mutex
@@ -51,8 +52,8 @@ type threadAgents struct {
 	seq    uint64 // numbers busy and check changes and snapshots in order
 }
 
-func newThreadAgents(settingsStore *settings.Store, mcp *mcpHost, cli agentCLI) *threadAgents {
-	return &threadAgents{settings: settingsStore, mcp: mcp, cli: cli, agents: map[threadKey]*threadAgent{}, seq: firstSeq()}
+func newThreadAgents(settingsStore *settings.Store, tools *mcp.Server, cli agentCLI) *threadAgents {
+	return &threadAgents{settings: settingsStore, mcp: tools, cli: cli, agents: map[threadKey]*threadAgent{}, seq: firstSeq()}
 }
 
 // firstSeq is where threadAgents.seq starts. Counting from the time in
@@ -156,15 +157,15 @@ func (ag *threadAgents) stop(wsID, thread string) {
 }
 
 // The UI learns which threads are busy, and how writers' sandbox checks go,
-// from both snapshots (state) and events (setPending, showCheck). All three
+// from both snapshots (state) and events (setPending, Show). All three
 // take the next number from ag.seq under ag.mu, so the numbers order them
 // exactly as they happened: the frontend keeps whichever is newer, and a
 // snapshot read before an event doesn't undo it.
 
-// showCheck tells the UI how a sandbox check is going. A writer's is also
+// Show tells the UI how a sandbox check is going. A writer's is also
 // kept on its threadAgent, so the objective's page shows it even after the
 // learner looks away; it goes when the writer does.
-func (ag *threadAgents) showCheck(wsID string, c events.SandboxCheck) {
+func (ag *threadAgents) Show(wsID string, c events.SandboxCheck) {
 	ag.mu.Lock()
 	defer ag.mu.Unlock()
 	if ta := ag.agents[threadKey{wsID, c.Thread}]; ta != nil && c.Kind == events.CheckTask {
@@ -206,7 +207,7 @@ func (ag *threadAgents) endWorkspace(wsID string) {
 			ag.end(ta)
 		}
 	}
-	ag.mcp.forget(wsID)
+	ag.mcp.Forget(wsID)
 }
 
 // endAll ends every agent, as the app quits.
@@ -338,7 +339,7 @@ func (ag *threadAgents) open(ctx context.Context, w *workspace.Workspace, ta *th
 	// A writer starts fresh every time, so its conversation isn't kept.
 	resume := ta.thread.Kind != workspace.WriterKind
 	opts := agent.Options{
-		Cwd: w.Dir, MCPName: mcpName, MCPURL: ag.mcp.URL(w, ta.thread, ag), Instructions: instructions(w, ta.thread),
+		Cwd: w.Dir, MCPName: mcp.Name, MCPURL: ag.mcp.URL(w, ta.thread, ag), Instructions: instructions(w, ta.thread),
 		Model: ta.cfg.Model, Effort: ta.cfg.Effort, Subagents: usesSubagents(ta.thread.Kind),
 	}
 	if resume {

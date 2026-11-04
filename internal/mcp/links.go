@@ -1,4 +1,4 @@
-package app
+package mcp
 
 import (
 	"context"
@@ -11,22 +11,24 @@ import (
 	"sync"
 	"time"
 
-	"github.com/modelcontextprotocol/go-sdk/mcp"
+	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// linkChecker opens the links a tool call cites, so a made-up reference is
+// LinkChecker opens the links a tool call cites, so a made-up reference is
 // caught before the learner sees it.
-type linkChecker struct {
+type LinkChecker struct {
 	client *http.Client
 }
 
-func newLinkChecker() *linkChecker {
-	return &linkChecker{client: &http.Client{Timeout: 10 * time.Second}}
+// NewLinkChecker opens links through transport; nil means
+// http.DefaultTransport.
+func NewLinkChecker(transport http.RoundTripper) *LinkChecker {
+	return &LinkChecker{client: &http.Client{Transport: transport, Timeout: 10 * time.Second}}
 }
 
 // check returns an error naming the links that don't exist, so the tutor
 // fixes them and calls tool again.
-func (lc *linkChecker) check(ctx context.Context, tool *mcp.Tool, urls []string) error {
+func (lc *LinkChecker) check(ctx context.Context, tool *mcpsdk.Tool, urls []string) error {
 	bad := lc.broken(ctx, urls)
 	if len(bad) == 0 {
 		return nil
@@ -42,7 +44,7 @@ func (lc *linkChecker) check(ctx context.Context, tool *mcp.Tool, urls []string)
 // 410, or a site that doesn't exist). Pages that refuse robots or time out
 // count as fine. When nothing can be reached at all, the computer is
 // probably offline, and nothing is reported.
-func (lc *linkChecker) broken(ctx context.Context, urls []string) []string {
+func (lc *LinkChecker) broken(ctx context.Context, urls []string) []string {
 	urls = slices.Compact(slices.Sorted(slices.Values(urls)))
 	if len(urls) == 0 {
 		return nil

@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 
 	"github.com/LukasKH/tutortop/internal/editor"
+	"github.com/LukasKH/tutortop/internal/mcp"
 	"github.com/LukasKH/tutortop/internal/sandbox"
 	"github.com/LukasKH/tutortop/internal/settings"
 	"github.com/LukasKH/tutortop/internal/workspace"
@@ -33,14 +34,14 @@ func New() (*Services, error) {
 	// settings, else ~/Tutortop. It's fixed for the run: running agents open
 	// their workspace by id.
 	store := workspace.NewStore(cmp.Or(os.Getenv("TUTORTOP_HOME"), settingsStore.Load().WorkspacesFolder, workspace.DefaultRoot()))
-	return newServices(store, settingsStore, sandbox.New(), newLinkChecker(), installedCLI{})
+	return newServices(store, settingsStore, sandbox.New(), mcp.NewLinkChecker(nil), installedCLI{})
 }
 
 // newServices builds the pieces several services share once, and the
 // services on them: the workspaces in store, the settings, the sandbox, the
 // link checker and the agent CLI it starts. Tests pass their own.
-func newServices(store *workspace.Store, settingsStore *settings.Store, runner *sandbox.Runner, links *linkChecker, cli agentCLI) (*Services, error) {
-	tools, err := startMCP(runner, links)
+func newServices(store *workspace.Store, settingsStore *settings.Store, runner *sandbox.Runner, links *mcp.LinkChecker, cli agentCLI) (*Services, error) {
+	tools, err := mcp.Start(runner, links)
 	if err != nil {
 		return nil, err
 	}

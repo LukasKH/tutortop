@@ -15,7 +15,7 @@ import (
 // A writer runs as a threadAgent like any thread (agents.go), with four
 // differences: it starts a fresh conversation, it takes no second message
 // while it's busy, it ends once it has nothing left to do, and its MCP tools
-// publish lessons and tasks (mcp.go).
+// publish lessons and tasks (internal/mcp).
 
 // writers start objectives' writers, on the thread agents.
 type writers struct {

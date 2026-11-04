@@ -1,9 +1,8 @@
-package app
+package mcp
 
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -26,7 +25,7 @@ func TestLinkCheckerReportsMissingPages(t *testing.T) {
 	}))
 	defer srv.Close()
 	served := srv.Client().Transport
-	lc := &linkChecker{client: &http.Client{Transport: roundTripper(func(r *http.Request) (*http.Response, error) {
+	lc := NewLinkChecker(roundTripper(func(r *http.Request) (*http.Response, error) {
 		switch r.URL.Host {
 		case "nosuch.example":
 			return nil, &net.DNSError{Err: "no such host", Name: r.URL.Host, IsNotFound: true}
@@ -34,7 +33,7 @@ func TestLinkCheckerReportsMissingPages(t *testing.T) {
 			return nil, context.DeadlineExceeded
 		}
 		return served.RoundTrip(r)
-	})}}
+	}))
 
 	got := lc.broken(context.Background(), []string{
 		srv.URL + "/ok", srv.URL + "/missing", srv.URL + "/gone", srv.URL + "/robots", srv.URL + "/missing",
@@ -53,24 +52,12 @@ func TestLinkCheckerReportsMissingPages(t *testing.T) {
 
 // Offline, no link can be opened, and none is reported.
 func TestLinkCheckerReportsNothingOffline(t *testing.T) {
-	lc := &linkChecker{client: &http.Client{Transport: roundTripper(func(*http.Request) (*http.Response, error) {
+	lc := NewLinkChecker(roundTripper(func(*http.Request) (*http.Response, error) {
 		return nil, errors.New("network is unreachable")
-	})}}
+	}))
 	if got := lc.broken(context.Background(), []string{"https://go.dev/doc/", "https://go.dev/made-up"}); len(got) != 0 {
 		t.Fatalf("got %q", got)
 	}
-}
-
-// fakeLinks is a linkChecker that finds every page but the missing ones,
-// which answer 404, without the network.
-func fakeLinks(missing ...string) *linkChecker {
-	return &linkChecker{client: &http.Client{Transport: roundTripper(func(r *http.Request) (*http.Response, error) {
-		status := http.StatusOK
-		if slices.Contains(missing, r.URL.String()) {
-			status = http.StatusNotFound
-		}
-		return &http.Response{StatusCode: status, Status: fmt.Sprint(status, " ", http.StatusText(status)), Body: http.NoBody, Request: r}, nil
-	})}}
 }
 
 type roundTripper func(*http.Request) (*http.Response, error)

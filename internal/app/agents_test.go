@@ -11,6 +11,7 @@ import (
 
 	"github.com/LukasKH/tutortop/internal/agent"
 	"github.com/LukasKH/tutortop/internal/events"
+	"github.com/LukasKH/tutortop/internal/mcp/mcptest"
 	"github.com/LukasKH/tutortop/internal/settings"
 	"github.com/LukasKH/tutortop/internal/workspace"
 )
@@ -54,7 +55,7 @@ func TestWriterEndsAfterItsTurn(t *testing.T) {
 		t.Fatalf("writer resumed %q", turn.s.opts.ResumeID)
 	}
 	queue(t, ag, w, writer, "write again")
-	ag.showCheck(w.ID, events.SandboxCheck{Kind: events.CheckTask, Thread: writer.String(), Title: "Wrap errors", Running: true})
+	ag.Show(w.ID, events.SandboxCheck{Kind: events.CheckTask, Thread: writer.String(), Title: "Wrap errors", Running: true})
 	if busy, checks, _ := ag.state(w.ID); !busy[writer.String()] || !checks["go.errors"].Running {
 		t.Fatalf("busy %v, checks %v", busy, checks)
 	}
@@ -207,7 +208,7 @@ func TestSubagentsByThread(t *testing.T) {
 func newHeldAgents(t *testing.T) (*threadAgents, *heldAgents, *workspace.Workspace) {
 	t.Helper()
 	fake := &heldAgents{turns: make(chan heldTurn, 8)}
-	a := newTestAppWith(t, fake, fakeLinks())
+	a := newTestAppWith(t, fake, mcptest.Links())
 	t.Cleanup(a.agents.endAll)
 	if err := a.Settings.SaveSettings(settings.Settings{Provider: "claude"}); err != nil {
 		t.Fatal(err)

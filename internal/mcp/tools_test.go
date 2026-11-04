@@ -1,4 +1,4 @@
-package app
+package mcp_test
 
 import (
 	"context"
@@ -10,21 +10,19 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/LukasKH/tutortop/internal/agent"
 	"github.com/LukasKH/tutortop/internal/decode"
+	"github.com/LukasKH/tutortop/internal/events"
+	"github.com/LukasKH/tutortop/internal/mcp"
+	"github.com/LukasKH/tutortop/internal/mcp/mcptest"
 	"github.com/LukasKH/tutortop/internal/sandbox"
 	"github.com/LukasKH/tutortop/internal/workspace"
-	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // A thread's tools decide what its agent can change: chats talk with the
 // learner and shape the plan, and only writers publish lessons and tasks.
 func TestThreadsGetTheirKindsTools(t *testing.T) {
-	a := newTestApp(t)
-	w, err := a.store.Create("Go", "claude")
-	if err != nil {
-		t.Fatal(err)
-	}
+	tt := newTools(t)
+	w := tt.create(t, "Go")
 	chat := []string{"ask_user", "get_state", "propose_curriculum", "set_icon", "set_toolchain"}
 	writer := []string{"create_lesson", "create_task", "get_state"}
 	for thread, want := range map[workspace.Thread][]string{
@@ -34,7 +32,7 @@ func TestThreadsGetTheirKindsTools(t *testing.T) {
 		workspace.WriterThread("go.errors"):    writer,
 	} {
 		var got []string
-		for tool, err := range toolSession(t, a, w, thread).Tools(context.Background(), nil) {
+		for tool, err := range mcptest.Session(t, tt.url(w, thread)).Tools(context.Background(), nil) {
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -47,29 +45,12 @@ func TestThreadsGetTheirKindsTools(t *testing.T) {
 	}
 }
 
-// Our own tools show in the chat as their mcpTools entry says, whatever the
-// agent titles them; other servers' tools aren't ours to hide.
-func TestOwnToolsShowInTheChatAsListed(t *testing.T) {
-	call := func(server, tool string) agent.Tool {
-		return agent.Tool{Kind: agent.ToolOther, Title: "Called " + tool, MCPServer: server, MCPTool: tool}
-	}
-	if label, ok := toolLabel(call(mcpName, "ask_user")); ok {
-		t.Errorf("ask_user shows as %q", label)
-	}
-	if label, ok := toolLabel(call(mcpName, "set_toolchain")); !ok || label != "tutortop · set_toolchain" {
-		t.Errorf("set_toolchain shows as %q, %v", label, ok)
-	}
-	if _, ok := toolLabel(call("other", "ask_user")); !ok {
-		t.Error("another server's ask_user is hidden")
-	}
-}
-
 // Each objective has its own writer, so one can't publish for another.
 func TestWriterKeepsToItsObjective(t *testing.T) {
-	a := newTestApp(t)
-	w := goWorkspace(t, a)
-	write := toolCaller(t, a, w, workspace.WriterThread("go.maps"))
-	if out, isErr := write("create_task", reverseWordsTask("go.strings")); !isErr || !strings.Contains(out, `not "go.strings"`) {
+	tt := newTools(t)
+	w := tt.goWorkspace(t)
+	write := tt.caller(t, w, workspace.WriterThread("go.maps"))
+	if out, isErr := write("create_task", mcptest.ReverseWordsTask("go.strings")); !isErr || !strings.Contains(out, `not "go.strings"`) {
 		t.Fatalf("create_task for another objective: %s", out)
 	}
 	lesson := map[string]any{
@@ -86,9 +67,8 @@ func TestWriterKeepsToItsObjective(t *testing.T) {
 
 // Struct tags can't be computed, so they name the built-in languages by
 // hand. A tag that names two of them is listing them, and must name them
-// all, so a new built-in language fails this until every list names it. The
-// prompts fill the list in ({{builtins}}), but each language's conventions
-// in the shared prompt are written by hand.
+// all, so a new built-in language fails this until every list names it. (The
+// prompts fill the list in; the threads' tests check their conventions.)
 func TestWrittenOutLanguagesMatchTheBuiltins(t *testing.T) {
 	// Where -> tag, from the packages whose types the agent reads as tool
 	// schemas.
@@ -122,9 +102,6 @@ func TestWrittenOutLanguagesMatchTheBuiltins(t *testing.T) {
 	for _, lang := range sandbox.BuiltinLanguages() {
 		tc, _ := sandbox.Builtin(lang)
 		builtins = append(builtins, builtin{lang, regexp.MustCompile(`\b(` + regexp.QuoteMeta(lang) + `|` + regexp.QuoteMeta(tc.Name) + `)\b`)})
-		if !strings.Contains(sharedPrompt, "\n- **"+tc.Name+" ") {
-			t.Errorf("shared.md has no conventions for %s, as a line starting \"- **%s <version>**: \"", lang, tc.Name)
-		}
 	}
 	for where, text := range tags {
 		var named, missing []string
@@ -141,29 +118,11 @@ func TestWrittenOutLanguagesMatchTheBuiltins(t *testing.T) {
 	}
 }
 
-// Every placeholder in the prompts is filled, for every kind of thread.
-func TestInstructionsFillEveryPlaceholder(t *testing.T) {
-	a := newTestApp(t)
-	w, err := a.store.Create("Go", "claude")
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, thread := range []workspace.Thread{workspace.PlanThread, workspace.TaskThread("0001-x"), workspace.LessonThread("0001-x"), workspace.WriterThread("go.x")} {
-		if text := instructions(w, thread); strings.Contains(text, "{{") {
-			i := strings.Index(text, "{{")
-			t.Errorf("%s: unfilled placeholder at %q", thread, text[i:min(len(text), i+20)])
-		}
-	}
-}
-
 // The tutor uses a built-in language as it is, before any image is built.
 func TestSetToolchainRefusesABuiltin(t *testing.T) {
-	a := newTestApp(t)
-	w, err := a.store.Create("Python", "claude")
-	if err != nil {
-		t.Fatal(err)
-	}
-	out, isErr := toolCaller(t, a, w, workspace.PlanThread)("set_toolchain", map[string]any{
+	tt := newTools(t)
+	w := tt.create(t, "Python")
+	out, isErr := tt.caller(t, w, workspace.PlanThread)("set_toolchain", map[string]any{
 		"toolchain": map[string]any{"language": "python", "name": "Python", "editorLanguage": "python", "dockerfile": "FROM python:3.14", "testCommand": "pytest", "testFiles": "test_*.py"},
 		"example":   map[string]any{"solution": map[string]string{"a.py": ""}, "tests": map[string]string{"test_a.py": ""}},
 	})
@@ -174,12 +133,9 @@ func TestSetToolchainRefusesABuiltin(t *testing.T) {
 
 // ask_user takes 2-4 questions, as its description and the tutor's prompt say.
 func TestAskUserTakesTwoToFourQuestions(t *testing.T) {
-	a := newTestApp(t)
-	w, err := a.store.Create("Go", "claude")
-	if err != nil {
-		t.Fatal(err)
-	}
-	ask := toolCaller(t, a, w, workspace.TaskThread("0001-some-task"))
+	tt := newTools(t)
+	w := tt.create(t, "Go")
+	ask := tt.caller(t, w, workspace.TaskThread("0001-some-task"))
 	questions := func(n int) map[string]any {
 		qs := []any{}
 		for range n {
@@ -207,17 +163,17 @@ func TestAskUserTakesTwoToFourQuestions(t *testing.T) {
 // A task whose tests don't catch its mutants stays unpublished, and the
 // writer gets the gate's report to fix it.
 func TestCreateTaskWithholdsATaskThatFailsTheGate(t *testing.T) {
-	a := newTestApp(t)
-	if err := a.runner.Available(context.Background()); err != nil {
+	tt := newTools(t)
+	if err := tt.runner.Available(context.Background()); err != nil {
 		t.Skip(err)
 	}
-	w := goWorkspace(t, a)
-	spec := reverseWordsTask("go.strings")
+	w := tt.goWorkspace(t)
+	spec := mcptest.ReverseWordsTask("go.strings")
 	spec["mutants"] = []any{
-		map[string]any{"name": "same", "description": "the reference itself", "files": map[string]string{"solution.go": goReference}},
-		map[string]any{"name": "same-again", "description": "the reference again", "files": map[string]string{"solution.go": goReference}},
+		map[string]any{"name": "same", "description": "the reference itself", "files": map[string]string{"solution.go": mcptest.GoReference}},
+		map[string]any{"name": "same-again", "description": "the reference again", "files": map[string]string{"solution.go": mcptest.GoReference}},
 	}
-	out, isErr := toolCaller(t, a, w, workspace.WriterThread("go.strings"))("create_task", spec)
+	out, isErr := tt.caller(t, w, workspace.WriterThread("go.strings"))("create_task", spec)
 	res, err := decode.JSON[createTaskOutput]([]byte(out))
 	if err != nil {
 		t.Fatalf("%v: %s", err, out)
@@ -230,47 +186,74 @@ func TestCreateTaskWithholdsATaskThatFailsTheGate(t *testing.T) {
 	}
 }
 
-// goWorkspace is a workspace with an approved Go curriculum of two objectives.
-func goWorkspace(t *testing.T, a *testApp) *workspace.Workspace {
+// createTaskOutput is create_task's result, as the writer reads it.
+type createTaskOutput struct {
+	Published bool                `json:"published"`
+	Gate      *sandbox.GateReport `json:"gate"`
+	Report    string              `json:"report"`
+}
+
+// tools serves a test's workspaces' tools, with links that all open.
+type tools struct {
+	store  *workspace.Store
+	runner *sandbox.Runner
+	server *mcp.Server
+}
+
+func newTools(t *testing.T) *tools {
 	t.Helper()
-	w, err := a.store.Create("Go", "claude")
+	runner := sandbox.New()
+	server, err := mcp.Start(runner, mcptest.Links())
 	if err != nil {
 		t.Fatal(err)
 	}
+	return &tools{store: &workspace.Store{Root: t.TempDir(), PrivateRoot: t.TempDir()}, runner: runner, server: server}
+}
+
+func (tt *tools) create(t *testing.T, title string) *workspace.Workspace {
+	t.Helper()
+	w, err := tt.store.Create(title, "claude")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return w
+}
+
+// goWorkspace is a workspace with an approved Go curriculum of two objectives.
+func (tt *tools) goWorkspace(t *testing.T) *workspace.Workspace {
+	t.Helper()
+	w := tt.create(t, "Go")
 	planned(t, w, "go.strings", "go.maps")
 	return w
 }
 
-// toolCaller connects to one thread's MCP tools, the way that thread's agent
-// would, and returns a function that calls a tool and reports its text and
-// whether it was an error.
-func toolCaller(t *testing.T, a *testApp, w *workspace.Workspace, thread workspace.Thread) func(name string, args any) (string, bool) {
-	t.Helper()
-	cs := toolSession(t, a, w, thread)
-	return func(name string, args any) (string, bool) {
-		t.Helper()
-		res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{Name: name, Arguments: args})
-		if err != nil {
-			t.Fatalf("%s: %v", name, err)
-		}
-		var b strings.Builder
-		for _, c := range res.Content {
-			if tc, ok := c.(*mcp.TextContent); ok {
-				b.WriteString(tc.Text)
-			}
-		}
-		return b.String(), res.IsError
-	}
+// url is a thread's MCP endpoint.
+func (tt *tools) url(w *workspace.Workspace, thread workspace.Thread) string {
+	return tt.server.URL(w, thread, noChecks{})
 }
 
-// toolSession connects to one thread's MCP server over HTTP, as its agent does.
-func toolSession(t *testing.T, a *testApp, w *workspace.Workspace, thread workspace.Thread) *mcp.ClientSession {
+// caller calls a thread's tools, as mcptest.Caller does.
+func (tt *tools) caller(t *testing.T, w *workspace.Workspace, thread workspace.Thread) func(name string, args any) (string, bool) {
 	t.Helper()
-	cs, err := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "1"}, nil).
-		Connect(context.Background(), &mcp.StreamableClientTransport{Endpoint: a.mcp.URL(w, thread, a.agents)}, nil)
-	if err != nil {
+	return mcptest.Caller(t, tt.url(w, thread))
+}
+
+// noChecks shows sandbox checks nowhere.
+type noChecks struct{}
+
+func (noChecks) Show(string, events.SandboxCheck) {}
+
+// planned gives a workspace an approved curriculum with these objectives.
+func planned(t *testing.T, w *workspace.Workspace, objectives ...string) {
+	t.Helper()
+	m := workspace.Module{ID: "m", Title: "M", References: []workspace.Source{{Title: "Go docs", URL: "https://go.dev/doc/"}}}
+	for _, id := range objectives {
+		m.Objectives = append(m.Objectives, workspace.Objective{ID: id, Name: id, Title: id})
+	}
+	if err := w.Propose(workspace.Curriculum{Language: "go", Modules: []workspace.Module{m}}); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { cs.Close() })
-	return cs
+	if _, err := w.ApproveProposal(); err != nil {
+		t.Fatal(err)
+	}
 }

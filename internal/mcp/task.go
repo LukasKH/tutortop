@@ -1,18 +1,18 @@
-package app
+package mcp
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/LukasKH/tutortop/internal/events"
 	"github.com/LukasKH/tutortop/internal/sandbox"
 	"github.com/LukasKH/tutortop/internal/workspace"
-	"github.com/modelcontextprotocol/go-sdk/mcp"
+	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// The tools of a writer, which publish its objective's lesson and task.
+// A writer's tool that publishes its objective's task, once it passes the
+// quality gate.
 
-var createTaskTool = &mcp.Tool{
+var createTaskTool = &mcpsdk.Tool{
 	Name: "create_task",
 	Description: "Submit a task for a curriculum objective. The app runs a quality gate in a sandbox: the reference must pass all tests 3 times, " +
 		"the starter must compile and fail, and every mutant must compile and fail. Only then is the task shown to the learner. The statement must stand on its own: no feedback on earlier tasks or chat remarks. " +
@@ -27,7 +27,7 @@ type createTaskOutput struct {
 }
 
 // createTask publishes a task only once it passes the quality gate.
-func (t *threadTools) createTask(ctx context.Context, _ *mcp.CallToolRequest, spec workspace.TaskSpec) (*mcp.CallToolResult, createTaskOutput, error) {
+func (t *threadTools) createTask(ctx context.Context, _ *mcpsdk.CallToolRequest, spec workspace.TaskSpec) (*mcpsdk.CallToolResult, createTaskOutput, error) {
 	if err := t.ownObjective(spec.ObjectiveID); err != nil {
 		return nil, createTaskOutput{}, err
 	}
@@ -43,7 +43,7 @@ func (t *threadTools) createTask(ctx context.Context, _ *mcp.CallToolRequest, sp
 	if !rep.Passed {
 		// Unlike a returned error, this error result keeps the structured
 		// gate report, so the agent sees which check failed.
-		return &mcp.CallToolResult{IsError: true}, out, nil
+		return &mcpsdk.CallToolResult{IsError: true}, out, nil
 	}
 	info, err := t.w.SaveTask(spec, tc.Language, rep.Names)
 	if err != nil {
@@ -59,44 +59,12 @@ func (t *threadTools) createTask(ctx context.Context, _ *mcp.CallToolRequest, sp
 // while it runs and after.
 func (t *threadTools) qualityGate(ctx context.Context, spec workspace.TaskSpec, tc sandbox.Toolchain) (sandbox.GateReport, error) {
 	status := events.SandboxCheck{Kind: events.CheckTask, Thread: t.thread.String(), Title: spec.Title, Running: true}
-	t.agents.showCheck(t.w.ID, status)
+	t.checks.Show(t.w.ID, status)
 	rep, err := t.runner.Gate(ctx, sandbox.GateInput{
 		Toolchain: tc, Starter: spec.Starter, Reference: spec.Reference,
 		Tests: spec.Tests, HiddenTests: spec.HiddenTests, Mutants: spec.Mutants,
 	})
 	status.Running, status.Passed = false, rep.Passed
-	t.agents.showCheck(t.w.ID, status)
+	t.checks.Show(t.w.ID, status)
 	return rep, err
-}
-
-var createLessonTool = &mcp.Tool{
-	Name: "create_lesson",
-	Description: "Publish the lesson for a curriculum objective: the theory the learner reads before that objective's task, ending in a short quiz the app checks. " +
-		"Write it before the objective's first task. One lesson per objective. If the lesson is rejected, fix the problems and call create_lesson again.",
-}
-
-func (t *threadTools) createLesson(ctx context.Context, _ *mcp.CallToolRequest, spec workspace.LessonSpec) (*mcp.CallToolResult, any, error) {
-	if err := t.ownObjective(spec.ObjectiveID); err != nil {
-		return nil, nil, err
-	}
-	if err := t.w.ValidateLesson(spec); err != nil {
-		return nil, nil, fixAndRetry(createLessonTool, err)
-	}
-	if err := t.links.check(ctx, createLessonTool, append(markdownLinks(spec.Body), spec.PrimarySource.URL)); err != nil {
-		return nil, nil, err
-	}
-	info, err := t.w.SaveLesson(spec)
-	if err != nil {
-		return nil, nil, err
-	}
-	events.Emit(events.LessonPublished, events.Lesson{Workspace: t.w.ID, Lesson: info})
-	return textResult("The lesson " + info.ID + " is available to the learner. Now create the task for this objective, if it doesn't have one."), nil, nil
-}
-
-// ownObjective refuses work on another objective, which has its own writer.
-func (t *threadTools) ownObjective(id string) error {
-	if id != t.thread.ID {
-		return fmt.Errorf("you write for the objective %q only, not %q", t.thread.ID, id)
-	}
-	return nil
 }

@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/LukasKH/tutortop/internal/mcp"
 	"github.com/LukasKH/tutortop/internal/sandbox"
 	"github.com/LukasKH/tutortop/internal/text"
 	"github.com/LukasKH/tutortop/internal/workspace"
@@ -33,7 +34,7 @@ var (
 
 // instructions are the shared rules plus the agent's role in the thread.
 // The prompts' placeholders are filled from the code, so they can't drift
-// from it: {{tools}} lists the MCP tools the thread gets (mcpTools),
+// from it: {{tools}} lists the MCP tools the thread gets (mcp.ToolNames),
 // {{builtins}} the languages the app ships (sandbox.BuiltinLanguages), and
 // {{id}} and {{title}} name the thread's task, lesson or objective. A title
 // that can't be read falls back to the id.
@@ -56,8 +57,8 @@ func instructions(w *workspace.Workspace, t workspace.Thread) string {
 		}
 	}
 	var tools []string
-	for _, tool := range toolsFor(t.Kind) {
-		tools = append(tools, "`"+tool.name+"`")
+	for _, name := range mcp.ToolNames(t.Kind) {
+		tools = append(tools, "`"+name+"`")
 	}
 	return strings.NewReplacer(
 		"{{tools}}", text.List(tools),

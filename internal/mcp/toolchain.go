@@ -1,4 +1,4 @@
-package app
+package mcp
 
 import (
 	"context"
@@ -10,73 +10,12 @@ import (
 	"github.com/LukasKH/tutortop/internal/events"
 	"github.com/LukasKH/tutortop/internal/sandbox"
 	"github.com/LukasKH/tutortop/internal/text"
-	"github.com/LukasKH/tutortop/internal/workspace"
-	"github.com/modelcontextprotocol/go-sdk/mcp"
+	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// The tools of the chats: the plan, a task's and a lesson's.
+// The chats' tool for setting up a language the app doesn't ship.
 
-var askUserTool = &mcp.Tool{
-	Name:        "ask_user",
-	Description: "Show the learner 2-4 focused questions as a form in the app. End your turn after calling this; the answers arrive as the next user message.",
-}
-
-type askUserInput struct {
-	Intro     string               `json:"intro,omitempty" jsonschema:"one sentence shown above the questions"`
-	Questions []workspace.Question `json:"questions" jsonschema:"2-4 focused questions"`
-}
-
-// askUser shows a form in this thread. The answers come back to this thread,
-// so the form remembers which one asked.
-func (t *threadTools) askUser(_ context.Context, _ *mcp.CallToolRequest, in askUserInput) (*mcp.CallToolResult, any, error) {
-	if len(in.Questions) < 2 || len(in.Questions) > 4 {
-		return nil, nil, errors.New("ask 2-4 questions")
-	}
-	q := workspace.Questions{Thread: t.thread.String(), Intro: in.Intro, Questions: in.Questions}
-	if err := t.w.SetQuestions(&q); err != nil {
-		return nil, nil, err
-	}
-	events.Emit(events.QuestionsAsked, events.Questions{Workspace: t.w.ID, Questions: q})
-	return textResult("The learner can see the questions now. End your turn; the answers will arrive as the next message."), nil, nil
-}
-
-var setIconTool = &mcp.Tool{
-	Name: "set_icon",
-	Description: "Pick the picture the app shows for this workspace on its card, in the curriculum and on lessons. " +
-		"Choose the language or tool the workspace centres on, else the glyph closest to the topic. One of: " + strings.Join(workspace.Icons, ", ") + ".",
-}
-
-type setIconInput struct {
-	Icon string `json:"icon"`
-}
-
-func (t *threadTools) setIcon(_ context.Context, _ *mcp.CallToolRequest, in setIconInput) (*mcp.CallToolResult, any, error) {
-	if err := t.w.SetIcon(in.Icon); err != nil {
-		return nil, nil, err
-	}
-	events.Emit(events.WorkspaceChanged, events.Workspace{Workspace: t.w.ID})
-	return textResult("The workspace shows the " + in.Icon + " icon now."), nil, nil
-}
-
-var proposeCurriculumTool = &mcp.Tool{
-	Name:        "propose_curriculum",
-	Description: "Show a curriculum (new or revised) to the learner for approval. Every objective must be verifiable with unit tests. Keep ids of unchanged objectives so progress carries over. End your turn after calling this.",
-}
-
-// proposeCurriculum saves a proposal for the learner to approve. Approving
-// it is the learner's call, in the app, not the agent's.
-func (t *threadTools) proposeCurriculum(ctx context.Context, _ *mcp.CallToolRequest, in workspace.Curriculum) (*mcp.CallToolResult, any, error) {
-	if err := t.links.check(ctx, proposeCurriculumTool, in.URLs()); err != nil {
-		return nil, nil, err
-	}
-	if err := t.w.Propose(in); err != nil {
-		return nil, nil, fixAndRetry(proposeCurriculumTool, err)
-	}
-	events.Emit(events.CurriculumProposed, events.Workspace{Workspace: t.w.ID})
-	return textResult("The proposal is shown to the learner. End your turn now. If they approve, the app has writers prepare the first lessons and tasks; if they want changes, you'll get a message."), nil, nil
-}
-
-var setToolchainTool = &mcp.Tool{
+var setToolchainTool = &mcpsdk.Tool{
 	Name: "set_toolchain",
 	Description: "Set up a programming language the app doesn't ship (it ships " + text.List(sandbox.BuiltinLanguages()) + "), or change one you set up before, so the curriculum and tasks can use it. " +
 		"The app builds the sandbox image (this can take several minutes) and runs the example's tests, which must all pass. Only then is the language saved. " +
@@ -96,7 +35,7 @@ type toolchainExample struct {
 
 // setToolchain saves a language only once its example passes in the sandbox.
 // The learner watches the check like a task's quality gate.
-func (t *threadTools) setToolchain(ctx context.Context, _ *mcp.CallToolRequest, in setToolchainInput) (*mcp.CallToolResult, any, error) {
+func (t *threadTools) setToolchain(ctx context.Context, _ *mcpsdk.CallToolRequest, in setToolchainInput) (*mcpsdk.CallToolResult, any, error) {
 	tc, err := in.Toolchain.Toolchain()
 	if err != nil {
 		return nil, nil, err
@@ -105,7 +44,7 @@ func (t *threadTools) setToolchain(ctx context.Context, _ *mcp.CallToolRequest, 
 		return nil, nil, fmt.Errorf("%s is built in; use it directly", tc.Language)
 	}
 	check := events.SandboxCheck{Kind: events.CheckToolchain, Thread: t.thread.String(), Title: tc.Name, Running: true}
-	t.agents.showCheck(t.w.ID, check)
+	t.checks.Show(t.w.ID, check)
 	report, err := t.checkToolchain(ctx, tc, in.Example)
 	var lspErr error
 	if err == nil && report == "" && len(tc.LanguageServer) > 0 {
@@ -114,7 +53,7 @@ func (t *threadTools) setToolchain(ctx context.Context, _ *mcp.CallToolRequest, 
 		lspErr = t.runner.ProbeLanguageServer(ctx, tc, files)
 	}
 	check.Running, check.Passed = false, err == nil && report == ""
-	t.agents.showCheck(t.w.ID, check)
+	t.checks.Show(t.w.ID, check)
 	if err != nil {
 		return nil, nil, sandboxProblem(err)
 	}
