@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -39,7 +40,7 @@ func TestToolsEndToEnd(t *testing.T) {
 	}
 
 	// A reference that doesn't open is sent back.
-	a.findBroken = func(_ context.Context, urls []string) []string { return []string{urls[0] + " returns 404 Not Found"} }
+	a.links = answeringLinks(http.StatusNotFound)
 	if out, isErr := callTool("propose_curriculum", map[string]any{
 		"language": "go", "modules": []any{map[string]any{"id": "basics", "title": "Basics",
 			"references": []any{map[string]any{"title": "Made up", "url": "https://go.dev/made-up"}},
@@ -47,7 +48,7 @@ func TestToolsEndToEnd(t *testing.T) {
 	}); !isErr || !strings.Contains(out, "made-up returns 404") {
 		t.Fatalf("a broken reference was accepted: %s", out)
 	}
-	a.findBroken = func(context.Context, []string) []string { return nil }
+	a.links = answeringLinks(http.StatusOK)
 
 	call("propose_curriculum", map[string]any{
 		"language": "go", "taskDefaults": map[string]any{"size": "small"},
@@ -133,7 +134,7 @@ func newTestApp(t *testing.T) *App {
 	}
 	a.store = &workspace.Store{Root: t.TempDir(), PrivateRoot: t.TempDir()}
 	a.settingsPath = filepath.Join(t.TempDir(), "settings.yaml")
-	a.findBroken = func(context.Context, []string) []string { return nil }
+	a.links = answeringLinks(http.StatusOK)
 	// Never start a real agent from a test; tests that watch the agent replace this.
 	a.agents.openSession = func(context.Context, string, agent.Options, func(agent.Event)) (agent.Session, error) {
 		return &fakeSession{prompts: new([]string), mu: &sync.Mutex{}}, nil

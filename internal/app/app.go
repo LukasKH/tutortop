@@ -23,10 +23,7 @@ type App struct {
 	runner *runner.Runner
 	mcp    *mcpHost
 	agents *threadAgents // each thread's running agent (agents.go)
-
-	// findBroken is findBrokenLinks; tests replace it so they don't need
-	// the network.
-	findBroken func(ctx context.Context, urls []string) []string
+	links  *linkChecker
 
 	mu          sync.Mutex
 	lastResults map[taskKey]runner.Result  // latest test run per task, for tutor context
@@ -39,7 +36,7 @@ type App struct {
 
 func New() (*App, error) {
 	a := &App{runner: runner.New(), lastResults: map[taskKey]runner.Result{},
-		servers: map[string]*languageServer{}, findBroken: findBrokenLinks,
+		servers: map[string]*languageServer{}, links: newLinkChecker(),
 		settingsPath: filepath.Join(xdg.ConfigHome, "tutortop", "settings.yaml"), models: map[string]modelList{}}
 	a.agents = newThreadAgents(agent.Start, func() agentConfig { return a.Settings().agentConfig() }, a.agentOptions)
 	// The workspaces folder: TUTORTOP_HOME, else the one chosen in the
