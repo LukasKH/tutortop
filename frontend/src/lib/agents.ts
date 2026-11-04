@@ -32,7 +32,7 @@ export function loadModels(agent: string): Promise<Model[]> {
 
 /** "Claude Code · Opus · High": the tutor as configured. */
 export function tutorLabel(s: Settings): string {
-  const choice = s.tutor?.[s.agent] ?? { model: "", effort: "" };
+  const choice = s.models?.[s.agent] ?? { model: "", effort: "" };
   const model = currentModel(modelCache.get(s.agent) ?? null, choice.model);
   const parts = [providerName(s.agent)];
   if (model?.id || choice.model) parts.push(model?.name ?? choice.model);

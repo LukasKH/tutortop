@@ -12,6 +12,11 @@ export interface BusyEvent {
     "workspace": string;
     "thread": string;
     "busy": boolean;
+
+    /**
+     * orders it among snapshots (WorkspaceSnapshot.Seq)
+     */
+    "seq": number;
 }
 
 /**
@@ -28,6 +33,11 @@ export interface ChatEvent {
 export interface CheckEvent {
     "workspace": string;
     "check": SandboxCheck;
+
+    /**
+     * orders it among snapshots (WorkspaceSnapshot.Seq)
+     */
+    "seq": number;
 }
 
 /**
@@ -94,6 +104,15 @@ export interface LessonEvent {
     "lesson": workspace$0.LessonInfo;
 }
 
+/**
+ * ModelChoice is an agent's model and reasoning effort. Empty fields use the
+ * agent's own defaults.
+ */
+export interface ModelChoice {
+    "model": string;
+    "effort": string;
+}
+
 export interface ProviderStatus {
     "id": string;
     "name": string;
@@ -112,7 +131,7 @@ export interface QuestionsEvent {
 /**
  * SandboxCheck is a check in the sandbox that an agent waits for and the
  * learner watches: a writer's new task in the quality gate, or a language a
- * chat sets up with set_toolchain. WorkspaceState.Checks keeps writers'
+ * chat sets up with set_toolchain. WorkspaceSnapshot.Checks keeps writers'
  * latest ones.
  */
 export interface SandboxCheck {
@@ -134,15 +153,17 @@ export interface SandboxCheck {
  */
 export interface Settings {
     /**
-     * Agent is the coding agent that tutors, an agent.Provider ID.
+     * Agent is the coding agent every thread runs on, tutors and writers
+     * alike, an agent.Provider ID.
      */
     "agent": string;
 
     /**
-     * Tutor holds the model and reasoning effort chosen for each agent, so
-     * switching agents and back keeps both choices.
+     * Models holds the model and reasoning effort chosen for each agent, so
+     * switching agents and back keeps both choices. Files saved before it
+     * was renamed have it under "tutor" (loadSettings).
      */
-    "tutor": { [_ in string]?: TutorChoice } | null;
+    "models": { [_ in string]?: ModelChoice } | null;
 
     /**
      * WorkspacesFolder holds the workspaces; "" means workspace.DefaultRoot.
@@ -159,27 +180,18 @@ export interface TaskEvent {
     "task": workspace$0.TaskInfo;
 }
 
-/**
- * TutorChoice is an agent's model and reasoning effort. Empty fields use the
- * agent's own defaults.
- */
-export interface TutorChoice {
-    "model": string;
-    "effort": string;
-}
-
 export interface WorkspaceEvent {
     "workspace": string;
 }
 
 /**
- * WorkspaceState is everything the workspace screen shows.
+ * WorkspaceSnapshot is everything the workspace screen shows, read at one
+ * moment. The frontend keeps it current with events until the next one.
  */
-export interface WorkspaceState {
+export interface WorkspaceSnapshot {
     "id": string;
     "title": string;
     "icon": string;
-    "provider": string;
     "mission": string;
     "curriculum": workspace$0.Curriculum | null;
     "proposal": workspace$0.Curriculum | null;
@@ -197,4 +209,10 @@ export interface WorkspaceState {
      * Checks are writers' latest sandbox checks of new tasks, by objective.
      */
     "checks": { [_ in string]?: SandboxCheck } | null;
+
+    /**
+     * Seq is when Busy and Checks were read, in the sequence that numbers
+     * busy and check events: one with a higher Seq happened after.
+     */
+    "seq": number;
 }

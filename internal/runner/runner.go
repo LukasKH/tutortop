@@ -246,7 +246,7 @@ func (r *Runner) Run(ctx context.Context, job Job) (Result, error) {
 	}
 
 	tests, ok := tc.parse(stdout, hidden)
-	res.Output = readable(tc, stdout)
+	res.Output = text.Tail(tc.readable(stdout), 8000)
 	if !ok || len(tests) == 0 {
 		res.Status = StatusError
 		return res, nil
@@ -260,14 +260,6 @@ func (r *Runner) Run(ctx context.Context, job Job) (Result, error) {
 		}
 	}
 	return res, nil
-}
-
-func readable(tc Toolchain, stdout string) string {
-	s := stripJUnit(stdout)
-	if tc.Language == "go" {
-		s = humanGoOutput(s)
-	}
-	return text.Tail(s, 8000)
 }
 
 // notRun lists the task's tests that never reported a result. A crash can

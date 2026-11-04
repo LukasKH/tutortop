@@ -16,7 +16,7 @@ Tutortop is a Go program with a React frontend, shipped as one desktop app by [W
 ## Packages
 
 - `main.go` gives the app the user's shell PATH, builds `App`, registers it with Wails and opens the window.
-- `internal/app` holds `App`. Every exported method on it is callable from the frontend. It also runs the chat sessions, the background writers, the MCP server and the language servers.
+- `internal/app` holds `App`. Every exported method on it is callable from the frontend. It also runs each thread's agent (the chats' tutors and the background writers), the MCP server and the language servers.
 - `internal/workspace` stores one topic as plain files in `~/Tutortop/<id>`, plus private files (hidden tests, reference solutions) under the XDG data dir. It knows nothing about agents or Wails.
 - `internal/agent` starts the Claude Code or Codex CLI, streams its output as text and tool events, and decides which tool calls to allow. The agent may change files in the workspace, except under `tasks/`, and may not run commands. [Adding an agent](agents.md) describes its contract.
 - `internal/runner` runs tests in a Docker or Podman container built for the task's toolchain. It also runs the quality gate for new tasks.
@@ -90,18 +90,18 @@ A feature's state and its backend calls live in hooks next to its components. Th
 | `use-chat-threads.ts` | conversations by thread, and which are unread | `App.Chat` for the shown thread; `chat:message` |
 | `use-chat-panel.ts`, `chat/use-composer.ts` | the chat panel's width and whether it's folded; the message draft | the learner |
 
-`use-workspace.ts` sends every change through one pure reducer, `workspace-state.ts`. Events arrive faster than refetches, so the reducer keeps what an event set after a snapshot was asked for. A writer that finishes during a refetch then stops spinning.
+`use-workspace.ts` sends every change through one pure reducer, `workspace-state.ts`. Busy threads and writers' checks reach it both in snapshots and as events (`thread:busy`, `check:status`), which can arrive in either order. Go numbers those events and the snapshots in the order they happened (`seq`, counted under `App.mu`; see `agents.go`), and the reducer keeps whichever is newer: an event with a higher number than the snapshot wins over it, and a snapshot older than the one in use is dropped. A writer that finishes during a refetch then stops spinning.
 
 The open item is an `OpenItem`: a task, a lesson, or an objective's lesson or exercise that isn't written yet (`open-item.ts`). `centerOf` in `use-open-item.ts` decides what the centre shows, and `CenterPane` renders it. `placeQuestions` next to it decides where the tutor's questions show: the centre, the chat of the thread that asked, and the count on "Your plan". Thread names (`plan`, a task id, `lesson-<id>`, `write-<objective>`) are the backend's and live in `lib/workspace.ts`. Only the hooks and the chat pass them around.
 
 To add:
 
 - **A centre page:**
-  1. Get its data. `WorkspaceState` carries only the mission of the tutor's documents, so a page for `NOTES.md` or `GLOSSARY.md` needs a field on it in Go (`App.Workspace`) or its own `App` method that the page calls itself, like `LessonPanel`. Either needs the bindings regenerated.
+  1. Get its data. `WorkspaceSnapshot` carries only the mission of the tutor's documents, so a page for `NOTES.md` or `GLOSSARY.md` needs a field on it in Go (`App.Workspace`) or its own `App` method that the page calls itself, like `LessonPanel`. Either needs the bindings regenerated.
   2. If the learner chooses the page, as they choose "Your plan", add a value to `CenterView` in `use-open-item.ts` and a link in `Sidebar`, whose callback in `workspace-view.tsx` calls `nav.setView` (see `onShowPlan` and `planOpen`). The chat shows the plan thread for every view but `item`.
   3. Add a kind to `Center` and decide in `centerOf` when it shows. Until the first plan is approved, `centerOf` returns early with `setup`, `proposal` or `plan`; add a case there if the page is needed then too.
   4. Render it in `CenterPane`. The compiler points at the missing `case`. Add a `centerOf` case to `use-open-item.test.ts`.
-- **An event:** after adding it in Go and regenerating the bindings, listen with `useEvent(AppEvents.<Name>, ...)` in the hook that owns the state it changes, and ignore other workspaces' events. In the workspace screen, an event that changes the snapshot only calls `refresh`, like `workspace:changed`. One that updates state directly adds a field to `LiveWorkspace`, an `Action` and its case in `reduceWorkspace`, with a test in `workspace-state.test.ts`. If the snapshot also carries that state, stamp the action with `performance.now()`, record when it changed (like `busyAt`) and merge the snapshot's value with `newer`, as `busy` does, so an older snapshot doesn't undo it.
+- **An event:** after adding it in Go and regenerating the bindings, listen with `useEvent(AppEvents.<Name>, ...)` in the hook that owns the state it changes, and ignore other workspaces' events. In the workspace screen, an event that changes the snapshot only calls `refresh`, like `workspace:changed`. One that updates state directly adds a field to `LiveWorkspace`, an `Action` and its case in `reduceWorkspace`, with a test in `workspace-state.test.ts`. If the snapshot also carries that state, have Go number the event from `App.seq` under `App.mu`, as `setPending` does, keep each key's number in the state (like `busySeq`) and merge the snapshot's value with `newer`, as `busy` does, so an older snapshot doesn't undo it.
 - **A backend call:** after adding the Go method and regenerating the bindings, `App.<Method>` exists with its types. Re-export any new Go type it takes or returns from `lib/api.ts`, under its Go name. Call it from the hook or component that owns the state. Add read-only methods to `SAFE_TO_REPEAT` in `lib/api.ts` so they wait out a restart. In the workspace screen, pass failures to `fail`, which shows them above the centre pane. If the call changes what the snapshot shows, have Go emit `workspace:changed` or call `refresh` after it, as the hint button does.
 
 ### Tests
@@ -116,32 +116,32 @@ The agent is the learner's own CLI, signed in already. In a chat thread it's the
 
 Writers have no chat window. They prepare an objective's lesson and exercise in the background, and the app keeps the next two unpassed objectives written so the learner doesn't wait.
 
-### Sessions
+### Thread agents
 
-A thread's agent process runs in a session (`internal/app/session.go`), which answers the thread's messages one turn at a time, in order. When the learner sends a message, `SendMessage` adds a `[context]` block about the open task or lesson (`prompts.go`), posts the message to the chat and queues it with `enqueue`. That starts the session if the thread has none. The session's loop hands each message to the agent, and its `transcript` streams the reply into the chat as `chat:message` events.
+A thread's agent runs as a `threadAgent` (`internal/app/agents.go`): the CLI's `agent.Session` and a queue of the thread's messages, answered one turn at a time, in order. When the learner sends a message, `SendMessage` adds a `[context]` block about the open task or lesson (`prompts.go`), posts the message to the chat and queues it with `enqueue`. That starts the thread's agent if it has none. Its loop hands each message to the CLI, and its `transcript` streams the reply into the chat as `chat:message` events.
 
-- A session starts with the first message for its thread, in the background. Chats resume their saved conversation; a writer starts fresh.
-- The thread is busy (`thread:busy`) from the moment a message is queued until every queued message is answered, including while the process starts. The session's count of pending messages is the only source of this state.
-- When the settings change, an idle session restarts with the next message. A busy one finishes its queue first.
-- A session ends when its process exits, its workspace is deleted or the app quits. A writer also ends as soon as it's idle, and starting any thread but the plan ends the workspace's idle task and lesson sessions.
+- A thread's agent starts with the first message for its thread, in the background. Chats resume their saved conversation (`Meta.ResumeIDs`); a writer starts fresh.
+- The thread is busy (`thread:busy`) from the moment a message is queued until every queued message is answered, including while the process starts. The thread agent's count of pending messages is the only source of this state.
+- When the settings change, an idle thread agent restarts with the next message. A busy one finishes its queue first.
+- A thread agent ends when its process exits, its workspace is deleted or the app quits. A writer also ends as soon as it's idle, and starting any thread but the plan ends the workspace's idle task and lesson agents.
 
 The calls that message an agent (`SendMessage`, `AnswerQuestions`, `RequestHint`, `PrepareObjective`) return once the message is queued. They don't wait for the process to start. Their error means the message wasn't sent at all, for example because the thread name is invalid. Once a message is in the chat, anything that goes wrong with it is posted in that thread as a notice with status `failed`, and nowhere else:
 
-- If the agent doesn't start (the CLI is missing or not signed in), the session posts why once, however many messages were waiting. It drops them and ends, so the thread turns idle and the next message tries a fresh start.
-- If a turn fails, its error is posted and the session takes the next message. If the process exits, its error is posted, the queued messages are dropped and the next message starts a new process.
+- If the agent doesn't start (the CLI is missing or not signed in), the thread agent posts why once, however many messages were waiting. It drops them and ends, so the thread turns idle and the next message tries a fresh start.
+- If a turn fails, its error is posted and the thread agent takes the next message. If the process exits, its error is posted, the queued messages are dropped and the next message starts a new process.
 - A writer has no chat, so the objective's page shows its failure.
 
-To add a kind of thread, add it and its name to `internal/workspace/thread.go`, give it a role in `prompts.go` (and `prompts/`), decide in `session.go` whether it resumes and when it ends, and add the kind to the tools it gets in `mcp.go`'s `mcpTools`.
+To add a kind of thread, add it and its name to `internal/workspace/thread.go`, give it a role in `prompts.go` (and `prompts/`), decide in `agents.go` whether it resumes and when it ends, and add the kind to the tools it gets in `mcp.go`'s `mcpTools`.
 
 The agent changes the app's state only through MCP tools, built on the [official Go SDK](https://github.com/modelcontextprotocol/go-sdk). `App` serves them over HTTP on `127.0.0.1`, with a random token in each thread's URL, so a thread can only reach its own workspace. The tool handlers write to the workspace and emit events.
 
-`mcpTools` in `internal/app/mcp.go` lists every tool with whether its calls show in the chat and the kinds of thread that get it:
+`mcpTools` in `internal/app/mcp.go` lists every tool with the line its calls show as in the chat, if any, and the kinds of thread that get it:
 
 - Every kind gets `get_state`.
 - The chats (plan, task and lesson threads) also get `ask_user`, `set_icon`, `propose_curriculum` and `set_toolchain` (`mcp_chat.go`).
 - Writers also get `create_task` and `create_lesson` (`mcp_writer.go`), for their own objective only.
 
-Each tool is a `*mcp.Tool` with its name and description, a handler method on `threadTools`, and its input and output types, kept together. The SDK derives the input schema from the input type's `json` and `jsonschema` tags and rejects calls that don't match it. A handler that returns an error sends the error's text back to the agent, which fixes its call and tries again. To add a tool, write those pieces next to the others and add a line to `mcpTools`: `shown` if the learner should see its calls in the chat (under the agent's title for them), `hidden` if they're noise or show in their own UI, then the kinds that get it. A tool for the plan only is a line with `workspace.PlanKind`.
+Each tool is a `*mcp.Tool` with its name and description, a handler method on `threadTools`, and its input and output types, kept together. The SDK derives the input schema from the input type's `json` and `jsonschema` tags and rejects calls that don't match it. A handler that returns an error sends the error's text back to the agent, which fixes its call and tries again. To add a tool, write those pieces next to the others and add a line to `mcpTools`: the line the learner sees in the chat for each call ("Saved your notes"), or `hidden` if the calls are noise or show in their own UI, then the kinds that get it. A tool for the plan only is a line with `workspace.PlanKind`.
 
 `create_task` publishes a task only after it passes the quality gate in the sandbox. The reference solution has to pass three times in shuffled order, the starter code has to fail, and the tests have to catch at least two wrong solutions.
 
@@ -157,8 +157,8 @@ A toolchain says how one language's tests run in the sandbox and how their resul
 
 To add a built-in language:
 
-1. Add a `Toolchain` to `toolchain.go` and to `builtins`. Its Dockerfile installs the language, the test framework and a language server, and runs as user 1000 (`runner`) in `/work` with no network, like the others. Tag the image `tutortop-<language>:1`, and bump the tag whenever the Dockerfile changes. `script` runs the tests `repeat` times, shuffled if the framework can; a framework that writes JUnit can use `junitScript` and `parseJUnitRuns`, as Python does.
-2. Run `go test ./internal/app -run TestWrittenOutLanguagesMatchTheBuiltins`. Struct tags and prompts name the built-in languages by hand, and the test lists every one that names the others but not the new one. It also wants a conventions line for it in `prompts/tutor.md` (`- **<Name>**: …`).
-3. A language with its own report format needs its own `parse`, tested on recorded output in `internal/runner` (see `TestRunGo` and `TestParseJUnit`); `readable` in `runner.go` turns Go's JSON back into text for the learner. Add a picture to `workspace.Icons` if there's none for it.
+1. Add a `Toolchain` to `toolchain.go` and to `builtins`. Its Dockerfile installs the language, the test framework and a language server, and runs as user 1000 (`runner`) in `/work` with no network, like the others. Tag the image `tutortop-<language>:1`, and bump the tag whenever the Dockerfile changes. `script` runs the tests `repeat` times, shuffled if the framework can, `parse` reads their results and `readable` turns the output into text for the learner. A framework that writes JUnit can use `junitScript`, `parseJUnitRuns` and `stripJUnit`, as Python does.
+2. Run `go test ./internal/app -run TestWrittenOutLanguagesMatchTheBuiltins`. Struct tags and prompts name the built-in languages by hand, and the test lists every one that names the others but not the new one. It also wants a conventions line for it in `prompts/shared.md` (`- **<Name>**: …`). The test can't tell a list of the built-ins from an example of a language to set up, so search the prompts for the new one's name too: `set_toolchain`'s line in `shared.md` gives R, Rust and JavaScript as languages the app doesn't ship.
+3. A language with its own report format needs its own `parse` and `readable`, tested on recorded output in `internal/runner` (see `TestRunGo` and `TestParseJUnit`); Go's turn `go test -json` back into text. Add a picture to `workspace.Icons` if there's none for it.
 
 A workspace whose tutor set the language up before it was built in keeps its own toolchain: `Workspace.Toolchain` looks in the workspace first, because that workspace's tasks passed the quality gate with it. `set_toolchain` refuses to set up a built-in language anew.

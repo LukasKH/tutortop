@@ -58,13 +58,13 @@ func (t *threadTools) createTask(ctx context.Context, _ *mcp.CallToolRequest, sp
 // while it runs and after.
 func (t *threadTools) qualityGate(ctx context.Context, spec workspace.TaskSpec, tc runner.Toolchain) (runner.GateReport, error) {
 	status := SandboxCheck{Kind: CheckTask, Thread: t.thread.String(), Title: spec.Title, Running: true}
-	t.app.writerCheck(t.w.ID, status)
+	t.app.showCheck(t.w.ID, status)
 	rep, err := t.app.runner.Gate(ctx, runner.GateInput{
 		Toolchain: tc, Starter: spec.Starter, Reference: spec.Reference,
 		Tests: spec.Tests, HiddenTests: spec.HiddenTests, Mutants: spec.Mutants,
 	})
 	status.Running, status.Passed = false, rep.Passed
-	t.app.writerCheck(t.w.ID, status)
+	t.app.showCheck(t.w.ID, status)
 	return rep, err
 }
 

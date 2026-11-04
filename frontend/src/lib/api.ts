@@ -1,7 +1,7 @@
 import { useEffect, useEffectEvent } from "react";
 import { Events } from "@wailsio/runtime";
 import { App as Bindings } from "@bindings/github.com/LukasKH/tutortop/internal/app";
-import type { Environment, ProviderStatus, SandboxCheck, Settings, WorkspaceState } from "@bindings/github.com/LukasKH/tutortop/internal/app";
+import type { Environment, ProviderStatus, SandboxCheck, Settings, WorkspaceSnapshot } from "@bindings/github.com/LukasKH/tutortop/internal/app";
 import type { Model } from "@bindings/github.com/LukasKH/tutortop/internal/agent";
 import type {
   Activity,
@@ -48,7 +48,7 @@ export type {
   TaskDetail,
   TaskStatus,
   TestResult,
-  WorkspaceState,
+  WorkspaceSnapshot,
 };
 
 /**

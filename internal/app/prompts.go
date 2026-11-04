@@ -19,8 +19,8 @@ import (
 
 // The agent's instructions: shared rules plus one role per kind of thread.
 var (
-	//go:embed prompts/tutor.md
-	tutorPrompt string
+	//go:embed prompts/shared.md
+	sharedPrompt string
 	//go:embed prompts/plan.md
 	planRole string
 	//go:embed prompts/task.md
@@ -51,7 +51,7 @@ func instructions(w *workspace.Workspace, t workspace.Thread) string {
 			title = o.Title
 		}
 	}
-	return tutorPrompt + "\n\n" + strings.NewReplacer("{{id}}", t.ID, "{{title}}", cmp.Or(title, t.ID)).Replace(role)
+	return sharedPrompt + "\n\n" + strings.NewReplacer("{{id}}", t.ID, "{{title}}", cmp.Or(title, t.ID)).Replace(role)
 }
 
 // contextFor describes what the learner has open in the thread: a task's

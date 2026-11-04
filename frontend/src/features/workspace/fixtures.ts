@@ -1,14 +1,13 @@
-import type { LessonStatus, TaskStatus, WorkspaceState } from "@/lib/api";
+import type { LessonStatus, TaskStatus, WorkspaceSnapshot } from "@/lib/api";
 
 // Workspace snapshots for tests: only what a test sets differs from an empty workspace.
 
 /** A workspace with a plan of objectives "a", "b" and "c" in one module, in Go. */
-export function workspace(over: Partial<WorkspaceState> = {}): WorkspaceState {
+export function workspace(over: Partial<WorkspaceSnapshot> = {}): WorkspaceSnapshot {
   return {
     id: "ws",
     title: "Go",
     icon: "",
-    provider: "claude",
     mission: "",
     curriculum: {
       language: "go",
@@ -21,6 +20,7 @@ export function workspace(over: Partial<WorkspaceState> = {}): WorkspaceState {
     questions: null,
     busy: {},
     checks: {},
+    seq: 1,
     ...over,
   };
 }

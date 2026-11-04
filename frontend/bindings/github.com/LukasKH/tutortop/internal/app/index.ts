@@ -18,12 +18,12 @@ export type {
     LSPEvent,
     LanguageServerInfo,
     LessonEvent,
+    ModelChoice,
     ProviderStatus,
     QuestionsEvent,
     SandboxCheck,
     Settings,
     TaskEvent,
-    TutorChoice,
     WorkspaceEvent,
-    WorkspaceState
+    WorkspaceSnapshot
 } from "./models.js";

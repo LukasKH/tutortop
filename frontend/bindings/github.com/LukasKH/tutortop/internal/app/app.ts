@@ -63,7 +63,7 @@ export function CreateWorkspace(title: string, icon: string): $CancellablePromis
 }
 
 /**
- * DeleteWorkspace stops the workspace's tutors and language servers, then
+ * DeleteWorkspace stops the workspace's agents and language servers, then
  * deletes its files for good.
  */
 export function DeleteWorkspace(id: string): $CancellablePromise<void> {
@@ -142,7 +142,7 @@ export function SaveMission(wsID: string, mission: string): $CancellablePromise<
 }
 
 /**
- * SaveSettings stores the settings. Tutor sessions pick up a new agent,
+ * SaveSettings stores the settings. Running agents pick up a new agent,
  * model or effort with the next message once they're idle.
  */
 export function SaveSettings(s: $models.Settings): $CancellablePromise<void> {
@@ -189,7 +189,7 @@ export function StartLanguageServer(wsID: string, taskID: string): $CancellableP
 }
 
 /**
- * StopAgent interrupts the current turn in a thread. The session posts a
+ * StopAgent interrupts the current turn in a thread. Its agent posts a
  * notice once the cut-off reply is saved.
  */
 export function StopAgent(wsID: string, thread: string): $CancellablePromise<void> {
@@ -207,6 +207,6 @@ export function Task(wsID: string, taskID: string): $CancellablePromise<workspac
     return $Call.ByID(3831982577, wsID, taskID);
 }
 
-export function Workspace(id: string): $CancellablePromise<$models.WorkspaceState> {
+export function Workspace(id: string): $CancellablePromise<$models.WorkspaceSnapshot> {
     return $Call.ByID(2978239553, id);
 }

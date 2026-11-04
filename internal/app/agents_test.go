@@ -18,7 +18,7 @@ import (
 // message is answered.
 func TestBusyFromStartUntilQueueIsDone(t *testing.T) {
 	a, agents, w := newHeldApp(t)
-	busy := func() bool { b, _ := a.sessionState(w.ID); return b["plan"] }
+	busy := func() bool { b, _, _ := a.agentState(w.ID); return b["plan"] }
 
 	agents.holdStart = make(chan struct{})
 	if err := a.SendMessage(w.ID, "one", "plan"); err != nil {
@@ -60,7 +60,7 @@ func TestWriterEndsAfterItsTurn(t *testing.T) {
 	if err := a.PrepareObjective(w.ID, "go.errors"); err != nil {
 		t.Fatal(err)
 	}
-	a.writerCheck(w.ID, SandboxCheck{Kind: CheckTask, Thread: "write-go.errors", Title: "Wrap errors", Running: true})
+	a.showCheck(w.ID, SandboxCheck{Kind: CheckTask, Thread: "write-go.errors", Title: "Wrap errors", Running: true})
 	if st, _ := a.Workspace(w.ID); !st.Busy["write-go.errors"] || !st.Checks["go.errors"].Running {
 		t.Fatalf("busy %v, checks %v", st.Busy, st.Checks)
 	}
@@ -69,8 +69,8 @@ func TestWriterEndsAfterItsTurn(t *testing.T) {
 		st, _ := a.Workspace(w.ID)
 		return len(st.Busy) == 0 && len(st.Checks) == 0 && turn.s.closed.Load()
 	})
-	if w2, _ := a.store.Open(w.ID); len(w2.Meta.Sessions) != 0 {
-		t.Fatalf("a writer's session was saved: %v", w2.Meta.Sessions)
+	if w2, _ := a.store.Open(w.ID); len(w2.Meta.ResumeIDs) != 0 {
+		t.Fatalf("a writer's resume id was saved: %v", w2.Meta.ResumeIDs)
 	}
 
 	if err := a.PrepareObjective(w.ID, "go.errors"); err != nil {
@@ -81,8 +81,8 @@ func TestWriterEndsAfterItsTurn(t *testing.T) {
 	}
 }
 
-// New settings restart a session once it's idle, resuming its conversation,
-// but not while it works.
+// New settings restart a thread's agent once it's idle, resuming its
+// conversation, but not while it works.
 func TestSettingsRestartIdleSession(t *testing.T) {
 	a, agents, w := newHeldApp(t)
 	if err := a.SendMessage(w.ID, "one", "plan"); err != nil {
@@ -90,7 +90,7 @@ func TestSettingsRestartIdleSession(t *testing.T) {
 	}
 	first := agents.next(t)
 	s := a.Settings()
-	s.Tutor[s.Agent] = TutorChoice{Model: "other"}
+	s.Models[s.Agent] = ModelChoice{Model: "other"}
 	if err := a.SaveSettings(s); err != nil {
 		t.Fatal(err)
 	}
@@ -103,7 +103,7 @@ func TestSettingsRestartIdleSession(t *testing.T) {
 		t.Fatal("restarted a busy session")
 	}
 	second.end(nil)
-	eventually(t, "idle", func() bool { b, _ := a.sessionState(w.ID); return !b["plan"] })
+	eventually(t, "idle", func() bool { b, _, _ := a.agentState(w.ID); return !b["plan"] })
 
 	if err := a.SendMessage(w.ID, "three", "plan"); err != nil {
 		t.Fatal(err)
@@ -130,7 +130,7 @@ func TestIdleTutorsCloseWhenAnotherStarts(t *testing.T) {
 	answer := func(thread string, s *heldSession) {
 		t.Helper()
 		s.turn <- nil
-		eventually(t, thread+" idle", func() bool { b, _ := a.sessionState(w.ID); return !b[thread] })
+		eventually(t, thread+" idle", func() bool { b, _, _ := a.agentState(w.ID); return !b[thread] })
 	}
 	busyTask := open("0001-busy")
 	idleTask := open("0002-idle")
@@ -169,7 +169,7 @@ func TestStopPostsNoticeAfterReply(t *testing.T) {
 // agent.
 func TestFailedAgentIsReplaced(t *testing.T) {
 	a, agents, w := newHeldApp(t)
-	idle := func() bool { b, _ := a.sessionState(w.ID); return !b["plan"] }
+	idle := func() bool { b, _, _ := a.agentState(w.ID); return !b["plan"] }
 	agents.holdStart = make(chan struct{})
 	agents.startErr = errors.New("claude isn't installed")
 	for _, text := range []string{"one", "one again"} {

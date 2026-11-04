@@ -16,34 +16,36 @@ import (
 // Settings are app-wide preferences, kept in settings.yaml in the user's
 // config folder. They apply to every workspace.
 type Settings struct {
-	// Agent is the coding agent that tutors, an agent.Provider ID.
+	// Agent is the coding agent every thread runs on, tutors and writers
+	// alike, an agent.Provider ID.
 	Agent string `yaml:"agent" json:"agent"`
-	// Tutor holds the model and reasoning effort chosen for each agent, so
-	// switching agents and back keeps both choices.
-	Tutor map[string]TutorChoice `yaml:"tutor" json:"tutor"`
+	// Models holds the model and reasoning effort chosen for each agent, so
+	// switching agents and back keeps both choices. Files saved before it
+	// was renamed have it under "tutor" (loadSettings).
+	Models map[string]ModelChoice `yaml:"models" json:"models"`
 	// WorkspacesFolder holds the workspaces; "" means workspace.DefaultRoot.
 	// The app reads it at startup.
 	WorkspacesFolder string `yaml:"workspaces_folder,omitempty" json:"workspacesFolder,omitempty"`
 }
 
-// TutorChoice is an agent's model and reasoning effort. Empty fields use the
+// ModelChoice is an agent's model and reasoning effort. Empty fields use the
 // agent's own defaults.
-type TutorChoice struct {
+type ModelChoice struct {
 	Model  string `yaml:"model,omitempty" json:"model"`
 	Effort string `yaml:"effort,omitempty" json:"effort"`
 }
 
-// tutorConfig is what a tutor session is started with. A session started
-// with an older config restarts once it's idle.
-type tutorConfig struct {
+// agentConfig is what a thread's agent is started with. One started with an
+// older config restarts once it's idle.
+type agentConfig struct {
 	Agent  string
 	Model  string
 	Effort string
 }
 
-func (s Settings) tutor() tutorConfig {
-	c := s.Tutor[s.Agent]
-	return tutorConfig{Agent: s.Agent, Model: c.Model, Effort: c.Effort}
+func (s Settings) agentConfig() agentConfig {
+	c := s.Models[s.Agent]
+	return agentConfig{Agent: s.Agent, Model: c.Model, Effort: c.Effort}
 }
 
 // Settings returns the saved settings. Without a saved agent it picks the
@@ -58,9 +60,16 @@ func (a *App) loadSettings() Settings {
 	var s Settings
 	if b, err := os.ReadFile(a.settingsPath); err == nil {
 		_ = yaml.Unmarshal(b, &s)
+		if s.Models == nil {
+			var old struct {
+				Tutor map[string]ModelChoice `yaml:"tutor"`
+			}
+			_ = yaml.Unmarshal(b, &old)
+			s.Models = old.Tutor
+		}
 	}
-	if s.Tutor == nil {
-		s.Tutor = map[string]TutorChoice{}
+	if s.Models == nil {
+		s.Models = map[string]ModelChoice{}
 	}
 	if !knownProvider(s.Agent) {
 		s.Agent = agent.Providers()[0].ID
@@ -74,15 +83,15 @@ func (a *App) loadSettings() Settings {
 	return s
 }
 
-// SaveSettings stores the settings. Tutor sessions pick up a new agent,
+// SaveSettings stores the settings. Running agents pick up a new agent,
 // model or effort with the next message once they're idle.
 func (a *App) SaveSettings(s Settings) error {
 	if !knownProvider(s.Agent) {
 		return fmt.Errorf("unknown agent %q", s.Agent)
 	}
-	for id := range s.Tutor {
+	for id := range s.Models {
 		if !knownProvider(id) {
-			delete(s.Tutor, id)
+			delete(s.Models, id)
 		}
 	}
 	if s.WorkspacesFolder != "" {

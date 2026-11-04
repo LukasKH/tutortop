@@ -15,23 +15,22 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// The tutor changes the app's state only through the MCP tools served here.
-// mcpTools lists which kind of thread gets which tool, and whether its calls
-// show in the chat. Each tool is an
-// *mcp.Tool (its name, and a description the agent reads as instructions), a
-// method on threadTools that handles it, and its input and output types, kept
-// together: get_state below, the chat tools in mcp_chat.go, the writer tools
-// in mcp_writer.go.
+// The agent changes the app's state only through the MCP tools served here.
+// mcpTools lists which kind of thread gets which tool, and the line its calls
+// show as in the chat, if any. Each tool is an *mcp.Tool (its name, and a
+// description the agent reads as instructions), a method on threadTools that
+// handles it, and its input and output types, kept together: get_state below,
+// the chat tools in mcp_chat.go, the writer tools in mcp_writer.go.
 //
 // To add a tool, write those three next to the others, then add a line to
-// mcpTools that says whether it shows in the chat and which kinds of thread
-// get it. The SDK derives the input
-// schema from the input type's json and jsonschema tags and rejects calls
-// that don't match it, so the handler only checks what the schema can't say.
+// mcpTools with its chat line (or hidden) and the kinds of thread that get
+// it. The SDK derives the input schema from the input type's json and
+// jsonschema tags and rejects calls that don't match it, so the handler only
+// checks what the schema can't say.
 
-// mcpHost serves one MCP server per chat thread on localhost. Each gets a
-// random token in its URL, so an agent can only reach its own workspace, and
-// tools like ask_user know which conversation called them.
+// mcpHost serves one MCP server per thread, chats and writers alike, on
+// localhost. Each gets a random token in its URL, so an agent can only reach
+// its own workspace, and tools like ask_user know which thread called them.
 type mcpHost struct {
 	app     *App
 	baseURL string
@@ -95,7 +94,7 @@ func (h *mcpHost) newServer(w *workspace.Workspace, thread workspace.Thread) *mc
 	return s
 }
 
-// mcpTools lists every tool, whether its calls show in the chat, and the
+// mcpTools lists every tool, the line its calls show as in the chat, and the
 // kinds of thread that get it. Chats (the plan, a task's, a lesson's) talk
 // with the learner and shape the plan. Only an objective's writer publishes
 // its lesson and task, so the chats stay about the learner.
@@ -108,45 +107,41 @@ var mcpTools = []threadTool{
 	toolFor(askUserTool, (*threadTools).askUser, hidden, workspace.PlanKind, workspace.TaskKind, workspace.LessonKind),
 	toolFor(setIconTool, (*threadTools).setIcon, hidden, workspace.PlanKind, workspace.TaskKind, workspace.LessonKind),
 	toolFor(proposeCurriculumTool, (*threadTools).proposeCurriculum, hidden, workspace.PlanKind, workspace.TaskKind, workspace.LessonKind),
-	toolFor(setToolchainTool, (*threadTools).setToolchain, shown, workspace.PlanKind, workspace.TaskKind, workspace.LessonKind),
+	// The title Claude Code and Codex give the call, as it has always shown.
+	toolFor(setToolchainTool, (*threadTools).setToolchain, "tutortop · set_toolchain", workspace.PlanKind, workspace.TaskKind, workspace.LessonKind),
 	toolFor(createTaskTool, (*threadTools).createTask, hidden, workspace.WriterKind),
 	toolFor(createLessonTool, (*threadTools).createLesson, hidden, workspace.WriterKind),
 }
 
-// threadTool is one tool, whether it shows in the chat, and the kinds of
-// thread that get it.
+// threadTool is one tool, the line its calls show as in the chat, and the
+// kinds of thread that get it.
 type threadTool struct {
 	name  string
-	chat  inChat
+	line  string // in the chat; hidden keeps its calls out
 	kinds []workspace.ThreadKind
 	add   func(*mcp.Server, *threadTools) // adds the tool, handled by one thread's threadTools
 }
 
-// inChat is whether a tool's calls show in the chat, under the title the
-// agent gives them.
-type inChat bool
+// hidden is the chat line of a tool whose calls don't show in the chat.
+const hidden = ""
 
-const (
-	shown  inChat = true
-	hidden inChat = false
-)
-
-func toolFor[In, Out any](tool *mcp.Tool, handle func(*threadTools, context.Context, *mcp.CallToolRequest, In) (*mcp.CallToolResult, Out, error), chat inChat, kinds ...workspace.ThreadKind) threadTool {
-	return threadTool{name: tool.Name, chat: chat, kinds: kinds, add: func(s *mcp.Server, t *threadTools) {
+func toolFor[In, Out any](tool *mcp.Tool, handle func(*threadTools, context.Context, *mcp.CallToolRequest, In) (*mcp.CallToolResult, Out, error), line string, kinds ...workspace.ThreadKind) threadTool {
+	return threadTool{name: tool.Name, line: line, kinds: kinds, add: func(s *mcp.Server, t *threadTools) {
 		mcp.AddTool(s, tool, func(ctx context.Context, req *mcp.CallToolRequest, in In) (*mcp.CallToolResult, Out, error) {
 			return handle(t, ctx, req, in)
 		})
 	}}
 }
 
-// shownInChat reports whether calls to one of our tools show in the chat.
-func shownInChat(name string) bool {
+// chatLine is the line calls to one of our tools show as in the chat, or
+// hidden.
+func chatLine(name string) string {
 	for _, tool := range mcpTools {
 		if tool.name == name {
-			return bool(tool.chat)
+			return tool.line
 		}
 	}
-	return false
+	return hidden
 }
 
 // threadTools handles the tool calls of one thread.

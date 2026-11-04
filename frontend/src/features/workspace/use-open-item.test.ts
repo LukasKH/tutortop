@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { act, cleanup, renderHook } from "@testing-library/react";
-import { AppEvents, type Questions, type WorkspaceState } from "@/lib/api";
+import { AppEvents, type Questions, type WorkspaceSnapshot } from "@/lib/api";
 import { centerOf, placeQuestions, useOpenItem } from "@/features/workspace/use-open-item";
 import type { OpenItem } from "@/features/workspace/open-item";
 import { lesson, task, workspace } from "@/features/workspace/fixtures";
@@ -20,7 +20,7 @@ afterEach(() => {
 });
 
 /** Renders the hook on a snapshot, with the item stored from an earlier session. rerender({ ws }) passes a newer snapshot. */
-function render(ws: WorkspaceState, stored?: string) {
+function render(ws: WorkspaceSnapshot, stored?: string) {
   if (stored) localStorage.setItem("tutortop.open-item.ws", JSON.stringify(stored));
   const dismissFinishedCheck = vi.fn();
   const refresh = vi.fn(async () => ws);

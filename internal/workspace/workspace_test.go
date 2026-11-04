@@ -138,28 +138,28 @@ func TestAppendChatAfterDelete(t *testing.T) {
 	}
 }
 
-// Sessions belong to one agent: switching forgets them, and a late session
-// id from the old agent is dropped.
-func TestSessionsFollowTheProvider(t *testing.T) {
+// Resume ids belong to one agent: switching forgets them, and a late one
+// from the old agent is dropped.
+func TestResumeIDsFollowTheProvider(t *testing.T) {
 	w := newWorkspace(t) // claude
-	if err := w.SetSession("claude", workspace.PlanThread.String(), "c1"); err != nil {
+	if err := w.SetResumeID("claude", workspace.PlanThread.String(), "c1"); err != nil {
 		t.Fatal(err)
 	}
 	if got, _ := w.UseProvider("claude"); got[workspace.PlanThread.String()] != "c1" {
-		t.Fatalf("same provider lost its sessions: %v", got)
+		t.Fatalf("same provider lost its resume ids: %v", got)
 	}
 	if got, _ := w.UseProvider("codex"); len(got) != 0 {
-		t.Fatalf("switching kept sessions: %v", got)
+		t.Fatalf("switching kept resume ids: %v", got)
 	}
-	if err := w.SetSession("claude", workspace.PlanThread.String(), "late"); err != nil {
+	if err := w.SetResumeID("claude", workspace.PlanThread.String(), "late"); err != nil {
 		t.Fatal(err)
 	}
-	if err := w.SetSession("codex", "0001-task", "x1"); err != nil {
+	if err := w.SetResumeID("codex", "0001-task", "x1"); err != nil {
 		t.Fatal(err)
 	}
 	got, _ := w.UseProvider("codex")
 	if want := map[string]string{"0001-task": "x1"}; !maps.Equal(got, want) {
-		t.Errorf("sessions %v, want %v", got, want)
+		t.Errorf("resume ids %v, want %v", got, want)
 	}
 }
 

@@ -18,8 +18,8 @@ import (
 
 // The chat: what the learner sends to a thread's agent, and how its replies
 // show up. send posts a message to the thread's chat and queues it for the
-// thread's session (session.go); the session's transcript streams the reply
-// into the chat as it arrives.
+// thread's agent (agents.go), whose transcript streams the reply into the
+// chat as it arrives.
 
 // Chat returns one thread's chat.
 func (a *App) Chat(wsID, thread string) ([]workspace.ChatItem, error) {
@@ -107,17 +107,17 @@ func (a *App) RequestHint(wsID, taskID string, level int) error {
 	return nil
 }
 
-// StopAgent interrupts the current turn in a thread. The session posts a
+// StopAgent interrupts the current turn in a thread. Its agent posts a
 // notice once the cut-off reply is saved.
 func (a *App) StopAgent(wsID, thread string) {
 	a.mu.Lock()
-	s := a.sessions[threadKey{wsID, thread}]
+	ta := a.agents[threadKey{wsID, thread}]
 	a.mu.Unlock()
-	if s == nil || !s.started() {
+	if ta == nil || !ta.started() {
 		return
 	}
-	s.stop.Store(true)
-	s.agent.Cancel()
+	ta.stop.Store(true)
+	ta.cli.Cancel()
 }
 
 // message is one thing sent to the tutor. What the learner sees in the chat
@@ -152,7 +152,7 @@ func (a *App) postFailure(w *workspace.Workspace, thread, msg string) {
 	a.post(w, workspace.ChatItem{Thread: thread, Role: workspace.RoleNotice, Status: workspace.ChatFailed, Text: msg})
 }
 
-// transcript turns one session's agent events into chat items. Streaming
+// transcript turns one thread agent's events into chat items. Streaming
 // text is sent to the UI as it arrives and saved to the chat when complete.
 type transcript struct {
 	app    *App
@@ -238,8 +238,13 @@ const mcpName = "tutortop"
 
 // toolLabel turns an agent tool call into a short line for the learner, or
 // hides it. The tutor reading files or keeping its todo list is noise;
-// changes to the learner's mission or plan are worth seeing.
+// changes to the learner's mission or plan are worth seeing. Our own tools
+// show as their mcpTools entry says.
 func toolLabel(t agent.Tool) (string, bool) {
+	if t.MCPServer == mcpName {
+		line := chatLine(t.MCPTool)
+		return line, line != hidden
+	}
 	switch t.Kind {
 	case agent.ToolRead, agent.ToolSearch, agent.ToolThink:
 		return "", false
@@ -260,9 +265,6 @@ func toolLabel(t agent.Tool) (string, bool) {
 		case strings.Contains(file, "learning-records") || learningRecord.MatchString(base):
 			return "Recorded what you learned", true
 		}
-	}
-	if t.MCPServer == mcpName && !shownInChat(t.MCPTool) {
-		return "", false
 	}
 	return t.Title, t.Title != ""
 }

@@ -71,7 +71,7 @@ func (s *Store) List() ([]Summary, error) {
 		if err != nil {
 			continue // not a workspace
 		}
-		out = append(out, Summary{ID: w.ID, Title: w.Meta.Title, Icon: w.Meta.Icon, Provider: w.Meta.Provider, Progress: w.Progress(), Next: w.nextTask()})
+		out = append(out, Summary{ID: w.ID, Title: w.Meta.Title, Icon: w.Meta.Icon, Progress: w.Progress(), Next: w.nextTask()})
 	}
 	return out, nil
 }
@@ -153,7 +153,6 @@ type Summary struct {
 	ID       string   `json:"id"`
 	Title    string   `json:"title"`
 	Icon     string   `json:"icon"`
-	Provider string   `json:"provider"`
 	Progress Progress `json:"progress"`
 	Next     string   `json:"next"` // title of the first unsolved task, "" if none
 }
@@ -162,12 +161,12 @@ type Meta struct {
 	Title string `json:"title"`
 	// Icon names the workspace's picture, one of Icons; "" until one is picked.
 	Icon string `json:"icon,omitempty"`
-	// Provider is the agent the saved sessions belong to, an agent.Provider ID.
+	// Provider is the agent the resume ids belong to, an agent.Provider ID.
 	// The agent in use comes from the app settings.
 	Provider string `json:"provider"`
-	// Sessions maps a chat thread to the agent's session id, so each thread
-	// resumes its own conversation.
-	Sessions  map[string]string `json:"sessions,omitempty"`
+	// ResumeIDs maps a chat thread to its conversation's id in the agent
+	// (agent.Session.ID), so each thread resumes its own conversation.
+	ResumeIDs map[string]string `json:"sessions,omitempty"`
 	CreatedAt time.Time         `json:"createdAt"`
 }
 
@@ -220,34 +219,34 @@ func (w *Workspace) updateMeta(change func(m *Meta) bool) error {
 	return w.saveMeta()
 }
 
-// UseProvider switches the workspace to another agent. Sessions belong to one
-// agent, so switching forgets them: threads start fresh conversations, and
-// the tutor catches up from the workspace files, as it does for new tasks.
-// It returns the session ids to resume from.
+// UseProvider switches the workspace to another agent. Resume ids belong to
+// one agent, so switching forgets them: threads start fresh conversations,
+// and the tutor catches up from the workspace files, as it does for new
+// tasks. It returns the resume ids by thread.
 func (w *Workspace) UseProvider(provider string) (map[string]string, error) {
-	var sessions map[string]string
+	var ids map[string]string
 	err := w.updateMeta(func(m *Meta) bool {
 		switched := m.Provider != provider
 		if switched {
-			m.Provider, m.Sessions = provider, nil
+			m.Provider, m.ResumeIDs = provider, nil
 		}
-		sessions = maps.Clone(m.Sessions)
+		ids = maps.Clone(m.ResumeIDs)
 		return switched
 	})
-	return sessions, err
+	return ids, err
 }
 
-// SetSession records a thread's agent session id. An id from an agent the
-// workspace has since switched away from is dropped.
-func (w *Workspace) SetSession(provider, thread, sessionID string) error {
+// SetResumeID records the id a thread's conversation resumes from. An id
+// from an agent the workspace has since switched away from is dropped.
+func (w *Workspace) SetResumeID(provider, thread, id string) error {
 	return w.updateMeta(func(m *Meta) bool {
-		if m.Provider != provider || m.Sessions[thread] == sessionID {
+		if m.Provider != provider || m.ResumeIDs[thread] == id {
 			return false
 		}
-		if m.Sessions == nil {
-			m.Sessions = map[string]string{}
+		if m.ResumeIDs == nil {
+			m.ResumeIDs = map[string]string{}
 		}
-		m.Sessions[thread] = sessionID
+		m.ResumeIDs[thread] = id
 		return true
 	})
 }

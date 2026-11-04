@@ -23,7 +23,7 @@ export function SettingsDialog({ settings, onChange, onClose }: Props) {
   const [error, setError] = useState("");
 
   const agent = settings.agent;
-  const choice = settings.tutor?.[agent] ?? { model: "", effort: "" };
+  const choice = settings.models?.[agent] ?? { model: "", effort: "" };
 
   useEffect(() => {
     App.Environment()
@@ -50,7 +50,7 @@ export function SettingsDialog({ settings, onChange, onClose }: Props) {
   }
 
   function choose(model: string, effort: string) {
-    save({ ...settings, tutor: { ...settings.tutor, [agent]: { model, effort } } });
+    save({ ...settings, models: { ...settings.models, [agent]: { model, effort } } });
   }
 
   const selected = currentModel(models, choice.model);
