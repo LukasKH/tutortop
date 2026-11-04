@@ -89,7 +89,8 @@ export function useTaskWork(wsId: string, taskId: string) {
     }
   }
 
-  // Load the task, and flush unsaved edits when leaving it.
+  // Load the task, and flush unsaved edits when leaving it. The panel is keyed
+  // by task, so the ids never change under these: leave saves the right task.
   const loaded = useEffectEvent((d: TaskDetail) => {
     setDetail(d);
     replaceFiles(workOf(d));

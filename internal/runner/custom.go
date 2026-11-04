@@ -54,7 +54,7 @@ func (s ToolchainSpec) Toolchain() (Toolchain, error) {
 		add("test_files must be a glob matching a file's base name, like test_*.py, not a regexp or a path")
 	}
 	for name := range s.ExtraFiles {
-		if !fs.ValidPath(name) {
+		if !fs.ValidPath(path.Clean(name)) {
 			add("extra file %q must be a relative path", name)
 		}
 	}
