@@ -101,7 +101,7 @@ All files are in `features/workspace/` unless named otherwise.
 
 1. **Snapshot.** `use-workspace.ts: useWorkspace` loads `App.Workspace` and loads it again on `workspace:changed`, `task:published` and `lesson:published`.
 2. **Events.** The same hook dispatches `thread:busy`, `check:status`, `questions:asked` and writers' failures from `chat:message` straight to the reducer, without a refetch.
-3. **Reducer.** `workspace-state.ts: reduceWorkspace` merges both into one `LiveWorkspace`. Busy threads and writers' checks reach it both ways, in either order. Go numbers the events and the snapshots in the order they happened (`seq`, counted under `App.mu`; see `agents.go`), and the reducer keeps whichever is newer, so a writer that finishes during a refetch stops spinning.
+3. **Reducer.** `workspace-state.ts: reduceWorkspace` merges both into one `LiveWorkspace`. Busy threads and writers' checks reach it both ways, in either order. Go numbers the events and the snapshots in the order they happened (`seq`, counted under `threadAgents.mu`; see `agents.go`), and the reducer keeps whichever is newer, so a writer that finishes during a refetch stops spinning.
 4. **Selectors.** Pure functions turn that state, and what the learner has open (`use-open-item.ts: useOpenItem`), into what each part shows: `isBusy`, `tutorBusy` and `writingObjectives` in `workspace-state.ts`; `describeItem` in `open-item.ts`; `placeQuestions` and `centerOf` in `use-open-item.ts`.
 5. **Components.** `workspace-view.tsx: WorkspaceView` calls them and hands their results to `Sidebar`, `CenterPane` and `ChatPanel` (or `ChatRail` when folded). They render them and call `App` or the hooks' calls.
 
@@ -136,7 +136,7 @@ The open item is an `OpenItem`: a task, a lesson, or an objective's lesson or ex
 1. Listen with `useEvent(AppEvents.<Name>, ...)` in the hook that owns the state it changes, and ignore other workspaces' events (`workspace !== id`).
 2. If it only means the snapshot changed: `use-workspace.ts: useWorkspace` calls `refresh` on it, as for `workspace:changed`. Done.
 3. Otherwise, in `workspace-state.ts`: add a field to `LiveWorkspace` and `initialWorkspace`, an `Action`, and its case in `reduceWorkspace`. Dispatch the action from `useWorkspace`.
-4. If the snapshot also carries that state: have Go number the event from `App.seq` under `App.mu`, as `setPending` does; keep each key's number in the state (like `busySeq`); merge the snapshot's value with `newer`, as the `snapshot` case does for `busy`, so an older snapshot doesn't undo it.
+4. If the snapshot also carries that state: have Go number the event from `threadAgents.seq` under `threadAgents.mu`, as `showCheck` does; keep each key's number in the state (like `busySeq`); merge the snapshot's value with `newer`, as the `snapshot` case does for `busy`, so an older snapshot doesn't undo it.
 5. If components need it worked out (like busy), add a selector next to `isBusy` and return it from `useWorkspace`.
 6. `workspace-state.test.ts`: test the new case, and with step 4 an event arriving before an older snapshot.
 
