@@ -114,6 +114,9 @@ type WorkspaceSnapshot struct {
 	Busy       map[string]bool          `json:"busy"` // thread -> its tutor or writer is working
 	// Checks are writers' latest sandbox checks of new tasks, by objective.
 	Checks map[string]SandboxCheck `json:"checks"`
+	// Seq is when Busy and Checks were read, in the sequence that numbers
+	// busy and check events: one with a higher Seq happened after.
+	Seq uint64 `json:"seq"`
 }
 
 func (a *App) Workspace(id string) (WorkspaceSnapshot, error) {
@@ -129,7 +132,7 @@ func (a *App) Workspace(id string) (WorkspaceSnapshot, error) {
 	st.Tasks, _ = w.TaskStatuses()
 	st.Lessons, _ = w.LessonStatuses()
 	st.Questions = w.PendingQuestions()
-	st.Busy, st.Checks = a.agentState(id)
+	st.Busy, st.Checks, st.Seq = a.agentState(id)
 	return st, nil
 }
 

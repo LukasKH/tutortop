@@ -13,10 +13,9 @@ export function useWorkspace(id: string) {
 
   /** Refetches the snapshot; resolves to it, or null if the call failed. */
   const refresh = useCallback(async () => {
-    const asked = performance.now();
     try {
       const ws = await App.Workspace(id);
-      dispatch({ type: "snapshot", ws, asked });
+      dispatch({ type: "snapshot", ws });
       return ws;
     } catch (e) {
       fail(e);
@@ -33,11 +32,11 @@ export function useWorkspace(id: string) {
   useEvent(AppEvents.TaskPublished, ({ workspace }) => workspace === id && refresh());
   useEvent(AppEvents.LessonPublished, ({ workspace }) => workspace === id && refresh());
 
-  useEvent(AppEvents.ThreadBusy, ({ workspace, thread, busy }) => {
-    if (workspace === id) dispatch({ type: "busy", thread, busy, at: performance.now() });
+  useEvent(AppEvents.ThreadBusy, ({ workspace, thread, busy, seq }) => {
+    if (workspace === id) dispatch({ type: "busy", thread, busy, seq });
   });
-  useEvent(AppEvents.CheckStatus, ({ workspace, check }) => {
-    if (workspace === id) dispatch({ type: "check", check, at: performance.now() });
+  useEvent(AppEvents.CheckStatus, ({ workspace, check, seq }) => {
+    if (workspace === id) dispatch({ type: "check", check, seq });
   });
   useEvent(AppEvents.ChatMessage, ({ workspace, item }) => {
     if (workspace === id) dispatch({ type: "chat", item });

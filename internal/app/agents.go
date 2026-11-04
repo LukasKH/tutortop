@@ -218,15 +218,34 @@ func (a *App) release(ta *threadAgent, exited bool) bool {
 	return ended
 }
 
+// The UI learns which threads are busy, and how writers' sandbox checks go,
+// from both snapshots (agentState) and events (setPending, showCheck). All
+// three take the next number from a.seq under a.mu, so the numbers order
+// them exactly as they happened: the frontend keeps whichever is newer, and
+// a snapshot read before an event doesn't undo it.
+
 // setPending sets how many messages an agent has left, and tells the UI
-// when its thread turns busy or idle. Call with a.mu held, so the events go
-// out in the order the changes happened.
+// when its thread turns busy or idle. Call with a.mu held.
 func (a *App) setPending(ta *threadAgent, n int) {
 	was := ta.pending > 0
 	ta.pending = n
 	if busy := n > 0; busy != was {
-		emit(threadBusy, BusyEvent{Workspace: ta.key.ws, Thread: ta.key.name, Busy: busy})
+		a.seq++
+		emit(threadBusy, BusyEvent{Workspace: ta.key.ws, Thread: ta.key.name, Busy: busy, Seq: a.seq})
 	}
+}
+
+// showCheck tells the UI how a sandbox check is going. A writer's is also
+// kept on its threadAgent, so the objective's page shows it even after the
+// learner looks away; it goes when the writer does.
+func (a *App) showCheck(wsID string, c SandboxCheck) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if ta := a.agents[threadKey{wsID, c.Thread}]; ta != nil && c.Kind == CheckTask {
+		ta.check = &c
+	}
+	a.seq++
+	emit(checkStatus, CheckEvent{Workspace: wsID, Check: c, Seq: a.seq})
 }
 
 // end removes a thread's agent and stops its process. Call with a.mu held.
@@ -238,11 +257,13 @@ func (a *App) end(ta *threadAgent) {
 }
 
 // agentState returns what the workspace's agents are doing: which threads
-// are busy, and the writers' latest sandbox checks by objective.
-func (a *App) agentState(wsID string) (busy map[string]bool, checks map[string]SandboxCheck) {
+// are busy, and the writers' latest sandbox checks by objective. Its seq
+// also orders snapshots among themselves.
+func (a *App) agentState(wsID string) (busy map[string]bool, checks map[string]SandboxCheck, seq uint64) {
 	busy, checks = map[string]bool{}, map[string]SandboxCheck{}
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	a.seq++
 	for _, ta := range a.agents {
 		if ta.key.ws != wsID {
 			continue
@@ -254,5 +275,5 @@ func (a *App) agentState(wsID string) (busy map[string]bool, checks map[string]S
 			checks[ta.thread.ID] = *ta.check
 		}
 	}
-	return busy, checks
+	return busy, checks, a.seq
 }

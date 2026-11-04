@@ -16,32 +16,32 @@ const check = (objective: string, running: boolean): SandboxCheck => ({
 describe("snapshots and events", () => {
   test("a writer that finishes during a refetch doesn't spin forever", () => {
     const s = run(
-      { type: "busy", thread: "write-a", busy: true, at: 1 },
-      // Asked for at 2, while the writer was still busy; it finished at 3; the answer lands after.
-      { type: "busy", thread: "write-a", busy: false, at: 3 },
-      { type: "snapshot", ws: workspace({ busy: { "write-a": true } }), asked: 2 },
+      { type: "busy", thread: "write-a", busy: true, seq: 1 },
+      // Read at 2, while the writer was still busy; it finished at 3; the snapshot lands after.
+      { type: "busy", thread: "write-a", busy: false, seq: 3 },
+      { type: "snapshot", ws: workspace({ busy: { "write-a": true }, seq: 2 }) },
     );
     expect(s.busy["write-a"]).toBe(false);
     expect(writingObjectives(s.busy).size).toBe(0);
   });
 
-  test("a snapshot asked for after an event is newer and wins", () => {
-    const s = run({ type: "busy", thread: "plan", busy: true, at: 1 }, { type: "snapshot", ws: workspace({ busy: {} }), asked: 2 });
+  test("a snapshot read after an event is newer and wins", () => {
+    const s = run({ type: "busy", thread: "plan", busy: true, seq: 1 }, { type: "snapshot", ws: workspace({ busy: {}, seq: 2 }) });
     expect(s.busy.plan).toBeUndefined();
   });
 
   test("a writer's check from an event survives an older snapshot", () => {
-    const s = run({ type: "check", check: check("a", true), at: 3 }, { type: "snapshot", ws: workspace({ checks: {} }), asked: 2 });
+    const s = run({ type: "check", check: check("a", true), seq: 3 }, { type: "snapshot", ws: workspace({ checks: {}, seq: 2 }) });
     expect(s.checks.a?.running).toBe(true);
   });
 
   test("an older refetch landing after a newer one is dropped", () => {
-    const s = run({ type: "snapshot", ws: workspace({ title: "new" }), asked: 5 }, { type: "snapshot", ws: workspace({ title: "old" }), asked: 4 });
+    const s = run({ type: "snapshot", ws: workspace({ title: "new", seq: 5 }) }, { type: "snapshot", ws: workspace({ title: "old", seq: 4 }) });
     expect(s.ws?.title).toBe("new");
   });
 
   test("a snapshot clears the last error", () => {
-    const s = run({ type: "failed", error: "Can't stop" }, { type: "snapshot", ws: workspace(), asked: 1 });
+    const s = run({ type: "failed", error: "Can't stop" }, { type: "snapshot", ws: workspace() });
     expect(s.error).toBe("");
   });
 });
@@ -50,9 +50,9 @@ describe("writers", () => {
   const failed: ChatItem = { id: "1", thread: "write-a", role: ChatRole.RoleNotice, text: "Agent crashed", status: ChatStatus.ChatFailed, at: "" };
 
   test("a failed writer is remembered until it starts again, and its check starts afresh", () => {
-    let s = run({ type: "check", check: check("a", false), at: 1 }, { type: "chat", item: failed });
+    let s = run({ type: "check", check: check("a", false), seq: 1 }, { type: "chat", item: failed });
     expect(s.writeFailed.a).toBe("Agent crashed");
-    s = reduceWorkspace(s, { type: "busy", thread: "write-a", busy: true, at: 2 });
+    s = reduceWorkspace(s, { type: "busy", thread: "write-a", busy: true, seq: 2 });
     expect(s.writeFailed.a).toBeUndefined();
     expect(s.checks.a).toBeUndefined();
   });
@@ -65,8 +65,8 @@ describe("writers", () => {
 
 describe("a chat's toolchain check", () => {
   const toolchain = (thread: string, running: boolean): SandboxCheck => ({ kind: CheckKind.CheckToolchain, thread, title: "Rust", running, passed: !running });
-  const checked = (c: SandboxCheck): Action => ({ type: "check", check: c, at: 1 });
-  const idle = (thread: string): Action => ({ type: "busy", thread, busy: false, at: 2 });
+  const checked = (c: SandboxCheck): Action => ({ type: "check", check: c, seq: 1 });
+  const idle = (thread: string): Action => ({ type: "busy", thread, busy: false, seq: 2 });
 
   test("a finished check clears once the thread that ran it stops; a running one stays", () => {
     expect(run(checked(toolchain("plan", false)), idle("plan")).toolchainCheck).toBeNull();

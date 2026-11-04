@@ -12,6 +12,11 @@ export interface BusyEvent {
     "workspace": string;
     "thread": string;
     "busy": boolean;
+
+    /**
+     * orders it among snapshots (WorkspaceSnapshot.Seq)
+     */
+    "seq": number;
 }
 
 /**
@@ -28,6 +33,11 @@ export interface ChatEvent {
 export interface CheckEvent {
     "workspace": string;
     "check": SandboxCheck;
+
+    /**
+     * orders it among snapshots (WorkspaceSnapshot.Seq)
+     */
+    "seq": number;
 }
 
 /**
@@ -199,4 +209,10 @@ export interface WorkspaceSnapshot {
      * Checks are writers' latest sandbox checks of new tasks, by objective.
      */
     "checks": { [_ in string]?: SandboxCheck } | null;
+
+    /**
+     * Seq is when Busy and Checks were read, in the sequence that numbers
+     * busy and check events: one with a higher Seq happened after.
+     */
+    "seq": number;
 }

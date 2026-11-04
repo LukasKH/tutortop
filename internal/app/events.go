@@ -20,12 +20,14 @@ type BusyEvent struct {
 	Workspace string `json:"workspace"`
 	Thread    string `json:"thread"`
 	Busy      bool   `json:"busy"`
+	Seq       uint64 `json:"seq"` // orders it among snapshots (WorkspaceSnapshot.Seq)
 }
 
 // CheckEvent tells how a sandbox check is going.
 type CheckEvent struct {
 	Workspace string       `json:"workspace"`
 	Check     SandboxCheck `json:"check"`
+	Seq       uint64       `json:"seq"` // orders it among snapshots (WorkspaceSnapshot.Seq)
 }
 
 // SandboxCheck is a check in the sandbox that an agent waits for and the

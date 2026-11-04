@@ -21,21 +21,22 @@ export type LiveWorkspace = {
   questions: Questions | null;
   /** The last failed call, shown above the centre pane until the next snapshot loads. */
   error: string;
-  // When an event last set each busy flag and check, and when the snapshot
-  // in use was asked for (performance.now()). A snapshot asked for before an
-  // event is older than it, so it doesn't undo it: otherwise a writer that
-  // finishes during a refetch would spin forever.
-  busyAt: Record<string, number>;
-  checkAt: Record<string, number>;
-  snapshotAt: number;
+  // The backend numbers busy and check events and snapshots in the order they
+  // happened (seq). These are the numbers of the events that last set each
+  // busy flag and check, and of the snapshot in use. A snapshot read before
+  // an event has a lower number, so it doesn't undo it: otherwise a writer
+  // that finishes during a refetch would spin forever.
+  busySeq: Record<string, number>;
+  checkSeq: Record<string, number>;
+  snapshotSeq: number;
 };
 
 /** What changes it: a snapshot arriving, one of the backend's events, or the learner. */
 export type Action =
-  | { type: "snapshot"; ws: WorkspaceSnapshot; asked: number }
+  | { type: "snapshot"; ws: WorkspaceSnapshot }
   | { type: "failed"; error: string }
-  | { type: "busy"; thread: string; busy: boolean; at: number }
-  | { type: "check"; check: SandboxCheck; at: number }
+  | { type: "busy"; thread: string; busy: boolean; seq: number }
+  | { type: "check"; check: SandboxCheck; seq: number }
   | { type: "chat"; item: ChatItem }
   | { type: "questions"; questions: Questions | null }
   | { type: "dismissFinishedCheck" };
@@ -48,36 +49,36 @@ export const initialWorkspace: LiveWorkspace = {
   toolchainCheck: null,
   questions: null,
   error: "",
-  busyAt: {},
-  checkAt: {},
-  snapshotAt: -Infinity,
+  busySeq: {},
+  checkSeq: {},
+  snapshotSeq: 0,
 };
 
 export function reduceWorkspace(s: LiveWorkspace, a: Action): LiveWorkspace {
   switch (a.type) {
     case "snapshot":
       // Refetches can overlap during a burst of events; an older one landing late is dropped.
-      if (a.asked < s.snapshotAt) return s;
+      if (a.ws.seq < s.snapshotSeq) return s;
       return {
         ...s,
         ws: a.ws,
-        busy: newer(a.ws.busy ?? {}, s.busy, s.busyAt, a.asked),
-        checks: newer(a.ws.checks ?? {}, s.checks, s.checkAt, a.asked),
+        busy: newer(a.ws.busy ?? {}, s.busy, s.busySeq, a.ws.seq),
+        checks: newer(a.ws.checks ?? {}, s.checks, s.checkSeq, a.ws.seq),
         questions: a.ws.questions ?? null,
         error: "",
-        snapshotAt: a.asked,
+        snapshotSeq: a.ws.seq,
       };
 
     case "failed":
       return { ...s, error: a.error };
 
     case "busy": {
-      const next = { ...s, busy: { ...s.busy, [a.thread]: a.busy }, busyAt: { ...s.busyAt, [a.thread]: a.at } };
+      const next = { ...s, busy: { ...s.busy, [a.thread]: a.busy }, busySeq: { ...s.busySeq, [a.thread]: a.seq } };
       // A writer starting or finishing starts its objective's status afresh.
       const writing = objectiveOfWriter(a.thread);
       if (writing) {
         next.checks = { ...s.checks, [writing]: undefined };
-        next.checkAt = { ...s.checkAt, [writing]: a.at };
+        next.checkSeq = { ...s.checkSeq, [writing]: a.seq };
         if (a.busy) next.writeFailed = { ...s.writeFailed, [writing]: undefined };
       }
       // A finished check is only news while the chat that ran it is still at work.
@@ -91,7 +92,7 @@ export function reduceWorkspace(s: LiveWorkspace, a: Action): LiveWorkspace {
       // A task is checked by its objective's writer, and shows on the objective.
       const objective = objectiveOfWriter(a.check.thread);
       if (!objective) return s;
-      return { ...s, checks: { ...s.checks, [objective]: a.check }, checkAt: { ...s.checkAt, [objective]: a.at } };
+      return { ...s, checks: { ...s.checks, [objective]: a.check }, checkSeq: { ...s.checkSeq, [objective]: a.seq } };
     }
 
     case "chat": {
@@ -117,9 +118,9 @@ export function writingObjectives(busy: LiveWorkspace["busy"]): Set<string> {
 /** A tutor (not a writer) is working in some thread. */
 export const tutorBusy = (busy: LiveWorkspace["busy"]) => Object.keys(busy).some((t) => busy[t] && !objectiveOfWriter(t));
 
-/** The snapshot's values, except those events set after it was asked for. */
-function newer<T>(snapshot: Record<string, T>, current: Record<string, T>, changedAt: Record<string, number>, asked: number): Record<string, T> {
+/** The snapshot's values, except those events set after it was read. */
+function newer<T>(snapshot: Record<string, T>, current: Record<string, T>, changedSeq: Record<string, number>, snapshotSeq: number): Record<string, T> {
   const next = { ...snapshot };
-  for (const [key, at] of Object.entries(changedAt)) if (at > asked) next[key] = current[key];
+  for (const [key, seq] of Object.entries(changedSeq)) if (seq > snapshotSeq) next[key] = current[key];
   return next;
 }

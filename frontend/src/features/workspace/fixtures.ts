@@ -20,6 +20,7 @@ export function workspace(over: Partial<WorkspaceSnapshot> = {}): WorkspaceSnaps
     questions: null,
     busy: {},
     checks: {},
+    seq: 1,
     ...over,
   };
 }
