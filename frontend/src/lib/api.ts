@@ -21,6 +21,9 @@ import type {
 } from "@bindings/github.com/LukasKH/tutortop/internal/workspace";
 import type { Result, TestResult } from "@bindings/github.com/LukasKH/tutortop/internal/runner";
 
+/** Who said a chat item: the learner, the tutor, a tool call worth showing, or the app. */
+export { ChatRole } from "@bindings/github.com/LukasKH/tutortop/internal/workspace";
+
 export type {
   Activity,
   AgentModel,

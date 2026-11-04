@@ -1,8 +1,8 @@
 import { expect, test } from "vitest";
-import type { ChatItem } from "@/lib/api";
+import { ChatRole, type ChatItem } from "@/lib/api";
 import { afterSetup, mergeChat, upsertChat } from "@/lib/chat";
 
-const item = (id: string, over: Partial<ChatItem> = {}): ChatItem => ({ id, thread: "plan", role: "assistant", text: id, at: "", ...over });
+const item = (id: string, over: Partial<ChatItem> = {}): ChatItem => ({ id, thread: "plan", role: ChatRole.RoleAssistant, text: id, at: "", ...over });
 
 test("a streamed update replaces its message in place", () => {
   const items = [item("1"), item("2", { text: "Hel" })];
@@ -18,7 +18,7 @@ test("loading a transcript keeps live messages that aren't saved yet", () => {
 });
 
 test("the setup interview is hidden up to the plan's approval", () => {
-  const items = [item("q", { role: "user" }), item("n", { role: "notice", text: "You approved the plan." }), item("after")];
+  const items = [item("q", { role: ChatRole.RoleUser }), item("n", { role: ChatRole.RoleNotice, text: "You approved the plan." }), item("after")];
   expect(afterSetup(items).map((x) => x.id)).toEqual(["after"]);
   expect(afterSetup([item("1")]).map((x) => x.id)).toEqual(["1"]);
 });

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import type { ChatItem, Gate } from "@/lib/api";
+import { ChatRole, type ChatItem, type Gate } from "@/lib/api";
 import { initialWorkspace, reduceWorkspace, writingObjectives, type Action, type LiveWorkspace } from "@/features/workspace/workspace-state";
 import { workspace } from "@/features/workspace/fixtures";
 
@@ -41,7 +41,7 @@ describe("snapshots and events", () => {
 });
 
 describe("writers", () => {
-  const failed: ChatItem = { id: "1", thread: "write-a", role: "notice", text: "Agent crashed", status: "failed", at: "" };
+  const failed: ChatItem = { id: "1", thread: "write-a", role: ChatRole.RoleNotice, text: "Agent crashed", status: "failed", at: "" };
 
   test("a failed writer is remembered until it starts again, and its check starts afresh", () => {
     let s = run({ type: "gate", gate: check("a", false), at: 1 }, { type: "chat", item: failed });
