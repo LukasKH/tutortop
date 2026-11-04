@@ -71,13 +71,38 @@ frontend/src/
   components/ui/        shadcn primitives (Button, Dialog, Tabs, ...), restyled to the app's look
   components/           the app's shared components: Markdown, Page and PageHeader, Splitter, ...
   hooks/                shared React hooks
-  lib/                  api.ts (the Wails bindings and events), helpers for workspaces, chat and wording
+  lib/                  api.ts (the Wails bindings and events), thread names, chat helpers, wording
   styles/               globals.css (theme and base), prose.css (rendered markdown)
 ```
 
 The theme lives in `styles/globals.css`. Colours are CSS variables named the shadcn way (`--background`, `--foreground`, `--muted-foreground`, `--border`, ...), plus Tutortop's own `--soft-foreground`, `--faint`, `--pass` and `--fail`. Use them through Tailwind classes such as `text-muted-foreground` or `text-pass`, not raw colours. Colour is only for check results, green passed and red failed.
 
-A feature's state and its backend calls live in hooks next to its components, such as `features/workspace/use-workspace.ts` (the workspace snapshot, kept current by events) or `features/task/use-task-work.ts` (autosave, running checks). The components render what the hooks return.
+A feature's state and its backend calls live in hooks next to its components. The components render what the hooks return. Pages that own their data load it themselves: a lesson (`LessonPanel`), an exercise with autosave and checks (`features/task/use-task-work.ts`), Home and Settings call `App` in an effect and keep their own edits.
+
+### The workspace screen
+
+`features/workspace/workspace-view.tsx` lays out the curriculum rail, the centre pane and the tutor panel. Its state comes from these hooks:
+
+| Hook | State | Comes from |
+| --- | --- | --- |
+| `use-workspace.ts` | the snapshot (`App.Workspace`), busy threads, writers' checks and failures, the planning check, open questions, the last error | refetched on `workspace:changed`, `task:published` and `lesson:published`; `thread:busy`, `gate:status`, `chat:message` and `questions:asked` update it directly |
+| `use-open-item.ts` | the open item, the centre's view (item, plan or proposal), the chat thread that goes with them, new work to point out | the learner, remembered per workspace; `task:published`, `lesson:published` and `curriculum:proposed` |
+| `use-chat-threads.ts` | conversations by thread, and which are unread | `App.Chat` for the shown thread; `chat:message` |
+| `use-chat-panel.ts`, `tutor/use-composer.ts` | the tutor panel's width and whether it's folded; the message draft | the learner |
+
+`use-workspace.ts` sends every change through one pure reducer, `workspace-state.ts`. Events arrive faster than refetches, so the reducer keeps what an event set after a snapshot was asked for. A writer that finishes during a refetch then stops spinning.
+
+The open item is an `OpenItem`: a task, a lesson, or an objective's lesson or exercise that isn't written yet (`open-item.ts`). `centerOf` in `use-open-item.ts` decides what the centre shows, and `CenterPane` renders it. Thread names (`plan`, a task id, `lesson-<id>`, `write-<objective>`) are the backend's and live in `lib/workspace.ts`. Only the hooks and the chat pass them around.
+
+To add:
+
+- **A centre page:** add a kind to `Center`, decide when it shows in `centerOf`, and render it in `CenterPane`. The compiler points at the missing `case`.
+- **An event:** after adding it in Go and regenerating the bindings, listen with `useEvent` in the hook that owns the state it changes. For the workspace's state, add an `Action` and its case in `reduceWorkspace`.
+- **A backend call:** call `App.<Method>` from the hook or component that owns the state. Add read-only methods to `SAFE_TO_REPEAT` in `lib/api.ts` so they wait out a restart. In the workspace screen, pass failures to `fail`, which shows them above the centre pane.
+
+### Tests
+
+`npm test` runs [Vitest](https://vitest.dev). Tests sit next to the module they test (`*.test.ts`) and cover logic that can break: the workspace reducer, open-item rules, chat merging, and hooks that react to events. Hook tests render with `@testing-library/react` in jsdom (`// @vitest-environment jsdom`) and replace `useEvent` with a fake to send events; `use-open-item.test.ts` shows how. `features/workspace/fixtures.ts` builds workspace snapshots.
 
 Components are styled with utility classes in their markup. The one exception is rendered markdown (lessons, task statements, tutor replies), which `prose.css` styles by element because `Markdown` renders plain HTML. Add shadcn components with `npx shadcn@latest add <name>`; they land in `components/ui/`.
 
