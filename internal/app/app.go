@@ -25,23 +25,21 @@ type App struct {
 	agents *threadAgents // each thread's running agent (agents.go)
 	links  *linkChecker
 
+	settings *settingsStore
+	models   *modelCache
+
 	mu      sync.Mutex
 	servers map[string]*languageServer // running language servers by id
-
-	settingsMu   sync.Mutex
-	settingsPath string
-	models       map[string]modelList // provider -> recently listed models
 }
 
 func New() (*App, error) {
-	a := &App{runner: runner.New(),
-		servers: map[string]*languageServer{}, links: newLinkChecker(),
-		settingsPath: filepath.Join(xdg.ConfigHome, "tutortop", "settings.yaml"), models: map[string]modelList{}}
-	a.agents = newThreadAgents(agent.Start, func() agentConfig { return a.Settings().agentConfig() }, a.agentOptions)
+	settings := newSettingsStore(filepath.Join(xdg.ConfigHome, "tutortop", "settings.yaml"))
 	// The workspaces folder: TUTORTOP_HOME, else the one chosen in the
 	// settings, else ~/Tutortop. It's fixed for the run: running agents open
 	// their workspace by id.
-	a.store = workspace.NewStore(cmp.Or(os.Getenv("TUTORTOP_HOME"), a.loadSettings().WorkspacesFolder, workspace.DefaultRoot()))
+	store := workspace.NewStore(cmp.Or(os.Getenv("TUTORTOP_HOME"), settings.Load().WorkspacesFolder, workspace.DefaultRoot()))
+	a := &App{store: store, settings: settings, runner: runner.New(), links: newLinkChecker(), models: newModelCache(), servers: map[string]*languageServer{}}
+	a.agents = newThreadAgents(agent.Start, func() agentConfig { return a.settings.Load().agentConfig() }, a.agentOptions)
 	h, err := startMCP(a)
 	if err != nil {
 		return nil, err

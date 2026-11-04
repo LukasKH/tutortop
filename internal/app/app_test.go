@@ -133,7 +133,7 @@ func newTestApp(t *testing.T) *App {
 		t.Fatal(err)
 	}
 	a.store = &workspace.Store{Root: t.TempDir(), PrivateRoot: t.TempDir()}
-	a.settingsPath = filepath.Join(t.TempDir(), "settings.yaml")
+	a.settings = newSettingsStore(filepath.Join(t.TempDir(), "settings.yaml"))
 	a.links = answeringLinks(http.StatusOK)
 	// Never start a real agent from a test; tests that watch the agent replace this.
 	a.agents.openSession = func(context.Context, string, agent.Options, func(agent.Event)) (agent.Session, error) {
@@ -278,7 +278,7 @@ func TestThreadsGetOwnSessions(t *testing.T) {
 func TestSettingsLoadTheOldTutorKey(t *testing.T) {
 	a := newTestApp(t)
 	old := "agent: codex\ntutor:\n  codex:\n    model: gpt-5\n    effort: high\n"
-	if err := os.WriteFile(a.settingsPath, []byte(old), 0o644); err != nil {
+	if err := os.WriteFile(a.settings.path, []byte(old), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	want := ModelChoice{Model: "gpt-5", Effort: "high"}
