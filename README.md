@@ -67,6 +67,7 @@ task lint                    # go vet, Staticcheck and format checks
 task format                  # format Go code and imports
 npm --prefix frontend run format  # format the frontend (Prettier, sorts Tailwind classes)
 npm --prefix frontend run lint    # lint the frontend (Oxlint, React hooks rules)
+npm --prefix frontend test        # frontend tests (Vitest)
 task test:live               # talks to the real Claude Code and Codex CLIs; uses a little quota
 ```
 
@@ -80,6 +81,6 @@ The pre-commit hooks and GitHub Actions run:
 
 - golangci-lint: go vet's analyzers, Staticcheck, and gofmt/goimports formatting (`.golangci.yml`).
 - `go test -race -short ./internal/...`.
-- A TypeScript typecheck, an Oxlint lint and a Prettier format check of the frontend, when frontend files change.
+- A TypeScript typecheck, an Oxlint lint, a Prettier format check and the Vitest tests of the frontend, when frontend files change.
 
 Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/) (`feat:`, `fix:`, `refactor:`, `docs:`, `test:`, `build:`, `ci:`, `chore:`), checked by commitlint.

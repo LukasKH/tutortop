@@ -49,6 +49,15 @@ repos:
         files: ^frontend/
         stages: [pre-commit]
 
+      # Vitest: the frontend's state logic and hooks, without the Go app.
+      - id: frontend-test
+        name: Frontend tests
+        entry: npm --prefix frontend test
+        language: system
+        pass_filenames: false
+        files: ^frontend/
+        stages: [pre-commit]
+
   - repo: https://github.com/alessandrojcm/commitlint-pre-commit-hook
     rev: v9.27.0
     hooks:

@@ -1,12 +1,13 @@
-import { useRef, useState, type CSSProperties } from "react";
+import type { CSSProperties } from "react";
 import { cn } from "cn";
 import { afterSetup } from "@/lib/chat";
-import { App, AppEvents, useEvent, type WorkspaceState } from "@/lib/api";
-import { lessonKey, objectiveOfWriter, PLAN_THREAD, todoOfKey, writerThread, type NewItem } from "@/lib/workspace";
-import { exerciseOf, lessonOf, openItem, resolveOpen, viaLesson } from "@/features/workspace/open-item";
+import { App, type ChatItem, type WorkspaceState } from "@/lib/api";
+import { PLAN_THREAD, writerThread } from "@/lib/workspace";
+import { describeItem, exerciseOf, itemKey, lessonOf, viaLesson } from "@/features/workspace/open-item";
 import { useChatPanel } from "@/features/workspace/use-chat-panel";
 import { useChatThreads } from "@/features/workspace/use-chat-threads";
-import { useWorkspace } from "@/features/workspace/use-workspace";
+import { centerOf, questionsInCenter, useOpenItem, type Center } from "@/features/workspace/use-open-item";
+import { useWorkspace, type Workspace } from "@/features/workspace/use-workspace";
 import { Sidebar } from "@/features/workspace/sidebar";
 import { TaskPanel } from "@/features/task/task-panel";
 import { LessonPanel } from "@/features/lesson/lesson-panel";
@@ -14,6 +15,7 @@ import { NotWritten } from "@/features/workspace/not-written";
 import { PlanView } from "@/features/workspace/plan-view";
 import { ProposalView } from "@/features/workspace/proposal-view";
 import { ChatPanel, ChatRail, StatusLine, type Attention } from "@/features/tutor/chat-panel";
+import { useComposer } from "@/features/tutor/use-composer";
 import { Markdown } from "@/components/markdown";
 import { QuestionsForm } from "@/features/workspace/questions";
 import { Setup } from "@/features/workspace/setup";
@@ -21,9 +23,6 @@ import { Placeholder } from "@/components/placeholder";
 import { PageIntro, ReadingPage } from "@/components/page";
 import { Button } from "@/components/ui/button";
 import { Splitter } from "@/components/splitter";
-import { useStored } from "@/hooks/use-stored";
-
-export type CenterView = "task" | "plan" | "proposal";
 
 type Props = {
   id: string;
@@ -35,65 +34,20 @@ type Props = {
 
 /** A workspace: the curriculum rail, the open lesson, exercise or plan page, and the tutor beside it. */
 export function WorkspaceView({ id, tutor, onSettings, onBack }: Props) {
-  const { ws, error, fail, refresh, busy, checks, writeFailed, gate, dismissFinishedGate, questions, answerQuestions, dismissQuestions } = useWorkspace(id);
-  // The open task or lesson (by key), remembered per workspace. Each snapshot
-  // checks it still exists, and what it picks instead is remembered, so a
-  // default doesn't move on its own. Until the first snapshot, the stored key
-  // is unchecked.
-  const [storedId, setTaskId] = useStored<string | null>(`task.${id}`, null);
-  const taskId = ws ? resolveOpen(ws, storedId) : storedId;
-  if (taskId !== storedId) setTaskId(taskId);
-  // Until the learner picks a view, a proposal waiting for review comes first.
-  const [chosenView, setView] = useState<CenterView | null>(null);
-  const view = chosenView ?? (ws?.proposal ? "proposal" : "task");
-  const [newTask, setNewTask] = useState<NewItem | null>(null);
-  const [draft, setDraft] = useState("");
-  const inputRef = useRef<HTMLTextAreaElement>(null);
+  // The backend's state, kept current by events (use-workspace.ts).
+  const live = useWorkspace(id);
+  // What the learner has open, and the chat thread that goes with it (use-open-item.ts).
+  const nav = useOpenItem(id, live);
+  // The tutor panel: open or folded into its rail, its width, and its message box.
   const chat = useChatPanel();
+  const composer = useComposer();
+  // Conversations by thread, loaded for the shown thread and streamed in by event.
+  const { threads, unread } = useChatThreads(id, nav.thread, { ready: live.ws !== null, visible: chat.open, onError: live.fail });
 
-  // The chat follows the centre pane: an open exercise or lesson has its own
-  // conversation; the plan page, plan review, and anything not written yet
-  // use the planning conversation. Writing happens apart from the chat. Until the
-  // workspace loads, the stored key is unchecked.
-  const todo = todoOfKey(taskId);
-  const planContext = view !== "task" || !taskId || !!todo;
-  const thread = ws && !planContext ? taskId! : PLAN_THREAD;
-  const { threads, unread } = useChatThreads(id, thread, { ready: ws !== null, visible: chat.open, onError: fail });
-
-  const openTaskSolved = () => !!ws?.tasks?.find((t) => t.id === taskId)?.passed;
-
-  function openTask(key: string) {
-    setTaskId(key);
-    setView("task");
-    setNewTask((t) => (t?.id === key ? null : t));
-    dismissFinishedGate();
-  }
-
-  useEvent(AppEvents.CurriculumProposed, ({ workspace }) => {
-    if (workspace === id) refresh().then((s) => s?.proposal && setView("proposal"));
-  });
-
-  // New work opens at once when it's what the learner is waiting for. Otherwise
-  // it's pointed out, but only once the open task is solved: lessons and tasks
-  // are written ahead in the background. An announced lesson comes first.
-  useEvent(AppEvents.TaskPublished, ({ workspace, task }) => {
-    if (workspace !== id) return;
-    refresh();
-    if ((todo?.part === "exercise" && todo.objective === task.objective) || !taskId) openTask(task.id);
-    else if (openTaskSolved()) setNewTask((cur) => (cur?.kind === "lesson" ? cur : { id: task.id, title: task.title, kind: "task" }));
-  });
-
-  useEvent(AppEvents.LessonPublished, ({ workspace, lesson }) => {
-    if (workspace !== id) return;
-    refresh();
-    const key = lessonKey(lesson.id);
-    if ((todo?.part === "lesson" && todo.objective === lesson.objective) || !taskId) openTask(key);
-    else if (openTaskSolved()) setNewTask({ id: key, title: lesson.title, kind: "lesson" });
-  });
-
+  const { ws, busy, questions, gate, fail } = live;
   if (!ws) {
     return (
-      <Placeholder error={error} loading="Opening workspace…">
+      <Placeholder error={live.error} loading="Opening workspace…">
         <Button variant="outline" onClick={onBack}>
           Back to workspaces
         </Button>
@@ -101,123 +55,29 @@ export function WorkspaceView({ id, tutor, onSettings, onBack }: Props) {
     );
   }
 
-  const open = openItem(ws, taskId);
-  const { lesson: openLesson, task: openTaskInfo, module: openModule, objective, lang } = open;
-  const moduleTitle = openModule?.title ?? "";
+  const { item, view, thread } = nav;
+  const open = describeItem(ws, item);
+  // Until the first plan is approved, everything happens in the centre. No chat beside it.
+  const setup = !ws.curriculum;
 
-  // Before the first task, the tutor's questions are the main thing to do, so
-  // they get the centre pane instead of the narrow chat column. Otherwise they
-  // appear in the chat of the thread that asked.
+  // Questions that aren't in the centre wait in the chat of the thread that
+  // asked. The plan's also show on "Your plan" while another chat is shown.
   const questionsThread = questions?.thread || PLAN_THREAD;
-  const questionsInCenter = !!questions && !taskId && view === "task";
-  const questionsPending = !!questions && !questionsInCenter;
-  const planAsked = questionsPending && questionsThread === PLAN_THREAD;
+  const questionsWaiting = !!questions && !questionsInCenter(view, item, questions);
+  const planAsked = questionsWaiting && questionsThread === PLAN_THREAD;
   const planAttention: Attention = {
     attention: thread !== PLAN_THREAD && (!!unread[PLAN_THREAD] || !!busy[PLAN_THREAD] || planAsked),
     questions: planAsked ? (questions?.questions ?? []).length : 0,
   };
-  // Objectives whose lesson and exercise are being written in the background.
-  const writing = new Set(Object.keys(busy).flatMap((t) => (busy[t] ? (objectiveOfWriter(t) ?? []) : [])));
-  const tutorBusy = Object.keys(busy).some((t) => busy[t] && !objectiveOfWriter(t));
+
+  // Hints are for the open exercise's own conversation, until it's solved.
+  const hintTask = open.task && thread === open.task.id && !open.task.passed ? open.task : null;
 
   // "Change with the tutor" on the plan page: the tutor's composer, ready.
   function askTutorAboutPlan() {
     chat.setOpen(true);
-    setDraft((d) => (d.trim() ? d : "I'd like to change my plan: "));
-    requestAnimationFrame(() => {
-      const input = inputRef.current;
-      input?.focus();
-      input?.setSelectionRange(input.value.length, input.value.length);
-    });
+    composer.prefill("I'd like to change my plan: ");
   }
-
-  // Until the first plan is approved, everything happens in the centre: the
-  // questions, the tutor's work, then the plan to review. No chat beside it.
-  const setup = !ws.curriculum;
-
-  const center = setup ? (
-    view === "plan" ? (
-      <PlanView wsId={id} ws={ws} onClose={() => setView("task")} />
-    ) : ws.proposal ? (
-      <ProposalView wsId={id} proposal={ws.proposal} current={null} progress={ws.progress} mission={ws.mission} />
-    ) : (
-      <Setup
-        items={threads[PLAN_THREAD] ?? []}
-        busy={!!busy[PLAN_THREAD]}
-        gate={gate}
-        questions={questions}
-        lang={lang}
-        onAnswer={answerQuestions}
-        onDismiss={dismissQuestions}
-        onStop={() => App.StopAgent(id, PLAN_THREAD).catch(fail)}
-        onSend={(text) => App.SendMessage(id, text, PLAN_THREAD)}
-      />
-    )
-  ) : view === "proposal" && ws.proposal ? (
-    <ProposalView wsId={id} proposal={ws.proposal} current={ws.curriculum} progress={ws.progress} />
-  ) : view === "plan" ? (
-    <PlanView wsId={id} ws={ws} onClose={taskId ? () => setView("task") : undefined} onAskTutor={askTutorAboutPlan} />
-  ) : questionsInCenter ? (
-    <ReadingPage>
-      <PageIntro title="Questions">{questions.intro}</PageIntro>
-      <QuestionsForm key={JSON.stringify(questions)} layout="page" form={questions} onAnswer={answerQuestions} onDismiss={dismissQuestions} />
-    </ReadingPage>
-  ) : todo && objective ? (
-    <NotWritten
-      key={taskId}
-      wsId={id}
-      objective={objective}
-      part={todo.part}
-      moduleTitle={moduleTitle}
-      writing={!!busy[writerThread(objective.id)]}
-      check={checks[objective.id] ?? null}
-      failed={writeFailed[objective.id] ?? ""}
-      other={
-        todo.part === "lesson"
-          ? todoOfKey(exerciseOf(ws, objective.id))
-            ? null
-            : { label: "Exercise →", onOpen: () => openTask(exerciseOf(ws, objective.id)) }
-          : todoOfKey(lessonOf(ws, objective.id))
-            ? null
-            : { label: "← Lesson", onOpen: () => openTask(lessonOf(ws, objective.id)) }
-      }
-    />
-  ) : openLesson ? (
-    <LessonPanel
-      key={openLesson.id}
-      wsId={id}
-      lessonId={openLesson.id}
-      moduleTitle={moduleTitle}
-      icon={ws.icon}
-      lang={lang}
-      onOpenExercise={() => openTask(exerciseOf(ws, openLesson.objective))}
-      exerciseWritten={!todoOfKey(exerciseOf(ws, openLesson.objective))}
-      references={openModule?.references}
-    />
-  ) : taskId ? (
-    <TaskPanel
-      key={taskId}
-      wsId={id}
-      taskId={taskId}
-      passed={!!openTaskInfo?.passed}
-      moduleTitle={moduleTitle}
-      nextTask={open.nextTask}
-      moreComing={ws.progress.passed < ws.progress.total}
-      // "Next task" leads through the next objective's lesson if it isn't finished.
-      onOpenTask={(tid) => openTask(viaLesson(ws, tid))}
-    />
-  ) : (
-    <EmptyState ws={ws} writing={writing.size > 0} />
-  );
-
-  const chatQuestions =
-    questionsInCenter && thread === PLAN_THREAD ? (
-      <div className="max-w-[88%] self-center text-center text-[12px] text-balance wrap-anywhere whitespace-pre-wrap text-muted-foreground">
-        Questions are open in the main panel.
-      </div>
-    ) : questionsPending && questionsThread === thread ? (
-      <QuestionsForm key={JSON.stringify(questions)} layout="chat" form={questions} onAnswer={answerQuestions} onDismiss={dismissQuestions} />
-    ) : null;
 
   return (
     <div
@@ -227,59 +87,71 @@ export function WorkspaceView({ id, tutor, onSettings, onBack }: Props) {
     >
       <Sidebar
         ws={ws}
-        openTaskId={view === "task" ? taskId : null}
+        openItem={view === "item" ? item : null}
         planOpen={view === "plan"}
         plan={planAttention}
-        writing={writing}
+        writing={live.writing}
         onBack={onBack}
-        onOpenTask={openTask}
-        onShowPlan={() => setView("plan")}
+        onOpen={nav.open}
+        onShowPlan={() => nav.setView("plan")}
       />
       <main className="@container flex min-h-0 min-w-0 flex-col overflow-hidden bg-card">
         {ws.proposal && view !== "proposal" && (
           <button
             className="flex flex-none justify-between gap-3 border-b bg-background px-4 py-[9px] text-sm text-soft-foreground"
-            onClick={() => setView("proposal")}
+            onClick={() => nav.setView("proposal")}
           >
             <span>{ws.curriculum ? "Plan changes are waiting for review." : "A plan is waiting for review."}</span>
             <b className="font-medium text-foreground">Review →</b>
           </button>
         )}
-        {error && (
+        {live.error && (
           <div className="flex-none border-b px-4 py-2 text-sm text-fail" role="alert">
-            {error}
+            {live.error}
           </div>
         )}
-        {center}
+        <CenterPane
+          id={id}
+          center={centerOf(ws, view, item, questions)}
+          ws={ws}
+          live={live}
+          nav={nav}
+          planItems={threads[PLAN_THREAD] ?? []}
+          onAskTutor={askTutorAboutPlan}
+        />
       </main>
       {setup ? null : chat.open ? (
         <ChatPanel
           thread={thread}
-          context={thread === PLAN_THREAD ? "Plan" : openLesson ? "Lesson" : "Exercise"}
-          lang={lang}
+          context={thread === PLAN_THREAD ? "Plan" : item?.kind === "lesson" ? "Lesson" : "Exercise"}
+          lang={open.lang}
           hint={
-            openTaskInfo && thread === taskId && !openTaskInfo.passed
-              ? {
-                  level: Math.min(openTaskInfo.hintLevel + 1, 4),
-                  onHint: (level) => App.RequestHint(id, openTaskInfo.id, level).then(refresh).catch(fail),
-                }
-              : null
+            hintTask && {
+              level: Math.min(hintTask.hintLevel + 1, 4),
+              onHint: (level) => App.RequestHint(id, hintTask.id, level).then(live.refresh).catch(fail),
+            }
           }
           // The setup interview stays out of the tutor panel.
           items={thread === PLAN_THREAD ? afterSetup(threads[PLAN_THREAD] ?? []) : (threads[thread] ?? [])}
           busy={!!busy[thread]}
-          questions={chatQuestions}
-          status={<StatusLine gate={gate} newTask={newTask} busy={!!busy[thread]} onStop={() => App.StopAgent(id, thread).catch(fail)} onOpenTask={openTask} />}
-          draft={draft}
-          inputRef={inputRef}
-          onDraft={setDraft}
+          questions={
+            questions && !questionsWaiting && thread === PLAN_THREAD ? (
+              <div className="max-w-[88%] self-center text-center text-[12px] text-balance wrap-anywhere whitespace-pre-wrap text-muted-foreground">
+                Questions are open in the main panel.
+              </div>
+            ) : questions && questionsWaiting && questionsThread === thread ? (
+              <QuestionsForm key={JSON.stringify(questions)} layout="chat" form={questions} onAnswer={live.answerQuestions} onDismiss={live.dismissQuestions} />
+            ) : null
+          }
+          status={<StatusLine gate={gate} newItem={nav.newItem} busy={!!busy[thread]} onStop={() => App.StopAgent(id, thread).catch(fail)} onOpen={nav.open} />}
+          composer={composer}
           onSend={(text) => App.SendMessage(id, text, thread).catch(fail)}
           onCollapse={() => chat.setOpen(false)}
           tutor={tutor}
           onSettings={onSettings}
         />
       ) : (
-        <ChatRail attention={Object.values(unread).some(Boolean) || questionsPending} busy={tutorBusy} onExpand={() => chat.setOpen(true)} />
+        <ChatRail attention={Object.values(unread).some(Boolean) || questionsWaiting} busy={live.tutorBusy} onExpand={() => chat.setOpen(true)} />
       )}
       {!setup && (
         // The handle sits on the tutor panel's left border, in the shell, so one
@@ -295,6 +167,122 @@ export function WorkspaceView({ id, tutor, onSettings, onBack }: Props) {
       )}
     </div>
   );
+}
+
+type CenterProps = {
+  id: string;
+  center: Center;
+  ws: WorkspaceState;
+  live: Workspace;
+  nav: ReturnType<typeof useOpenItem>;
+  /** The planning conversation, which setup shows in the centre. */
+  planItems: ChatItem[];
+  onAskTutor: () => void;
+};
+
+/** The centre pane, as centerOf decided. */
+function CenterPane({ id, center, ws, live, nav, planItems, onAskTutor }: CenterProps) {
+  const { item } = nav;
+  const open = describeItem(ws, item);
+  const moduleTitle = open.module?.title ?? "";
+  const back = () => nav.setView("item");
+
+  switch (center.kind) {
+    case "setup":
+      return (
+        <Setup
+          items={planItems}
+          busy={!!live.busy[PLAN_THREAD]}
+          gate={live.gate}
+          questions={live.questions}
+          lang={open.lang}
+          onAnswer={live.answerQuestions}
+          onDismiss={live.dismissQuestions}
+          onStop={() => App.StopAgent(id, PLAN_THREAD).catch(live.fail)}
+          onSend={(text) => App.SendMessage(id, text, PLAN_THREAD)}
+        />
+      );
+
+    case "proposal":
+      return <ProposalView wsId={id} proposal={center.proposal} current={ws.curriculum} progress={ws.progress} mission={ws.mission} />;
+
+    case "plan":
+      // Before the first plan there's no tutor panel to ask; after it, "Back" needs something open.
+      return ws.curriculum ? (
+        <PlanView wsId={id} ws={ws} onClose={item ? back : undefined} onAskTutor={onAskTutor} />
+      ) : (
+        <PlanView wsId={id} ws={ws} onClose={back} />
+      );
+
+    case "questions":
+      return (
+        <ReadingPage>
+          <PageIntro title="Questions">{center.questions.intro}</PageIntro>
+          <QuestionsForm
+            key={JSON.stringify(center.questions)}
+            layout="page"
+            form={center.questions}
+            onAnswer={live.answerQuestions}
+            onDismiss={live.dismissQuestions}
+          />
+        </ReadingPage>
+      );
+
+    case "not-written": {
+      const { objective, part } = center;
+      // A link to the other part, once it's written: the exercise from the lesson's page, or the lesson.
+      const other = part === "lesson" ? exerciseOf(ws, objective.id) : lessonOf(ws, objective.id);
+      return (
+        <NotWritten
+          key={item && itemKey(item)}
+          wsId={id}
+          objective={objective}
+          part={part}
+          moduleTitle={moduleTitle}
+          writing={!!live.busy[writerThread(objective.id)]}
+          check={live.checks[objective.id] ?? null}
+          failed={live.writeFailed[objective.id] ?? ""}
+          other={other.kind === "todo" ? null : { label: part === "lesson" ? "Exercise →" : "← Lesson", onOpen: () => nav.open(other) }}
+        />
+      );
+    }
+
+    case "lesson": {
+      const { lesson } = center;
+      const exercise = exerciseOf(ws, lesson.objective);
+      return (
+        <LessonPanel
+          key={lesson.id}
+          wsId={id}
+          lessonId={lesson.id}
+          moduleTitle={moduleTitle}
+          icon={ws.icon}
+          lang={open.lang}
+          onOpenExercise={() => nav.open(exercise)}
+          exerciseWritten={exercise.kind !== "todo"}
+          references={open.module?.references}
+        />
+      );
+    }
+
+    case "task":
+      return (
+        <TaskPanel
+          key={center.id}
+          wsId={id}
+          taskId={center.id}
+          passed={!!open.task?.passed}
+          moduleTitle={moduleTitle}
+          nextTask={open.nextTask}
+          moreComing={ws.progress.passed < ws.progress.total}
+          // "Next task" leads through the next objective's lesson if it isn't finished.
+          onOpenTask={(taskId) => nav.open(viaLesson(ws, taskId))}
+        />
+      );
+
+    case "empty":
+      return <EmptyState ws={ws} writing={live.writing.size > 0} />;
+  }
 }
 
 /** After the plan is approved, before anything is open. */
