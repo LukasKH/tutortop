@@ -253,66 +253,95 @@ func (s *claudeSession) readLoop() {
 	sc := bufio.NewScanner(s.stdout)
 	sc.Buffer(make([]byte, 1024*1024), 64*1024*1024)
 	for sc.Scan() {
-		l, err := decode[claudeLine](sc.Bytes())
-		if err != nil {
+		if l, err := decode[claudeLine](sc.Bytes()); err == nil {
+			s.handle(l)
+		}
+	}
+}
+
+// handle acts on one line of Claude Code's stream-json output.
+func (s *claudeSession) handle(l claudeLine) {
+	switch l.Type {
+	case "system":
+		if l.Subtype == "init" {
+			s.checkMCP(l)
+		}
+	case "stream_event":
+		s.streamText(l)
+	case "assistant":
+		s.toolsStarted(l)
+	case "user":
+		s.toolsFinished(l)
+	case "result":
+		s.deliverResult(l.claudeResult)
+	case "control_response":
+		s.deliverControlResponse(l.Response)
+	case "control_request":
+		go s.answerControl(l.RequestID, l.Request)
+		// control_cancel_request needs nothing: we answer permission
+		// requests at once, so there's never one in flight to cancel.
+	}
+}
+
+// streamText passes on a piece of the reply's text.
+func (s *claudeSession) streamText(l claudeLine) {
+	ev, err := decode[struct {
+		Type  string `json:"type"`
+		Delta struct {
+			Type string `json:"type"`
+			Text string `json:"text"`
+		} `json:"delta"`
+	}](l.Event)
+	// A subagent's text is its report to the tutor, not the reply.
+	if err == nil && l.ParentToolUseID == "" && ev.Type == "content_block_delta" && ev.Delta.Type == "text_delta" {
+		s.onEvent(Event{Kind: EventText, Text: ev.Delta.Text})
+	}
+}
+
+// toolsStarted reports the tool calls in an assistant message as running.
+func (s *claudeSession) toolsStarted(l claudeLine) {
+	for _, b := range blocks(l.Message.Content) {
+		if b.Type == "tool_use" {
+			t := claudeTool(b.Name, b.Input)
+			t.ID, t.Status = b.ID, ToolRunning
+			s.onEvent(Event{Kind: EventTool, Tool: t})
+		}
+	}
+}
+
+// toolsFinished reports the tool results in a user message as done or failed.
+func (s *claudeSession) toolsFinished(l claudeLine) {
+	for _, b := range blocks(l.Message.Content) {
+		if b.Type != "tool_result" {
 			continue
 		}
-		switch l.Type {
-		case "system":
-			if l.Subtype == "init" {
-				s.checkMCP(l)
-			}
-		case "stream_event":
-			ev, err := decode[struct {
-				Type  string `json:"type"`
-				Delta struct {
-					Type string `json:"type"`
-					Text string `json:"text"`
-				} `json:"delta"`
-			}](l.Event)
-			// A subagent's text is its report to the tutor, not the reply.
-			if err == nil && l.ParentToolUseID == "" && ev.Type == "content_block_delta" && ev.Delta.Type == "text_delta" {
-				s.onEvent(Event{Kind: EventText, Text: ev.Delta.Text})
-			}
-		case "assistant":
-			for _, b := range blocks(l.Message.Content) {
-				if b.Type == "tool_use" {
-					t := claudeTool(b.Name, b.Input)
-					t.ID, t.Status = b.ID, ToolRunning
-					s.onEvent(Event{Kind: EventTool, Tool: t})
-				}
-			}
-		case "user":
-			for _, b := range blocks(l.Message.Content) {
-				if b.Type != "tool_result" {
-					continue
-				}
-				status := ToolDone
-				if b.IsError {
-					status = ToolFailed
-				}
-				s.onEvent(Event{Kind: EventTool, Tool: Tool{ID: b.ToolUseID, Status: status}})
-			}
-		case "result":
-			s.mu.Lock()
-			ch := s.result
-			s.result = nil
-			s.mu.Unlock()
-			if ch != nil {
-				ch <- l.claudeResult
-			}
-		case "control_response":
-			s.mu.Lock()
-			ch := s.pending[l.Response.RequestID]
-			s.mu.Unlock()
-			if ch != nil {
-				ch <- l.Response
-			}
-		case "control_request":
-			go s.answerControl(l.RequestID, l.Request)
-			// control_cancel_request needs nothing: we answer permission
-			// requests at once, so there's never one in flight to cancel.
+		status := ToolDone
+		if b.IsError {
+			status = ToolFailed
 		}
+		s.onEvent(Event{Kind: EventTool, Tool: Tool{ID: b.ToolUseID, Status: status}})
+	}
+}
+
+// deliverResult hands a turn's result to the prompt waiting for it, if any.
+func (s *claudeSession) deliverResult(r claudeResult) {
+	s.mu.Lock()
+	ch := s.result
+	s.result = nil
+	s.mu.Unlock()
+	if ch != nil {
+		ch <- r
+	}
+}
+
+// deliverControlResponse hands a reply to the control request waiting for
+// it, if any.
+func (s *claudeSession) deliverControlResponse(r claudeControlResponse) {
+	s.mu.Lock()
+	ch := s.pending[r.RequestID]
+	s.mu.Unlock()
+	if ch != nil {
+		ch <- r
 	}
 }
 

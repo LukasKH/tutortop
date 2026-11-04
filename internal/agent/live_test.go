@@ -37,6 +37,8 @@ func TestLive(t *testing.T) {
 					text.WriteString(ev.Text)
 				case EventTool:
 					tools = append(tools, string(ev.Tool.Status)+": "+ev.Tool.Title)
+				case EventWarning:
+					// The test checks the reply and the tool calls only.
 				}
 			})
 			if err != nil && strings.Contains(err.Error(), "not signed in") {
