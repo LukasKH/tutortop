@@ -227,15 +227,7 @@ func goWorkspace(t *testing.T, a *App) *workspace.Workspace {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := w.Propose(workspace.Curriculum{Language: "go", Modules: []workspace.Module{{
-		ID: "basics", Title: "Basics", References: []workspace.Source{{Title: "Docs", URL: "https://go.dev/doc/"}},
-		Objectives: []workspace.Objective{{ID: "go.strings", Name: "Strings", Title: "Strings"}, {ID: "go.maps", Name: "Maps", Title: "Maps"}},
-	}}}); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := w.ApproveProposal(); err != nil {
-		t.Fatal(err)
-	}
+	planned(t, w, "go.strings", "go.maps")
 	return w
 }
 

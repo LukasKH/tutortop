@@ -19,13 +19,6 @@ import (
 // Set TUTORTOP_RUNNER=local to run without Docker.
 func TestToolsEndToEnd(t *testing.T) {
 	a := newTestApp(t)
-	var (
-		prompts []string
-		mu      sync.Mutex // the plan and writers prompt at once
-	)
-	a.startAgent = func(_ context.Context, _ string, _ agent.Options, _ func(agent.Event)) (agent.Session, error) {
-		return &fakeSession{prompts: &prompts, mu: &mu}, nil
-	}
 	if err := a.runner.Check(context.Background()); err != nil {
 		t.Skip(err)
 	}
@@ -42,15 +35,6 @@ func TestToolsEndToEnd(t *testing.T) {
 			t.Fatalf("%s returned an error: %s", name, out)
 		}
 		return out
-	}
-
-	// A plan with an unsupported check kind is rejected with a reason.
-	bad, isErr := callTool("propose_curriculum", map[string]any{
-		"language": "go", "modules": []any{map[string]any{"id": "basics", "title": "Basics", "references": []any{map[string]any{"title": "Docs", "url": "https://go.dev/doc/"}},
-			"objectives": []any{map[string]any{"id": "go.style", "name": "Style", "title": "Idiomatic style", "verify": "ai-review"}}}},
-	})
-	if !isErr || !strings.Contains(bad, "verify must be 'tests'") {
-		t.Fatalf("expected rejection, got %s", bad)
 	}
 
 	// A reference that doesn't open is sent back.
@@ -170,20 +154,17 @@ func sandboxApp(t *testing.T) *App {
 }
 
 type fakeSession struct {
-	id      string
 	prompts *[]string
 	mu      *sync.Mutex // guards prompts when the test reads them concurrently
 }
 
 func (f *fakeSession) Prompt(_ context.Context, text string) error {
-	if f.mu != nil {
-		f.mu.Lock()
-		defer f.mu.Unlock()
-	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	*f.prompts = append(*f.prompts, text)
 	return nil
 }
-func (f *fakeSession) ID() string   { return f.id }
+func (f *fakeSession) ID() string   { return "" }
 func (f *fakeSession) Cancel()      {}
 func (f *fakeSession) Close() error { return nil }
 

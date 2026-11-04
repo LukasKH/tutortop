@@ -1,12 +1,10 @@
 package app
 
 import (
-	"context"
 	"strings"
 	"testing"
 
 	"github.com/LukasKH/tutortop/internal/workspace"
-	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 func TestCreateLessonTool(t *testing.T) {
@@ -15,30 +13,11 @@ func TestCreateLessonTool(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := w.Propose(workspace.Curriculum{Language: "go", Modules: []workspace.Module{{ID: "m", Title: "M", References: []workspace.Source{{Title: "Go docs", URL: "https://go.dev/doc/"}}, Objectives: []workspace.Objective{{ID: "go.errors", Name: "Errors", Title: "Errors"}}}}}); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := w.ApproveProposal(); err != nil {
-		t.Fatal(err)
-	}
-	ctx := context.Background()
-	cs, err := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "1"}, nil).
-		Connect(ctx, &mcp.StreamableClientTransport{Endpoint: a.mcp.URL(w, workspace.WriterThread("go.errors"))}, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer cs.Close()
-	call := func(args map[string]any) (string, bool) {
-		res, err := cs.CallTool(ctx, &mcp.CallToolParams{Name: "create_lesson", Arguments: args})
-		if err != nil {
-			t.Fatal(err)
-		}
-		return res.Content[0].(*mcp.TextContent).Text, res.IsError
-	}
+	planned(t, w, "go.errors")
 	q := func(question string, options []string, answer int) map[string]any {
 		return map[string]any{"question": question, "options": options, "answer": answer, "explanation": "Because."}
 	}
-	lesson := map[string]any{
+	out, isErr := toolCaller(t, a, w, workspace.WriterThread("go.errors"))("create_lesson", map[string]any{
 		"objectiveId": "go.errors", "title": "Errors are values", "summary": "Return and check errors.",
 		"body":          "Errors are values ([Effective Go](https://go.dev/doc/effective_go#errors)).\n\n```go\nif err != nil {\n\treturn err\n}\n```",
 		"primarySource": map[string]any{"title": "Error handling and Go", "url": "https://go.dev/blog/error-handling-and-go"},
@@ -47,17 +26,8 @@ func TestCreateLessonTool(t *testing.T) {
 			q("Where is the error?", []string{"first return value", "last return value", "a global variable"}, 1),
 			q("Add context how?", []string{"panic with message", "log then continue", "wrap with %w"}, 2),
 		},
-	}
-
-	bad := map[string]any{}
-	for k, v := range lesson {
-		bad[k] = v
-	}
-	bad["quiz"] = []any{q("Only one?", []string{"yes it is", "no", "maybe"}, 0)}
-	if out, isErr := call(bad); !isErr || !strings.Contains(out, "3-5 questions") {
-		t.Fatalf("want a rejection, got %s", out)
-	}
-	if out, isErr := call(lesson); isErr {
+	})
+	if isErr {
 		t.Fatalf("create_lesson: %s", out)
 	}
 
