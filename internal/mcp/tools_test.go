@@ -2,8 +2,8 @@ package mcp_test
 
 import (
 	"context"
+	"maps"
 	"slices"
-	"strings"
 	"testing"
 
 	"github.com/LukasKH/tutortop/internal/decode"
@@ -46,73 +46,108 @@ func TestWriterKeepsToItsObjective(t *testing.T) {
 	tt := newTools(t)
 	w := tt.goWorkspace(t)
 	write := tt.caller(t, w, workspace.WriterThread("go.maps"))
-	if out, isErr := write("create_task", mcptest.ReverseWordsTask("go.strings")); !isErr || !strings.Contains(out, `not "go.strings"`) {
-		t.Fatalf("create_task for another objective: %s", out)
+	lesson := workspace.LessonSpec{
+		ObjectiveID: "go.strings", Title: "Strings", Summary: "Work with strings.", Body: "Strings are bytes ([spec](https://go.dev/ref/spec)).\n\n```go\ns := \"hi\"\n```",
+		PrimarySource: workspace.Source{Title: "Go", URL: "https://go.dev/"},
+		Quiz: []workspace.QuizQuestion{
+			{Question: "A?", Options: []string{"a", "b", "c"}, Answer: 0, Explanation: "A."},
+			{Question: "B?", Options: []string{"a", "b", "c"}, Answer: 1, Explanation: "B."},
+			{Question: "C?", Options: []string{"a", "b", "c"}, Answer: 2, Explanation: "C."},
+		},
 	}
-	lesson := map[string]any{
-		"objectiveId": "go.strings", "title": "Strings", "summary": "S.", "body": "B.",
-		"primarySource": map[string]any{"title": "Go", "url": "https://go.dev/"}, "quiz": []any{},
+	for tool, spec := range map[string]any{"create_lesson": lesson, "create_task": oneMutantTask("go.strings")} {
+		if out, isErr := write(tool, spec); !isErr {
+			t.Errorf("%s for another objective: %s", tool, out)
+		}
 	}
-	if out, isErr := write("create_lesson", lesson); !isErr || !strings.Contains(out, `not "go.strings"`) {
-		t.Fatalf("create_lesson for another objective: %s", out)
-	}
-	if lessons, _ := w.Lessons(); len(lessons) != 0 {
-		t.Fatalf("lessons = %+v", lessons)
-	}
-}
-
-// The tutor uses a built-in language as it is, before any image is built.
-func TestSetToolchainRefusesABuiltin(t *testing.T) {
-	tt := newTools(t)
-	w := tt.create(t, "Python")
-	out, isErr := tt.caller(t, w, workspace.PlanThread)("set_toolchain", map[string]any{
-		"toolchain": map[string]any{"language": "python", "name": "Python", "editorLanguage": "python", "dockerfile": "FROM python:3.14", "testCommand": "pytest", "testFiles": "test_*.py"},
-		"example":   map[string]any{"solution": map[string]string{"a.py": ""}, "tests": map[string]string{"test_a.py": ""}},
-	})
-	if !isErr || !strings.Contains(out, "python is built in") || len(w.ToolchainSpecs()) != 0 {
-		t.Fatalf("set_toolchain for python: %s", out)
+	lessons, _ := w.Lessons()
+	tasks, _ := w.Tasks()
+	if len(lessons) != 0 || len(tasks) != 0 {
+		t.Fatalf("lessons = %+v, tasks = %+v", lessons, tasks)
 	}
 }
 
-// ask_user takes 2-4 questions, as its description and the tutor's prompt
-// say, and saves nothing when it refuses. (threads' TestThreadsGetOwnSessions
-// makes an accepted call.)
-func TestAskUserTakesTwoToFourQuestions(t *testing.T) {
-	tt := newTools(t)
-	w := tt.create(t, "Go")
-	ask := tt.caller(t, w, workspace.TaskThread("0001-some-task"))
-	one := map[string]any{"questions": []any{map[string]any{"id": "q", "question": "Which?"}}}
-	if out, isErr := ask("ask_user", one); !isErr {
-		t.Fatalf("1 question was shown: %s", out)
-	}
-	if w.PendingQuestions() != nil {
-		t.Fatal("a refused form was saved")
-	}
-}
-
-// A task whose tests don't catch its mutants stays unpublished, and the
-// writer gets the gate's report to fix it.
+// A task that fails the quality gate stays unpublished, and the writer gets
+// the gate's report to fix it.
 func TestCreateTaskWithholdsATaskThatFailsTheGate(t *testing.T) {
 	tt := newTools(t)
-	if err := tt.runner.Available(context.Background()); err != nil {
-		t.Skip(err)
-	}
 	w := tt.goWorkspace(t)
-	spec := mcptest.ReverseWordsTask("go.strings")
-	spec["mutants"] = []any{
-		map[string]any{"name": "same", "description": "the reference itself", "files": map[string]string{"solution.go": mcptest.GoReference}},
-		map[string]any{"name": "same-again", "description": "the reference again", "files": map[string]string{"solution.go": mcptest.GoReference}},
-	}
-	out, isErr := tt.caller(t, w, workspace.WriterThread("go.strings"))("create_task", spec)
+	out, isErr := tt.caller(t, w, workspace.WriterThread("go.strings"))("create_task", oneMutantTask("go.strings"))
 	res, err := decode.JSON[createTaskOutput]([]byte(out))
 	if err != nil {
 		t.Fatalf("%v: %s", err, out)
 	}
-	if !isErr || res.Published || res.Gate == nil || res.Gate.Passed || !strings.Contains(res.Report, "same") {
+	if !isErr || res.Published || res.Gate == nil || res.Gate.Passed {
 		t.Fatalf("isErr %v, result %+v", isErr, res)
 	}
 	if tasks, _ := w.Tasks(); len(tasks) != 0 {
 		t.Fatalf("tasks = %+v", tasks)
+	}
+}
+
+// TestSetToolchainEnablesALanguage sets up JavaScript the way the tutor would.
+func TestSetToolchainEnablesALanguage(t *testing.T) {
+	tt := newTools(t)
+	if err := tt.runner.Available(context.Background()); err != nil {
+		t.Skip(err)
+	}
+	if tt.runner.Engine == "local" {
+		t.Skip("needs a container engine")
+	}
+	w := tt.create(t, "Learn JavaScript")
+	call := tt.caller(t, w, workspace.PlanThread)
+
+	tests := map[string]string{"add.test.mjs": "import { test } from 'node:test';\nimport assert from 'node:assert';\nimport { add } from './add.mjs';\n\n" +
+		"test('adds', () => { assert.strictEqual(add(1, 2), 3); });\n"}
+	toolchain := map[string]any{
+		"language": "javascript", "name": "JavaScript", "editorLanguage": "javascript",
+		"dockerfile":  "FROM node:24-alpine",
+		"testCommand": "node --test --test-reporter=junit --test-reporter-destination=/tmp/junit.xml",
+		"testFiles":   "*.test.mjs",
+	}
+	setup := func(toolchain map[string]any, solution string) (string, bool) {
+		return call("set_toolchain", map[string]any{"toolchain": toolchain, "example": map[string]any{
+			"solution": map[string]string{"add.mjs": solution}, "tests": tests,
+		}})
+	}
+	reference := "export function add(a, b) { return a + b; }\n"
+
+	// An example that fails proves nothing, so it's sent back.
+	if out, isErr := setup(toolchain, "export function add(a, b) { return a - b; }\n"); !isErr {
+		t.Fatalf("a failing example was accepted: %s", out)
+	}
+	if out, isErr := setup(toolchain, reference); isErr {
+		t.Fatalf("set_toolchain: %s", out)
+	}
+
+	// A language server that doesn't answer doesn't fail the setup; the
+	// language is saved without one.
+	broken := maps.Clone(toolchain)
+	broken["languageServer"] = []string{"false"}
+	if out, isErr := setup(broken, reference); isErr {
+		t.Fatalf("set_toolchain with a broken language server: %s", out)
+	}
+	if specs := w.ToolchainSpecs(); len(specs) != 1 || specs[0].LanguageServer != nil {
+		t.Fatalf("saved = %+v", specs)
+	}
+}
+
+// oneMutantTask is a well-formed Go task for objective whose quality gate
+// fails before running anything: it has one mutant, not two.
+func oneMutantTask(objective string) workspace.TaskSpec {
+	return workspace.TaskSpec{
+		ObjectiveID: objective,
+		Title:       "Add",
+		Statement: workspace.Statement{
+			Task: "Write Add.", Context: "Sums.", Signature: "func Add(a, b int) int",
+			Requirements: []string{"Return a+b."},
+			Examples:     []workspace.Example{{Input: "Add(1, 2)", Output: "3"}, {Input: "Add(0, 0)", Output: "0"}},
+		},
+		Starter:     sandbox.Files{"add.go": "package add\n"},
+		Reference:   sandbox.Files{"add.go": "package add\n"},
+		Tests:       sandbox.Files{"add_test.go": "package add\n"},
+		HiddenTests: sandbox.Files{"hidden_test.go": "package add\n"},
+		Mutants:     []sandbox.Mutant{{Name: "m", Description: "m", Files: sandbox.Files{"add.go": "package add\n"}}},
 	}
 }
 

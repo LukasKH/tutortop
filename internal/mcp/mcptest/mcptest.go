@@ -1,6 +1,6 @@
 // Package mcptest helps test code that serves or calls the mcp package's
-// tools: links that open without the network, a client that calls a thread's
-// tools the way its agent does, and a Go task that passes the quality gate.
+// tools: links that open without the network, and a client that calls a
+// thread's tools the way its agent does.
 package mcptest
 
 import (
@@ -65,76 +65,3 @@ func Session(t *testing.T, url string) *mcpsdk.ClientSession {
 	t.Cleanup(func() { cs.Close() })
 	return cs
 }
-
-// ReverseWordsTask is create_task's input for a Go task for objective that
-// passes the quality gate.
-func ReverseWordsTask(objective string) map[string]any {
-	return map[string]any{
-		"objectiveId": objective,
-		"title":       "Reverse words",
-		"statement": map[string]any{
-			"task":         "Write ReverseWords, which returns the words of a sentence in reverse order.",
-			"context":      "Command-line tools often reorder user input.",
-			"signature":    "func ReverseWords(s string) string",
-			"requirements": []string{"Words are separated by runs of spaces.", "Join the result with single spaces."},
-			"examples": []any{
-				map[string]any{"input": `ReverseWords("hello world")`, "output": `"world hello"`},
-				map[string]any{"input": `ReverseWords("  a   b ")`, "output": `"b a"`, "explanation": "Extra spaces don't make empty words."},
-			},
-		},
-		"starter":     map[string]string{"solution.go": GoStarter},
-		"reference":   map[string]string{"solution.go": GoReference},
-		"tests":       map[string]string{"visible_test.go": goVisible},
-		"hiddenTests": map[string]string{"hidden_test.go": goHidden},
-		"mutants": []any{
-			map[string]any{"name": "split", "description": "keeps empty words", "files": map[string]string{"solution.go": strings.Replace(GoReference, "strings.Fields(s)", `strings.Split(s, " ")`, 1)}},
-			map[string]any{"name": "no-reverse", "description": "forgets to reverse", "files": map[string]string{"solution.go": "package solution\n\nimport \"strings\"\n\nfunc ReverseWords(s string) string { return strings.Join(strings.Fields(s), \" \") }\n"}},
-		},
-	}
-}
-
-// GoReference is ReverseWordsTask's reference solution, which passes every
-// test.
-const GoReference = `package solution
-
-import "strings"
-
-func ReverseWords(s string) string {
-	words := strings.Fields(s)
-	for i, j := 0, len(words)-1; i < j; i, j = i+1, j-1 {
-		words[i], words[j] = words[j], words[i]
-	}
-	return strings.Join(words, " ")
-}
-`
-
-// GoStarter is ReverseWordsTask's starter code, which fails the tests.
-const GoStarter = "package solution\n\nfunc ReverseWords(s string) string {\n\treturn \"\"\n}\n"
-
-const goVisible = `package solution
-
-import "testing"
-
-func TestBasic(t *testing.T) {
-	if got := ReverseWords("hello world"); got != "world hello" {
-		t.Fatalf("got %q", got)
-	}
-}
-`
-
-const goHidden = `package solution
-
-import "testing"
-
-func TestExtraSpaces(t *testing.T) {
-	if got := ReverseWords("  a   b  "); got != "b a" {
-		t.Fatalf("got %q", got)
-	}
-}
-
-func TestEmpty(t *testing.T) {
-	if got := ReverseWords(""); got != "" {
-		t.Fatalf("got %q", got)
-	}
-}
-`
