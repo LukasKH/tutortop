@@ -180,6 +180,12 @@ Keep comments short. Explain why, not what.
 
 ## Tests
 
-Test behaviour that can break. Skip what the types already guarantee.
+Test behaviour that can break: translating a CLI's protocol, permission and path guards, files on disk and their old formats, parsing outside formats, races, and the logic a bug fix changed. Each test is a contract: break the behaviour and the test fails.
+
+Leave out what the compiler or CI already checks (an interface assertion, a registration the generated bindings cover), trivial logic, wording, smoke runs, asserts that a fake was called the way the code calls it, and one validator case per `if`.
 
 Test through a module's interface, the way its callers use it.
+
+Test at one layer: the lowest one that would fail. Don't repeat a case in a wrapper's test.
+
+Extend before you add. When an existing test or table covers the behaviour, add a row or an assertion there.
