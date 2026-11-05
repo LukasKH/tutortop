@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
-	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -143,7 +142,7 @@ func TestStopPostsNoticeAfterReply(t *testing.T) {
 	ag.stop(w.ID, "plan")
 	eventually(t, "stopped", func() bool { c, _ := w.Chat("plan"); return len(c) == 2 })
 	chat, _ := w.Chat("plan")
-	if chat[0].Text != "Well, " || !strings.HasPrefix(chat[1].Text, "Stopped.") {
+	if chat[0].Role != workspace.RoleAssistant || chat[0].Text != "Well, " || chat[1].Role != workspace.RoleNotice {
 		t.Fatalf("chat = %+v", chat)
 	}
 }
@@ -309,21 +308,6 @@ func (s *heldSession) Cancel() {
 }
 
 func (s *heldSession) Close() error { s.closed.Store(true); return nil }
-
-// planned gives a workspace an approved curriculum with these objectives.
-func planned(t *testing.T, w *workspace.Workspace, objectives ...string) {
-	t.Helper()
-	m := workspace.Module{ID: "m", Title: "M", References: []workspace.Source{{Title: "Go docs", URL: "https://go.dev/doc/"}}}
-	for _, id := range objectives {
-		m.Objectives = append(m.Objectives, workspace.Objective{ID: id, Name: id, Title: id})
-	}
-	if err := w.Propose(workspace.Curriculum{Language: "go", Modules: []workspace.Module{m}}); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := w.ApproveProposal(); err != nil {
-		t.Fatal(err)
-	}
-}
 
 // eventually waits up to two seconds for cond to hold.
 func eventually(t *testing.T, what string, cond func() bool) {

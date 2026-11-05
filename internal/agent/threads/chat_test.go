@@ -1,13 +1,9 @@
 package threads
 
 import (
-	"context"
 	"strings"
-	"sync"
 	"testing"
 
-	"github.com/LukasKH/tutortop/internal/agent"
-	"github.com/LukasKH/tutortop/internal/agent/threads/threadstest"
 	"github.com/LukasKH/tutortop/internal/mcp/mcptest"
 	"github.com/LukasKH/tutortop/internal/workspace"
 )
@@ -15,23 +11,8 @@ import (
 // Each chat thread gets its own tutor session and MCP endpoint, and answers
 // to a form go back to the thread that asked.
 func TestThreadsGetOwnSessions(t *testing.T) {
-	var mu sync.Mutex
-	sessions := map[string]*threadstest.Session{} // by MCP URL
-	ag, store := newTestAgents(t, threadstest.CLI(func(_ context.Context, _ string, opts agent.Options, _ func(agent.Event)) (agent.Session, error) {
-		mu.Lock()
-		defer mu.Unlock()
-		s := &threadstest.Session{}
-		sessions[opts.MCPURL] = s
-		return s, nil
-	}))
-	prompts := func(w *workspace.Workspace, thread workspace.Thread) []string {
-		mu.Lock()
-		defer mu.Unlock()
-		if s := sessions[ag.mcp.URL(w, thread, ag)]; s != nil {
-			return s.Prompts()
-		}
-		return nil
-	}
+	fake := &heldAgents{turns: make(chan heldTurn, 8)}
+	ag, store := newTestAgents(t, fake)
 	chat := NewChatService(store, ag)
 	w, err := store.Create("Go", "claude")
 	if err != nil {
@@ -44,6 +25,16 @@ func TestThreadsGetOwnSessions(t *testing.T) {
 	if err := chat.SendMessage(w.ID, "hello task", task.String()); err != nil {
 		t.Fatal(err)
 	}
+	turns := map[string]heldTurn{} // by MCP URL
+	for range 2 {
+		turn := fake.next(t)
+		turns[turn.s.opts.MCPURL] = turn
+	}
+	planTurn, taskTurn := turns[ag.mcp.URL(w, workspace.PlanThread, ag)], turns[ag.mcp.URL(w, task, ag)]
+	if planTurn.s == nil || taskTurn.s == nil || planTurn.s == taskTurn.s {
+		t.Fatalf("sessions by MCP URL = %+v", turns)
+	}
+
 	ask := mcptest.Caller(t, ag.mcp.URL(w, task, ag))
 	if out, isErr := ask("ask_user", map[string]any{"questions": []any{
 		map[string]any{"id": "q1", "question": "Which?"},
@@ -57,12 +48,10 @@ func TestThreadsGetOwnSessions(t *testing.T) {
 	if err := chat.AnswerQuestions(w.ID, map[string]string{"q1": "this one", "q2": "because"}); err != nil {
 		t.Fatal(err)
 	}
-
-	eventually(t, "both threads prompted", func() bool {
-		return len(prompts(w, workspace.PlanThread)) == 1 && len(prompts(w, task)) == 2
-	})
-	if p := prompts(w, task); !strings.Contains(p[1], "this one") {
-		t.Fatalf("answers went elsewhere: %q", p)
+	planTurn.end(nil)
+	taskTurn.end(nil)
+	if answers := fake.next(t); answers.s != taskTurn.s || !strings.Contains(answers.text, "this one") {
+		t.Fatalf("answers went to the wrong session: %q", answers.text)
 	}
 	plan, _ := chat.Chat(w.ID, workspace.PlanThread.String())
 	taskChat, _ := chat.Chat(w.ID, task.String())
