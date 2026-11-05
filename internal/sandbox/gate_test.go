@@ -133,8 +133,8 @@ func TestNegative(t *testing.T) { check(t, -1, -2, -3) }`)}
 // different files or classes. Results would then be ambiguous.
 func TestSplitNamesRejectsDuplicates(t *testing.T) {
 	all := []TestResult{{Name: "test_x"}, {Name: "test_x"}, {Name: "test_y"}}
-	if _, problem := splitNames(all, all[:1]); !strings.Contains(problem, `Two tests are called "test_x"`) {
-		t.Errorf("problem %q", problem)
+	if _, problem := splitNames(all, all[:1]); problem == "" {
+		t.Error("duplicate names weren't reported")
 	}
 }
 

@@ -5,6 +5,7 @@ import (
 	"os/exec"
 	"strings"
 	"testing"
+	"time"
 )
 
 // These run real `go test -json` on the host (the local engine), so they
@@ -22,25 +23,15 @@ func TestRunGo(t *testing.T) {
 		want        []TestResult // Message is matched as a substring
 	}{
 		{
-			name:     "subtests fold into their parent",
-			solution: sum,
-			tests: test(`func TestSum(t *testing.T) {
-	t.Run("positive", func(t *testing.T) {})
-	t.Run("negative", func(t *testing.T) {})
-}
-func TestOther(t *testing.T) {}`),
-			status: StatusPassed,
-			want:   []TestResult{{Name: "TestSum", Passed: true}, {Name: "TestOther", Passed: true}},
-		},
-		{
-			name:     "a failing subtest fails its parent with its message",
+			name:     "subtests fold into their parent, and a failing one fails it",
 			solution: sum,
 			tests: test(`func TestSum(t *testing.T) {
 	t.Run("ok", func(t *testing.T) {})
 	t.Run("bad", func(t *testing.T) { t.Errorf("Sum(2, 2) = %d, want 5", Sum(2, 2)) })
-}`),
+}
+func TestOther(t *testing.T) {}`),
 			status: StatusFailed,
-			want:   []TestResult{{Name: "TestSum", Message: "Sum(2, 2) = 4, want 5"}},
+			want:   []TestResult{{Name: "TestSum", Message: "Sum(2, 2) = 4, want 5"}, {Name: "TestOther", Passed: true}},
 		},
 		{
 			// A panic ends the test binary, so tests after it never report.
@@ -114,6 +105,28 @@ func TestSum(t *testing.T) {}`, "os"),
 			}
 			if strings.Contains(res.Output, `"Action"`) {
 				t.Errorf("output shows raw test2json events:\n%s", res.Output)
+			}
+		})
+	}
+}
+
+// Code that runs too long or prints too much is stopped and ends as an error.
+// Both tests end on their own, so a missed stop shows as a pass.
+func TestRunStopsRunawayCode(t *testing.T) {
+	cases := []struct {
+		name    string
+		test    string
+		timeout time.Duration
+	}{
+		{"a run past its timeout", test(`func TestSum(t *testing.T) { time.Sleep(time.Second) }`, "time"), 200 * time.Millisecond},
+		{"output past the cap", test(`func TestSum(t *testing.T) { fmt.Print(strings.Repeat("x", 5<<20)) }`, "fmt", "strings"), 0},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			job := Job{Toolchain: goToolchain, Solution: Files{"sum.go": "package task\n"}, Tests: Files{"sum_test.go": c.test}, Timeout: c.timeout}
+			if res := runLocal(t, job); res.Status != StatusError || len(res.Tests) != 0 {
+				t.Errorf("status %q with tests %+v, want an error and no tests", res.Status, res.Tests)
 			}
 		})
 	}
