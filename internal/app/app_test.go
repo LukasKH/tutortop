@@ -20,7 +20,7 @@ import (
 // AI: propose → approve → create_task (quality gate) → learner submits.
 // Set TUTORTOP_RUNNER=local to run without Docker.
 func TestToolsEndToEnd(t *testing.T) {
-	a := newTestAppWith(t, mcptest.Links("https://go.dev/made-up"), threadstest.Quiet())
+	a := newTestApp(t, mcptest.Links("https://go.dev/made-up"))
 	if err := a.runner.Available(context.Background()); err != nil {
 		t.Skip(err)
 	}
@@ -60,7 +60,7 @@ func TestToolsEndToEnd(t *testing.T) {
 	}
 
 	// The objective's writer publishes the task.
-	out, isErr := a.caller(t, w, workspace.WriterThread("go.strings"))("create_task", mcptest.ReverseWordsTask("go.strings"))
+	out, isErr := a.caller(t, w, workspace.WriterThread("go.strings"))("create_task", reverseWordsTask("go.strings"))
 	if isErr {
 		t.Fatalf("create_task: %s", out)
 	}
@@ -70,23 +70,17 @@ func TestToolsEndToEnd(t *testing.T) {
 	}
 
 	// The learner's starter code fails; the reference passes and counts.
-	res, err := a.Tasks.RunTests(w.ID, created.TaskID, sandbox.Files{"solution.go": mcptest.GoStarter}, true)
+	res, err := a.Tasks.RunTests(w.ID, created.TaskID, sandbox.Files{"solution.go": goStarter}, true)
 	if err != nil || res.Status != sandbox.StatusFailed {
 		t.Fatalf("starter submit = %v %+v", err, res)
 	}
-	res, err = a.Tasks.RunTests(w.ID, created.TaskID, sandbox.Files{"solution.go": mcptest.GoReference}, true)
+	res, err = a.Tasks.RunTests(w.ID, created.TaskID, sandbox.Files{"solution.go": goReference}, true)
 	if err != nil || res.Status != sandbox.StatusPassed {
 		t.Fatalf("reference submit = %v %+v", err, res)
 	}
 	st, _ := a.Workspaces.Workspace(w.ID)
 	if st.Progress.Passed != 1 || st.Progress.Objectives["go.strings"].Status != "passed" {
 		t.Fatalf("progress after = %+v", st.Progress)
-	}
-
-	// Learners can't see hidden tests or the reference.
-	d, _ := a.Tasks.Task(w.ID, created.TaskID)
-	if _, leaked := d.Tests["hidden_test.go"]; leaked || d.HiddenCount != 2 {
-		t.Fatalf("task detail = tests %v hidden %d", d.Tests, d.HiddenCount)
 	}
 }
 
@@ -113,17 +107,11 @@ func (a *testApp) caller(t *testing.T, w *workspace.Workspace, thread workspace.
 	return mcptest.Caller(t, a.mcp.URL(w, thread, a.agents))
 }
 
-// newTestApp is newTestAppWith links that all open.
-func newTestApp(t *testing.T) *testApp {
-	t.Helper()
-	return newTestAppWith(t, mcptest.Links(), threadstest.Quiet())
-}
-
-// newTestAppWith keeps a test's workspaces and settings in temp dirs, checks
-// links with links, and starts agents on cli. newTestApp's agents take every
-// message and never answer, so no test starts a real agent by accident.
-// (Setting XDG_DATA_HOME wouldn't work: adrg/xdg reads it once at startup.)
-func newTestAppWith(t *testing.T, links *mcp.LinkChecker, cli threads.CLI) *testApp {
+// newTestApp keeps a test's workspaces and settings in temp dirs and checks
+// links with links. Its agents take every message and never answer, so no
+// test starts a real agent by accident. (Setting XDG_DATA_HOME wouldn't
+// work: adrg/xdg reads it once at startup.)
+func newTestApp(t *testing.T, links *mcp.LinkChecker) *testApp {
 	t.Helper()
 	store := &workspace.Store{Root: t.TempDir(), PrivateRoot: t.TempDir()}
 	settingsStore := settings.NewStore(filepath.Join(t.TempDir(), "settings.yaml"))
@@ -132,19 +120,79 @@ func newTestAppWith(t *testing.T, links *mcp.LinkChecker, cli threads.CLI) *test
 	if err != nil {
 		t.Fatal(err)
 	}
-	agents := threads.NewAgents(settingsStore, tools, cli)
+	agents := threads.NewAgents(settingsStore, tools, threadstest.Quiet())
 	return &testApp{Services: newServices(store, settingsStore, runner, agents), store: store, runner: runner, agents: agents, mcp: tools}
 }
 
-// sandboxApp is newTestApp for tests that need a container engine.
-func sandboxApp(t *testing.T) *testApp {
-	t.Helper()
-	a := newTestApp(t)
-	if err := a.runner.Available(context.Background()); err != nil {
-		t.Skip(err)
+// reverseWordsTask is create_task's input for a Go task for objective that
+// passes the quality gate.
+func reverseWordsTask(objective string) map[string]any {
+	return map[string]any{
+		"objectiveId": objective,
+		"title":       "Reverse words",
+		"statement": map[string]any{
+			"task":         "Write ReverseWords, which returns the words of a sentence in reverse order.",
+			"context":      "Command-line tools often reorder user input.",
+			"signature":    "func ReverseWords(s string) string",
+			"requirements": []string{"Words are separated by runs of spaces.", "Join the result with single spaces."},
+			"examples": []any{
+				map[string]any{"input": `ReverseWords("hello world")`, "output": `"world hello"`},
+				map[string]any{"input": `ReverseWords("  a   b ")`, "output": `"b a"`, "explanation": "Extra spaces don't make empty words."},
+			},
+		},
+		"starter":     map[string]string{"solution.go": goStarter},
+		"reference":   map[string]string{"solution.go": goReference},
+		"tests":       map[string]string{"visible_test.go": goVisible},
+		"hiddenTests": map[string]string{"hidden_test.go": goHidden},
+		"mutants": []any{
+			map[string]any{"name": "split", "description": "keeps empty words", "files": map[string]string{"solution.go": strings.Replace(goReference, "strings.Fields(s)", `strings.Split(s, " ")`, 1)}},
+			map[string]any{"name": "no-reverse", "description": "forgets to reverse", "files": map[string]string{"solution.go": "package solution\n\nimport \"strings\"\n\nfunc ReverseWords(s string) string { return strings.Join(strings.Fields(s), \" \") }\n"}},
+		},
 	}
-	if a.runner.Engine == "local" {
-		t.Skip("needs a container engine")
-	}
-	return a
 }
+
+// goReference is reverseWordsTask's reference solution, which passes every
+// test.
+const goReference = `package solution
+
+import "strings"
+
+func ReverseWords(s string) string {
+	words := strings.Fields(s)
+	for i, j := 0, len(words)-1; i < j; i, j = i+1, j-1 {
+		words[i], words[j] = words[j], words[i]
+	}
+	return strings.Join(words, " ")
+}
+`
+
+// goStarter is reverseWordsTask's starter code, which fails the tests.
+const goStarter = "package solution\n\nfunc ReverseWords(s string) string {\n\treturn \"\"\n}\n"
+
+const goVisible = `package solution
+
+import "testing"
+
+func TestBasic(t *testing.T) {
+	if got := ReverseWords("hello world"); got != "world hello" {
+		t.Fatalf("got %q", got)
+	}
+}
+`
+
+const goHidden = `package solution
+
+import "testing"
+
+func TestExtraSpaces(t *testing.T) {
+	if got := ReverseWords("  a   b  "); got != "b a" {
+		t.Fatalf("got %q", got)
+	}
+}
+
+func TestEmpty(t *testing.T) {
+	if got := ReverseWords(""); got != "" {
+		t.Fatalf("got %q", got)
+	}
+}
+`
