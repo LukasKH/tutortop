@@ -29,9 +29,12 @@ type codexSession struct {
 	effort   string
 	onEvent  func(Event)
 
-	mu        sync.Mutex
-	turnID    string
-	turnDone  chan codexTurn
+	mu       sync.Mutex
+	turnID   string
+	turnDone chan codexTurn
+	// cancelled is a Cancel that came before Codex named the turn; Prompt
+	// interrupts the turn once it has its id.
+	cancelled bool
 	filePaths map[string][]string // file-change item id -> paths, for approvals
 }
 
@@ -100,7 +103,7 @@ func (s *codexSession) ID() string { return s.threadID }
 func (s *codexSession) Prompt(ctx context.Context, text string) error {
 	done := make(chan codexTurn, 1)
 	s.mu.Lock()
-	s.turnDone = done
+	s.turnDone, s.cancelled = done, false
 	s.mu.Unlock()
 
 	params := map[string]any{
@@ -118,8 +121,15 @@ func (s *codexSession) Prompt(ctx context.Context, text string) error {
 		return err
 	}
 	s.mu.Lock()
-	s.turnID = res.Turn.ID
+	running := s.turnDone == done // turn/completed may already have come
+	if running {
+		s.turnID = res.Turn.ID
+	}
+	cancelled := s.cancelled
 	s.mu.Unlock()
+	if running && cancelled {
+		s.interrupt(res.Turn.ID)
+	}
 
 	t, err := s.await(ctx, done)
 	if err != nil {
@@ -134,10 +144,17 @@ func (s *codexSession) Prompt(ctx context.Context, text string) error {
 func (s *codexSession) Cancel() {
 	s.mu.Lock()
 	turnID := s.turnID
-	s.mu.Unlock()
-	if turnID == "" {
-		return
+	if turnID == "" && s.turnDone != nil {
+		s.cancelled = true // turn/start hasn't answered yet
 	}
+	s.mu.Unlock()
+	if turnID != "" {
+		s.interrupt(turnID)
+	}
+}
+
+// interrupt asks Codex to end a turn, without waiting for the answer.
+func (s *codexSession) interrupt(turnID string) {
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()

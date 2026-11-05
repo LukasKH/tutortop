@@ -140,6 +140,21 @@ func TestCodexCancel(t *testing.T) {
 	if err := wait(t, done); err != nil {
 		t.Errorf("interrupted turn: %v, want nil", err)
 	}
+
+	// A Cancel before Codex names the turn interrupts it once it does.
+	done = prompt(t, sess, "write another")
+	start := codexExpect(t, cli, "turn/start")
+	sess.Cancel()
+	codexReply(t, cli, start, `{"turn":{"id":"turn_2","status":"inProgress","items":[]}}`)
+	req = codexExpect(t, cli, "turn/interrupt")
+	if req.str("params.turnId") != "turn_2" {
+		t.Errorf("turn/interrupt %v, want the turn that started after Cancel", req)
+	}
+	codexReply(t, cli, req, `{}`)
+	cli.send(t, `{"method":"turn/completed","params":{"threadId":"thr_1","turn":{"id":"turn_2","status":"interrupted","items":[]}}}`)
+	if err := wait(t, done); err != nil {
+		t.Errorf("turn cancelled before it started: %v, want nil", err)
+	}
 }
 
 func TestCodexExit(t *testing.T) {
