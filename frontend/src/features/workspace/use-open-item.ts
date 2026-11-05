@@ -40,11 +40,9 @@ export type NewItem = { item: OpenItem; title: string };
  * New lessons and exercises open, or are pointed out, as they're published.
  */
 export function useOpenItem(id: string, { ws, refresh, dismissFinishedCheck }: Pick<UseWorkspaceResult, "ws" | "refresh" | "dismissFinishedCheck">) {
-  // Each snapshot checks the open item still exists, and what it picks
-  // instead is remembered, so a default doesn't move on its own. Until the
-  // first snapshot, the stored item is unchecked. Older versions stored it
-  // as "task.<id>", though it can be any item; that's read once, so the
-  // learner's open item survives the update.
+  // A replacement for a missing item is stored, so a default doesn't move on
+  // its own. Older versions stored it as "task.<id>"; that's read once, so
+  // the learner's open item survives the update.
   const [storedKey, setStoredKey] = useStored<string | null>(`open-item.${id}`, () => readStored(`task.${id}`, null));
   const stored = parseItemKey(storedKey);
   const item = ws ? resolveOpen(ws, stored) : stored;
@@ -95,13 +93,15 @@ export function useOpenItem(id: string, { ws, refresh, dismissFinishedCheck }: P
   return { item, view, thread, newItem, open, setView };
 }
 
+export type UseOpenItemResult = ReturnType<typeof useOpenItem>;
+
 /**
  * What the centre pane shows, and everything it shows from the snapshot.
  * What changes between snapshots (busy threads, checks) and the calls come
  * from useWorkspace.
  */
 export type Center =
-  | { kind: "setup"; questions: Questions | null; lang: string }
+  | { kind: "setup"; questions: Questions | null }
   | { kind: "proposal"; proposal: Curriculum; current: Curriculum | null; progress: Progress; mission: string }
   | {
       kind: "plan";
@@ -152,7 +152,7 @@ export function centerOf(ws: WorkspaceSnapshot, view: CenterView, open: ItemDeta
   const review = (proposal: Curriculum): Center => ({ kind: "proposal", proposal, current: ws.curriculum, progress: ws.progress, mission: ws.mission });
   if (!ws.curriculum) {
     if (view === "plan") return { kind: "plan", ws, canGoBack: true, canAskTutor: false };
-    return ws.proposal ? review(ws.proposal) : { kind: "setup", questions: centred, lang: open.lang };
+    return ws.proposal ? review(ws.proposal) : { kind: "setup", questions: centred };
   }
   if (view === "proposal" && ws.proposal) return review(ws.proposal);
   if (view === "plan") return { kind: "plan", ws, canGoBack: !!open.item, canAskTutor: true };

@@ -1,6 +1,6 @@
 import { useEffect, useEffectEvent, useRef, useState, type ComponentProps, type ReactNode } from "react";
 import Editor from "@monaco-editor/react";
-import { cn } from "cn";
+import { cn } from "@/lib/utils";
 import { plural } from "@/lib/format";
 import { clamp } from "@/lib/math";
 import { editorOptions, monaco } from "@/lib/monaco";
@@ -8,6 +8,7 @@ import { modelPath, type LanguageStatus } from "@/features/task/lsp";
 import { Results } from "@/features/task/results";
 import { useLanguageServer } from "@/features/task/use-language-server";
 import { useTaskWork } from "@/features/task/use-task-work";
+import { useLiveWorkspace } from "@/features/workspace/use-workspace";
 import { Markdown } from "@/components/markdown";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Page, PageHeader } from "@/components/page";
@@ -16,7 +17,6 @@ import { Splitter } from "@/components/splitter";
 import { useStored } from "@/hooks/use-stored";
 
 type Props = {
-  wsId: string;
   taskId: string;
   /** From the workspace state; kept current by "changed" events. */
   passed: boolean;
@@ -27,7 +27,8 @@ type Props = {
 };
 
 /** An exercise: the statement and tests beside the learner's editor, and the check results under it. */
-export function TaskPanel({ wsId, taskId, passed, moduleTitle, next }: Props) {
+export function TaskPanel({ taskId, passed, moduleTitle, next }: Props) {
+  const { id: wsId } = useLiveWorkspace();
   const work = useTaskWork(wsId, taskId);
   const { detail, files, dirty, error, run, running } = work;
   const [activeFile, setActiveFile] = useState("");

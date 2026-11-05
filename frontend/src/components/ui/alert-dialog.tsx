@@ -1,8 +1,12 @@
 import * as React from "react";
-import { cn } from "cn";
+import { cn } from "@/lib/utils";
 import { AlertDialog as AlertDialogPrimitive } from "radix-ui";
 
 import { Button } from "@/components/ui/button";
+
+// Restyled for the confirm dialog, so its call site doesn't fight shadcn's
+// defaults: one 420px width (no size prop or media slot), with a left-aligned
+// header and a plain footer.
 
 function AlertDialog({ ...props }: React.ComponentProps<typeof AlertDialogPrimitive.Root>) {
   return <AlertDialogPrimitive.Root data-slot="alert-dialog" {...props} />;

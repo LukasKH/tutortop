@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { cn } from "cn";
+import { cn } from "@/lib/utils";
 import { plural } from "@/lib/format";
 import { type Activity } from "@/lib/api";
 import { FlameIcon } from "lucide-react";

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { ObjectiveStatus, TaskShape, TaskSize, WorkspaceService, type Curriculum, type Progress } from "@/lib/api";
 import { TASK_MINUTES, languageLabel, plural } from "@/lib/format";
 import { objectivesOf } from "@/lib/workspace";
+import { useLiveWorkspace } from "@/features/workspace/use-workspace";
 import { Markdown } from "@/components/markdown";
 import { ErrorText } from "@/components/error-text";
 import { Page, PageIntro, ReadingPage } from "@/components/page";
@@ -20,7 +21,6 @@ import {
 } from "@/features/workspace/curriculum-list";
 
 type Props = {
-  wsId: string;
   proposal: Curriculum;
   current: Curriculum | null;
   progress: Progress;
@@ -28,7 +28,8 @@ type Props = {
   mission?: string;
 };
 
-export function ProposalView({ wsId, proposal, current, progress, mission }: Props) {
+export function ProposalView({ proposal, current, progress, mission }: Props) {
+  const { id: wsId } = useLiveWorkspace();
   // The backend fills in defaults when it validates a proposal.
   const { size = TaskSize.SizeMedium, shape = TaskShape.ShapeKata } = proposal.taskDefaults ?? {};
   const [editing, setEditing] = useState(false);

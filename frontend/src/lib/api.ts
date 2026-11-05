@@ -57,10 +57,9 @@ export type {
   WorkspaceSnapshot,
 };
 
-// The backend's services (the generated bindings), one per area. Calls that
-// only read (or, like autosave, are safe to repeat) wait out a short outage,
-// such as the server restarting, instead of failing (patiently). Calls that
-// change something fail at once, so nothing is done twice.
+// The backend's services. Calls that only read, or are safe to repeat like
+// autosave, wait out a short outage such as a server restart (patiently).
+// Calls that change something fail at once, so nothing is done twice.
 
 export const WorkspaceService = {
   ...app.WorkspaceService,
@@ -97,7 +96,10 @@ export function errorText(err: unknown): string {
   return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
-/** The names of the backend's events. Importing them also registers their data types with the runtime. */
+/**
+ * The names of the backend's events. Importing them also registers their data types with the runtime.
+ * Named AppEvents, not events as in Go, to keep it apart from the runtime's Events that listens to them.
+ */
 export * as AppEvents from "@bindings/events";
 
 /** Listens to one of the backend's events (internal/events) for the component's lifetime. */

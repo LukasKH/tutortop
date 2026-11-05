@@ -47,6 +47,9 @@ export async function startZoom() {
   );
 }
 
+// Only the desktop webview has a native bridge (WebView2's or WebKit's); a
+// browser in server mode has neither. The runtime posts through these but
+// doesn't export a check for them.
 type Bridge = {
   chrome?: { webview?: unknown };
   webkit?: { messageHandlers?: { external?: unknown } };

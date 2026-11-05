@@ -1,9 +1,9 @@
 import type { CSSProperties } from "react";
-import { cn } from "cn";
+import { cn } from "@/lib/utils";
 import { afterSetup } from "@/lib/chat";
-import { ChatService, type ChatItem } from "@/lib/api";
+import { ChatService } from "@/lib/api";
 import { PLAN_THREAD } from "@/lib/workspace";
-import { describeItem, type OpenItem } from "@/features/workspace/open-item";
+import { describeItem } from "@/features/workspace/open-item";
 import { useChatPanel } from "@/features/workspace/use-chat-panel";
 import { useChatThreads } from "@/features/workspace/use-chat-threads";
 import { centerOf, placeQuestions, useOpenItem, type Center } from "@/features/workspace/use-open-item";
@@ -71,22 +71,13 @@ export function WorkspaceView({ id, onBack }: Props) {
   }
 
   return (
-    <LiveWorkspaceContext value={{ id, live }}>
+    <LiveWorkspaceContext value={{ id, live, nav, threads, lang: details.lang }}>
       <div
         // Curriculum rail, centre, chat panel (folded into a 44px rail when collapsed).
         className={cn("relative grid h-full", setup ? "grid-cols-[236px_minmax(0,1fr)]" : "grid-cols-[236px_minmax(0,1fr)_var(--chat-w)]")}
         style={setup ? undefined : ({ "--chat-w": chat.open ? `min(${chat.width}px, 50vw)` : "44px" } as CSSProperties)}
       >
-        <Sidebar
-          ws={ws}
-          openItem={view === "item" ? item : null}
-          planOpen={view === "plan"}
-          plan={planAttention}
-          writing={live.writing}
-          onBack={onBack}
-          onOpen={nav.open}
-          onShowPlan={() => nav.setView("plan")}
-        />
+        <Sidebar ws={ws} plan={planAttention} onBack={onBack} />
         <main className="@container flex min-h-0 min-w-0 flex-col overflow-hidden bg-card">
           {ws.proposal && view !== "proposal" && (
             <button
@@ -102,19 +93,12 @@ export function WorkspaceView({ id, onBack }: Props) {
               {live.error}
             </div>
           )}
-          <CenterPane
-            center={center}
-            planItems={threads[PLAN_THREAD] ?? []}
-            onOpen={nav.open}
-            onBack={() => nav.setView("item")}
-            onAskTutor={askTutorAboutPlan}
-          />
+          <CenterPane center={center} onAskTutor={askTutorAboutPlan} />
         </main>
         {setup ? null : chat.open ? (
           <ChatPanel
             thread={thread}
             context={thread === PLAN_THREAD ? "Plan" : item?.kind === "lesson" ? "Lesson" : "Exercise"}
-            lang={details.lang}
             hint={
               hintTask && {
                 level: Math.min(hintTask.hintLevel + 1, 4),
@@ -175,26 +159,23 @@ export function WorkspaceView({ id, onBack }: Props) {
 type CenterProps = {
   /** What to show, with what it shows from the snapshot (centerOf). */
   center: Center;
-  /** The planning conversation, which setup shows in the centre. */
-  planItems: ChatItem[];
-  onOpen: (item: OpenItem) => void;
-  /** Leaves a plan page for the open item. */
-  onBack: () => void;
   onAskTutor: () => void;
 };
 
 /** The centre pane, as centerOf decided. */
-function CenterPane({ center, planItems, onOpen, onBack, onAskTutor }: CenterProps) {
-  const { id, live } = useLiveWorkspace();
+function CenterPane({ center, onAskTutor }: CenterProps) {
+  const { live, nav } = useLiveWorkspace();
   switch (center.kind) {
     case "setup":
-      return <Setup items={planItems} questions={center.questions} lang={center.lang} />;
+      return <Setup questions={center.questions} />;
 
     case "proposal":
-      return <ProposalView wsId={id} proposal={center.proposal} current={center.current} progress={center.progress} mission={center.mission} />;
+      return <ProposalView proposal={center.proposal} current={center.current} progress={center.progress} mission={center.mission} />;
 
     case "plan":
-      return <PlanView ws={center.ws} onClose={center.canGoBack ? onBack : undefined} onAskTutor={center.canAskTutor ? onAskTutor : undefined} />;
+      return (
+        <PlanView ws={center.ws} onClose={center.canGoBack ? () => nav.setView("item") : undefined} onAskTutor={center.canAskTutor ? onAskTutor : undefined} />
+      );
 
     case "questions":
       return (
@@ -215,14 +196,13 @@ function CenterPane({ center, planItems, onOpen, onBack, onAskTutor }: CenterPro
       return (
         <NotWritten
           key={`${part}:${objective.id}`}
-          wsId={id}
           objective={objective}
           part={part}
           moduleTitle={center.moduleTitle}
           writing={live.writing.has(objective.id)}
           check={live.checks[objective.id] ?? null}
           failed={live.writeFailed[objective.id] ?? ""}
-          other={other && { label: part === "lesson" ? "Exercise →" : "← Lesson", onOpen: () => onOpen(other) }}
+          other={other && { label: part === "lesson" ? "Exercise →" : "← Lesson", onOpen: () => nav.open(other) }}
         />
       );
     }
@@ -231,12 +211,11 @@ function CenterPane({ center, planItems, onOpen, onBack, onAskTutor }: CenterPro
       return (
         <LessonPanel
           key={center.lesson.id}
-          wsId={id}
           lessonId={center.lesson.id}
           moduleTitle={center.moduleTitle}
           icon={center.icon}
           lang={center.lang}
-          onOpenExercise={() => onOpen(center.exercise)}
+          onOpenExercise={() => nav.open(center.exercise)}
           exerciseWritten={center.exercise.kind !== "todo"}
           references={center.references}
         />
@@ -247,11 +226,10 @@ function CenterPane({ center, planItems, onOpen, onBack, onAskTutor }: CenterPro
       return (
         <TaskPanel
           key={center.id}
-          wsId={id}
           taskId={center.id}
           passed={center.passed}
           moduleTitle={center.moduleTitle}
-          next={<NextExercise task={center.nextTask} moreComing={center.moreComing} onOpen={() => openNext && onOpen(openNext)} />}
+          next={<NextExercise task={center.nextTask} moreComing={center.moreComing} onOpen={() => openNext && nav.open(openNext)} />}
         />
       );
     }

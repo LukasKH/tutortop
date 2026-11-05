@@ -6,7 +6,7 @@ import { Thinking } from "@/features/chat/thinking";
 import { Spinner } from "@/components/ui/spinner";
 import { Markdown } from "@/components/markdown";
 import { Button } from "@/components/ui/button";
-import { cn } from "cn";
+import { cn } from "@/lib/utils";
 
 type Props = {
   /** One stretch of the planning conversation: what the tutor did since the learner last wrote. */
@@ -14,7 +14,6 @@ type Props = {
   busy: boolean;
   /** The tutor's sandbox check of a language it sets up. */
   check?: SandboxCheck | null;
-  lang?: string;
   onStop?: () => void;
 };
 
@@ -23,7 +22,7 @@ type Props = {
  * line, its messages, and its tool calls folded into one summary line per
  * run (expand it to see each call).
  */
-export function WorkLog({ items, busy, check, lang, onStop }: Props) {
+export function WorkLog({ items, busy, check, onStop }: Props) {
   // Before the first item arrives, the clock runs from when the work started.
   const { since, now } = useClock(busy);
   const start = items[0] ? Date.parse(items[0].at) : since;
@@ -44,7 +43,7 @@ export function WorkLog({ items, busy, check, lang, onStop }: Props) {
           </Button>
         )}
       </div>
-      {groups.map((g) => (Array.isArray(g) ? <ToolGroup key={g[0].id} tools={g} /> : <Entry key={g.id} item={g} lang={lang} />))}
+      {groups.map((g) => (Array.isArray(g) ? <ToolGroup key={g[0].id} tools={g} /> : <Entry key={g.id} item={g} />))}
       {busy && check?.running && (
         <div className="flex min-w-0 items-center gap-2 text-sm text-muted-foreground">
           <Spinner className="size-[12px]" aria-hidden />
@@ -57,10 +56,10 @@ export function WorkLog({ items, busy, check, lang, onStop }: Props) {
 }
 
 /** One item of the log that isn't a tool call. */
-function Entry({ item, lang }: { item: ChatItem; lang?: string }) {
+function Entry({ item }: { item: ChatItem }) {
   switch (item.role) {
     case ChatRole.RoleAssistant:
-      return <Markdown text={item.text} className="prose" lang={lang} />;
+      return <Markdown text={item.text} className="prose" />;
     case ChatRole.RoleUser:
       return <p className="border-l-2 border-input pl-3 wrap-anywhere whitespace-pre-wrap text-soft-foreground">{item.text}</p>;
     case ChatRole.RoleTool:

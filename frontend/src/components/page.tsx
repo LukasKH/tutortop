@@ -1,5 +1,5 @@
 import type { ComponentProps, ReactNode } from "react";
-import { cn } from "cn";
+import { cn } from "@/lib/utils";
 
 /** A page in the workspace's centre column: a header over content that fills the rest. */
 export function Page({ className, ...props }: ComponentProps<"div">) {

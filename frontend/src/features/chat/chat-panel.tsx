@@ -3,6 +3,7 @@ import { ChatRole, ChatStatus, type ChatItem, type SandboxCheck } from "@/lib/ap
 import { useTutor } from "@/features/settings/use-tutor";
 import type { OpenItem } from "@/features/workspace/open-item";
 import type { NewItem } from "@/features/workspace/use-open-item";
+import { useLiveWorkspace } from "@/features/workspace/use-workspace";
 import type { Composer } from "@/features/chat/use-composer";
 import { Thinking } from "@/features/chat/thinking";
 import { Markdown } from "@/components/markdown";
@@ -12,7 +13,7 @@ import { useArmed } from "@/hooks/use-armed";
 import { PanelRightIcon } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
 import { Button } from "@/components/ui/button";
-import { cn } from "cn";
+import { cn } from "@/lib/utils";
 
 /** How a conversation that isn't shown asks for attention: new or running work, and pending questions. */
 export type Attention = { attention: boolean; questions: number };
@@ -24,8 +25,6 @@ type Props = {
   /** The visible thread: "plan", a task id, or a lesson's thread (lib/workspace.ts). */
   thread: string;
   context: ChatContext;
-  /** The language of the open exercise or plan, for colouring code in replies. */
-  lang?: string;
   /** The open exercise's next hint level (1-4), or null when hints don't apply. */
   hint: { level: number; onHint: (level: number) => void } | null;
   items: ChatItem[];
@@ -89,7 +88,7 @@ export function ChatPanel({ composer: { draft, setDraft, inputRef }, ...p }: Pro
             </p>
           )}
           {p.items.map((item) => (
-            <Message key={item.id} item={item} lang={p.lang} />
+            <Message key={item.id} item={item} />
           ))}
           {p.questions}
           <Thinking items={p.items} busy={p.busy} />
@@ -144,7 +143,8 @@ export function ChatRail({
   onExpand,
 }: {
   attention: boolean;
-  /** Some chat's tutor is working (tutorBusy). */ busy: boolean;
+  /** Some chat's tutor is working (tutorBusy). */
+  busy: boolean;
   onExpand: () => void;
 }) {
   return (
@@ -211,7 +211,9 @@ export function StatusLine({ check, newItem, busy, onStop, onOpen }: StatusProps
   );
 }
 
-function Message({ item, lang }: { item: ChatItem; lang?: string }) {
+function Message({ item }: { item: ChatItem }) {
+  // Code in replies is coloured as the open item's language.
+  const { lang } = useLiveWorkspace();
   switch (item.role) {
     case ChatRole.RoleUser:
       return <div className="max-w-[85%] self-end rounded-xl bg-muted px-[11px] py-2 leading-[1.5] wrap-anywhere whitespace-pre-wrap">{item.text}</div>;

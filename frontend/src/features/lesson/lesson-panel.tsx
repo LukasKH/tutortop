@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import { cn } from "cn";
+import { cn } from "@/lib/utils";
 import { LessonService, errorText, type LessonDetail, type QuizResult, type Source } from "@/lib/api";
 import { plural } from "@/lib/format";
+import { useLiveWorkspace } from "@/features/workspace/use-workspace";
 import { Link, Markdown } from "@/components/markdown";
 import { References } from "@/components/references";
 import { TopicIcon } from "@/components/topic-icon";
@@ -11,7 +12,6 @@ import { Page, PageHeader, ReadingPage } from "@/components/page";
 import { Button } from "@/components/ui/button";
 
 type Props = {
-  wsId: string;
   lessonId: string;
   moduleTitle: string;
   /** The workspace's icon, shown small above the title; nothing until one is picked. */
@@ -30,7 +30,8 @@ type Props = {
  * then on to the exercise. The exercise is always reachable, so a learner who knows
  * the topic can skip ahead.
  */
-export function LessonPanel({ wsId, lessonId, moduleTitle, icon, lang, onOpenExercise, exerciseWritten, references }: Props) {
+export function LessonPanel({ lessonId, moduleTitle, icon, lang, onOpenExercise, exerciseWritten, references }: Props) {
+  const { id: wsId } = useLiveWorkspace();
   const [lesson, setLesson] = useState<LessonDetail | null>(null);
   const [results, setResults] = useState<Record<number, QuizResult>>({});
   const [error, setError] = useState("");

@@ -1,5 +1,5 @@
 import type { ComponentProps } from "react";
-import { cn } from "cn";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 
 /** An icon-only button; its label is both the tooltip and the accessible name. */

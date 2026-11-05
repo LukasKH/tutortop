@@ -1,4 +1,4 @@
-import { cn } from "cn";
+import { cn } from "@/lib/utils";
 
 /** An error message, announced when it appears; nothing without one. */
 export function ErrorText({ error, className }: { error: string; className?: string }) {

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ChatRole, ChatService, type ChatItem, type Questions } from "@/lib/api";
+import { ChatRole, ChatService, type Questions } from "@/lib/api";
 import { PLAN_THREAD } from "@/lib/workspace";
 import { useLiveWorkspace } from "@/features/workspace/use-workspace";
 import { QuestionsForm } from "@/features/workspace/questions";
@@ -11,10 +11,7 @@ import { usePending } from "@/hooks/use-pending";
 import { WorkLog } from "@/features/workspace/work-log";
 
 type Props = {
-  /** The planning conversation so far. */
-  items: ChatItem[];
   questions: Questions | null;
-  lang?: string;
 };
 
 /**
@@ -23,8 +20,9 @@ type Props = {
  * itself opens for review once proposed. There's no chat beside it yet; if
  * the tutor stops to ask something in words, the learner replies here.
  */
-export function Setup({ items, questions, lang }: Props) {
-  const { id, live } = useLiveWorkspace();
+export function Setup({ questions }: Props) {
+  const { id, live, threads } = useLiveWorkspace();
+  const items = threads[PLAN_THREAD] ?? [];
   const busy = live.isBusy(PLAN_THREAD);
   // Only what happened since the learner last wrote is shown.
   const lastUser = items.findLastIndex((i) => i.role === ChatRole.RoleUser);
@@ -55,13 +53,7 @@ export function Setup({ items, questions, lang }: Props) {
       ) : (
         <>
           {(busy || recent.length > 0) && (
-            <WorkLog
-              items={recent}
-              busy={busy}
-              check={live.toolchainCheck}
-              lang={lang}
-              onStop={() => ChatService.StopAgent(id, PLAN_THREAD).catch(live.fail)}
-            />
+            <WorkLog items={recent} busy={busy} check={live.toolchainCheck} onStop={() => ChatService.StopAgent(id, PLAN_THREAD).catch(live.fail)} />
           )}
           {!busy && items.length > 0 && <Reply onSend={(text) => ChatService.SendMessage(id, text, PLAN_THREAD)} />}
         </>

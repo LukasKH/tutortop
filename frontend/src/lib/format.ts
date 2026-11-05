@@ -12,7 +12,7 @@ export function languageLabel(lang: string): string {
   return lang === "go" ? "Go" : lang === "python" ? "Python" : lang.length <= 2 ? lang.toUpperCase() : lang.charAt(0).toUpperCase() + lang.slice(1);
 }
 
-/** Rough minutes per task size, as the tutor is told to aim for. */
+/** Rough minutes per task size, as the tutor is told to aim for (TaskDefaults.Size, internal/workspace/curriculum.go). */
 export const TASK_MINUTES: Partial<Record<TaskSize, number>> = {
   [TaskSize.SizeSmall]: 10,
   [TaskSize.SizeMedium]: 25,

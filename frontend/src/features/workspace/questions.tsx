@@ -1,5 +1,5 @@
 import { useState, type KeyboardEvent } from "react";
-import { cn } from "cn";
+import { cn } from "@/lib/utils";
 import { type Question, type Questions } from "@/lib/api";
 import { AutoTextarea } from "@/components/auto-textarea";
 import { ErrorText } from "@/components/error-text";

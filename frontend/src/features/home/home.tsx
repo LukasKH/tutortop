@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { cn } from "cn";
+import { cn } from "@/lib/utils";
 import { ActivityPanel } from "@/features/home/activity-panel";
 import { WorkspaceService, errorText, type Activity, type Environment, type Summary } from "@/lib/api";
 import { checkEnvironment, useEnvironment } from "@/lib/agents";

@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { ChevronDownIcon } from "lucide-react";
-import { cn } from "cn";
+import { cn } from "@/lib/utils";
 import { Status, type TaskStatus, type TestResult } from "@/lib/api";
 import { plural } from "@/lib/format";
 import type { Run } from "@/features/task/use-task-work";
@@ -174,6 +174,8 @@ const STATES: Partial<Record<Status, { label: string; tone: string }>> = {
   [Status.StatusError]: { label: "Error", tone: "text-fail" },
 } satisfies Record<Exclude<Status, Status.$zero>, { label: string; tone: string }>;
 
+// Not System.IsMac(): the runtime only knows the OS in the desktop webview, so
+// in server mode a Mac browser would get Ctrl.
 const MAC = /Mac/.test(navigator.platform);
 const KEY_RUN = MAC ? "⌘↵" : "Ctrl↵";
 const KEY_SUBMIT = MAC ? "⇧⌘↵" : "⇧Ctrl↵";

@@ -2,25 +2,19 @@ import type { ReactNode } from "react";
 import { lessonDone } from "@/lib/workspace";
 import { ObjectiveStatus, type LessonStatus, type TaskStatus, type WorkspaceSnapshot } from "@/lib/api";
 import { describeItem, entryOf, itemKey, lessonOf, sameItem, type OpenItem } from "@/features/workspace/open-item";
+import { useLiveWorkspace } from "@/features/workspace/use-workspace";
 import type { Attention } from "@/features/chat/chat-panel";
 import { PencilIcon } from "lucide-react";
-import { cn } from "cn";
+import { cn } from "@/lib/utils";
 import { Spinner } from "@/components/ui/spinner";
 import { TopicIcon } from "@/components/topic-icon";
 import { ProgressBar } from "@/components/progress-bar";
 
 type Props = {
   ws: WorkspaceSnapshot;
-  /** The open item, or null while a plan page is open. */
-  openItem: OpenItem | null;
-  planOpen: boolean;
   /** The planning tutor wants attention: new messages, work, or questions waiting. */
   plan: Attention;
-  /** Objectives whose lesson and exercise are being written in the background (writingObjectives, workspace-state.ts). */
-  writing: Set<string>;
   onBack: () => void;
-  onOpen: (item: OpenItem) => void;
-  onShowPlan: () => void;
 };
 
 /**
@@ -32,11 +26,15 @@ type Props = {
 export function Sidebar(p: Props) {
   const { ws } = p;
   const { progress, curriculum } = ws;
+  const { live, nav } = useLiveWorkspace();
+  // The open item, or null while a plan page is open.
+  const openItem = nav.view === "item" ? nav.item : null;
+  const planOpen = nav.view === "plan";
 
   const tasks = ws.tasks ?? [];
   const objectives = progress.objectives ?? {};
   const lessons = ws.lessons ?? [];
-  const openObjective = describeItem(ws, p.openItem).objective?.id;
+  const openObjective = describeItem(ws, openItem).objective?.id;
   const inPlan = new Set((curriculum?.modules ?? []).flatMap((m) => (m.objectives ?? []).map((o) => o.id)));
   const earlier = tasks.filter((t) => !inPlan.has(t.objective));
 
@@ -91,31 +89,21 @@ export function Sidebar(p: Props) {
                   const passed = isPassed(o.id);
                   const open = o.id === openObjective;
                   const written = !!lesson || oTasks.length > 0;
-                  const writing = p.writing.has(o.id);
+                  const writing = live.writing.has(o.id);
                   const next = o.id === suggested && !open && !writing;
                   return (
                     <li key={o.id}>
                       <button
                         className={objRow({ done: passed, planned: !written, expanded: open, next })}
                         aria-expanded={open}
-                        onClick={() => p.onOpen(entryOf(ws, o.id, p.openItem))}
+                        onClick={() => nav.open(entryOf(ws, o.id, openItem))}
                         title={writing ? `${o.title} (being written)` : o.title}
                       >
                         <Mark>{passed ? "✓" : writing && !open ? <Spinner className="inline-block size-[11px]" /> : ""}</Mark>
                         <span className="min-w-0 truncate">{o.name || o.title}</span>
                         {next && <span className="text-xs text-muted-foreground">next</span>}
                       </button>
-                      {open && (
-                        <Parts
-                          objective={o.id}
-                          lesson={lesson}
-                          lessonItem={lessonOf(ws, o.id)}
-                          tasks={oTasks}
-                          writing={writing}
-                          openItem={p.openItem}
-                          onOpen={p.onOpen}
-                        />
-                      )}
+                      {open && <Parts objective={o.id} lesson={lesson} lessonItem={lessonOf(ws, o.id)} tasks={oTasks} writing={writing} />}
                     </li>
                   );
                 })}
@@ -134,8 +122,8 @@ export function Sidebar(p: Props) {
                   <Row
                     label={t.title}
                     done={t.passed}
-                    current={p.openItem?.kind === "task" && p.openItem.id === t.id}
-                    onClick={() => p.onOpen({ kind: "task", id: t.id })}
+                    current={openItem?.kind === "task" && openItem.id === t.id}
+                    onClick={() => nav.open({ kind: "task", id: t.id })}
                   />
                 </li>
               ))}
@@ -147,20 +135,20 @@ export function Sidebar(p: Props) {
       <div className="mt-auto flex justify-between border-t p-2">
         <button
           className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-soft-foreground transition-colors hover:bg-muted hover:text-foreground aria-[current=page]:bg-muted aria-[current=page]:text-foreground"
-          aria-current={p.planOpen ? "page" : undefined}
-          onClick={p.onShowPlan}
+          aria-current={planOpen ? "page" : undefined}
+          onClick={() => nav.setView("plan")}
         >
           <span className="flex min-w-0 flex-1 flex-col gap-0.5">
             <span
               className={cn(
                 "text-sm font-semibold text-foreground",
                 p.plan.attention &&
-                  !p.planOpen &&
+                  !planOpen &&
                   "after:ml-1.5 after:inline-block after:size-1.5 after:rounded-full after:bg-foreground after:align-middle after:content-['']",
               )}
             >
               Your plan
-              {p.plan.questions > 0 && !p.planOpen && ` · ${p.plan.questions} ${p.plan.questions === 1 ? "question" : "questions"}`}
+              {p.plan.questions > 0 && !planOpen && ` · ${p.plan.questions} ${p.plan.questions === 1 ? "question" : "questions"}`}
             </span>
             <span className="text-xs text-muted-foreground">Mission and curriculum. Change them anytime.</span>
           </span>
@@ -178,8 +166,6 @@ function Parts({
   lessonItem,
   tasks,
   writing,
-  openItem,
-  onOpen,
 }: {
   objective: string;
   lesson?: LessonStatus;
@@ -187,9 +173,9 @@ function Parts({
   lessonItem: OpenItem;
   tasks: TaskStatus[];
   writing: boolean;
-  openItem: OpenItem | null;
-  onOpen: (item: OpenItem) => void;
 }) {
+  // Parts shows only for the open objective, so the item view is open.
+  const { nav } = useLiveWorkspace();
   const exercises: { item: OpenItem; done: boolean; title?: string }[] = tasks.length
     ? tasks.map((t) => ({ item: { kind: "task", id: t.id }, done: t.passed, title: t.title }))
     : [{ item: { kind: "todo", objective, part: "exercise" }, done: false }];
@@ -201,9 +187,9 @@ function Parts({
           done={!!lesson && lessonDone(lesson)}
           missing={!lesson}
           writing={writing && !lesson}
-          current={sameItem(openItem, lessonItem)}
+          current={sameItem(nav.item, lessonItem)}
           title={lesson?.title}
-          onClick={() => onOpen(lessonItem)}
+          onClick={() => nav.open(lessonItem)}
         />
       </li>
       {exercises.map((x, i) => (
@@ -213,9 +199,9 @@ function Parts({
             done={x.done}
             missing={!x.title}
             writing={writing && !x.title}
-            current={sameItem(openItem, x.item)}
+            current={sameItem(nav.item, x.item)}
             title={x.title}
-            onClick={() => onOpen(x.item)}
+            onClick={() => nav.open(x.item)}
           />
         </li>
       ))}

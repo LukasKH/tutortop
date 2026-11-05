@@ -1,5 +1,6 @@
 import { createContext, use, useCallback, useEffect, useReducer } from "react";
-import { ChatService, WorkspaceService, AppEvents, errorText, useEvent } from "@/lib/api";
+import { ChatService, WorkspaceService, AppEvents, errorText, useEvent, type ChatItem } from "@/lib/api";
+import type { UseOpenItemResult } from "@/features/workspace/use-open-item";
 import { initialWorkspace, isBusy, reduceWorkspace, tutorBusy, writingObjectives } from "@/features/workspace/workspace-state";
 
 /**
@@ -38,11 +39,9 @@ export function useWorkspace(id: string) {
   useEvent(AppEvents.CheckStatus, ({ workspace, check, seq }) => {
     if (workspace === id) dispatch({ type: "check", check, seq });
   });
-  // chat:message carries every thread's messages, and two hooks split them by
-  // thread kind: use-chat-threads.ts keeps the chats' transcripts and drops
-  // writers'. A writer has no chat; all the screen shows of its messages is
-  // why it failed, kept here by objective because a writer starting again
-  // clears it (reduceWorkspace).
+  // Chats' messages are kept by use-chat-threads.ts. A writer has no chat: the
+  // screen shows only why it failed, kept here by objective so a writer
+  // starting again can clear it (reduceWorkspace).
   useEvent(AppEvents.ChatMessage, ({ workspace, item }) => {
     if (workspace === id) dispatch({ type: "chat", item });
   });
@@ -78,8 +77,19 @@ export function useWorkspace(id: string) {
 /** What useWorkspace returns: the LiveWorkspace, kept current, and the calls that change it. Not workspace.Workspace or WorkspaceSnapshot. */
 export type UseWorkspaceResult = ReturnType<typeof useWorkspace>;
 
-/** The open workspace's id and useWorkspace's result. WorkspaceView provides it to the panes inside it. */
-export const LiveWorkspaceContext = createContext<{ id: string; live: UseWorkspaceResult } | null>(null);
+/** The open workspace, as WorkspaceView provides it to the panes inside it. */
+export type LiveWorkspace = {
+  id: string;
+  live: UseWorkspaceResult;
+  /** What's open (useOpenItem). */
+  nav: UseOpenItemResult;
+  /** The conversations by thread (useChatThreads). */
+  threads: Record<string, ChatItem[]>;
+  /** The open item's language, for colouring code (describeItem). */
+  lang: string;
+};
+
+export const LiveWorkspaceContext = createContext<LiveWorkspace | null>(null);
 
 export function useLiveWorkspace() {
   const ws = use(LiveWorkspaceContext);

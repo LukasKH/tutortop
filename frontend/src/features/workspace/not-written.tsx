@@ -1,13 +1,13 @@
 import { useState } from "react";
 import { WorkspaceService, errorText, type Objective, type SandboxCheck } from "@/lib/api";
 import type { Part } from "@/features/workspace/open-item";
+import { useLiveWorkspace } from "@/features/workspace/use-workspace";
 import { Spinner } from "@/components/ui/spinner";
 import { ErrorText } from "@/components/error-text";
 import { Page, PageHeader, PageIntro, ReadingPage } from "@/components/page";
 import { Button } from "@/components/ui/button";
 
 type Props = {
-  wsId: string;
   objective: Pick<Objective, "id" | "name" | "title">;
   part: Part;
   moduleTitle: string;
@@ -27,7 +27,8 @@ type Props = {
  * objectives can be written at the same time, and the tutor's chat stays
  * free. The page switches to the real thing when it arrives.
  */
-export function NotWritten({ wsId, objective, part, moduleTitle, writing, check, failed, other }: Props) {
+export function NotWritten({ objective, part, moduleTitle, writing, check, failed, other }: Props) {
+  const { id: wsId } = useLiveWorkspace();
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState("");
   // A writer that finishes while this page is still open didn't write this part.

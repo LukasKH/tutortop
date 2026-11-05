@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { cn } from "cn";
+import { cn } from "@/lib/utils";
 import { Dialogs } from "@wailsio/runtime";
 import { errorText, type Environment, type Prefs } from "@/lib/api";
 import { checkEnvironment, currentModel, effortLabel, loadModels, providerName, useEnvironment, useModels } from "@/lib/agents";

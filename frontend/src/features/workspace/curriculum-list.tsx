@@ -1,5 +1,5 @@
 import type { ComponentProps, ReactNode } from "react";
-import { cn } from "cn";
+import { cn } from "@/lib/utils";
 
 /** The heading over a curriculum: "Curriculum", "Course plan". */
 export function CurriculumTitle({ className, ...props }: ComponentProps<"h1">) {

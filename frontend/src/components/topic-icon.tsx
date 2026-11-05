@@ -1,4 +1,4 @@
-import { cn } from "cn";
+import { cn } from "@/lib/utils";
 import { BookOpen, Braces, ChartColumn, Cpu, Database, Globe, Lock, Network, Regex, SquareTerminal, type LucideIcon } from "lucide-react";
 import {
   siC,

@@ -1,4 +1,4 @@
-import { cn } from "cn";
+import { cn } from "@/lib/utils";
 import { Loader2Icon } from "lucide-react";
 
 // Not a live region: it sits inside rows that already announce what's happening.
