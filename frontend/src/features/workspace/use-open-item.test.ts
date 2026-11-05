@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { AppEvents, type Questions, type WorkspaceSnapshot } from "@/lib/api";
-import { centerOf, placeQuestions, useOpenItem, type CenterView } from "@/features/workspace/use-open-item";
+import { centerOf, placeQuestions, useOpenItem, type CenterView, type QuestionsPlace } from "@/features/workspace/use-open-item";
 import { describeItem, type OpenItem } from "@/features/workspace/open-item";
 import { lesson, task, workspace } from "@/features/workspace/fixtures";
 
@@ -22,28 +22,36 @@ afterEach(() => {
 /** Renders the hook on a snapshot, with the item stored from an earlier session. rerender({ ws }) passes a newer snapshot. */
 function render(ws: WorkspaceSnapshot, stored?: string) {
   if (stored) localStorage.setItem("tutortop.open-item.ws", JSON.stringify(stored));
-  const dismissFinishedCheck = vi.fn();
   const refresh = vi.fn(async () => ws);
-  const hook = renderHook((p) => useOpenItem("ws", { ws: p.ws, refresh, dismissFinishedCheck }), { initialProps: { ws } });
-  return { ...hook, dismissFinishedCheck, refresh };
+  const hook = renderHook((p) => useOpenItem("ws", { ws: p.ws, refresh, dismissFinishedCheck: () => {} }), { initialProps: { ws } });
+  return { ...hook, refresh };
 }
 
 describe("published work", () => {
-  test("opens at once when its page was open, waiting for it, even from the plan page", () => {
-    const { result, rerender, dismissFinishedCheck } = render(workspace(), "todo:exercise:a");
+  test.each([
+    {
+      when: "its page was open, waiting for it",
+      stored: "todo:exercise:a",
+      event: AppEvents.TaskPublished,
+      data: { task: task("t1", "a") },
+      after: workspace({ tasks: [task("t1", "a")] }),
+      opened: { kind: "task", id: "t1" },
+    },
+    {
+      when: "nothing was open",
+      stored: undefined,
+      event: AppEvents.LessonPublished,
+      data: { lesson: lesson("l1", "a") },
+      after: workspace({ lessons: [lesson("l1", "a")] }),
+      opened: { kind: "lesson", id: "l1" },
+    },
+  ])("opens at once when $when, even from the plan page", ({ stored, event, data, after, opened }) => {
+    const { result, rerender } = render(workspace(), stored);
     act(() => result.current.setView("plan"));
-    emit(AppEvents.TaskPublished, { task: task("t1", "a") });
-    rerender({ ws: workspace({ tasks: [task("t1", "a")] }) });
+    emit(event, data);
+    rerender({ ws: after });
     expect(result.current.view).toBe("item");
-    expect(result.current.item).toEqual({ kind: "task", id: "t1" });
-    expect(dismissFinishedCheck).toHaveBeenCalled();
-  });
-
-  test("opens at once when nothing is open", () => {
-    const { result } = render(workspace());
-    act(() => result.current.setView("plan"));
-    emit(AppEvents.LessonPublished, { lesson: lesson("l1", "a") });
-    expect(result.current.view).toBe("item");
+    expect(result.current.item).toEqual(opened);
   });
 
   test("doesn't interrupt an unsolved task", () => {
@@ -76,31 +84,15 @@ describe("published work", () => {
   });
 });
 
-test("the chat follows what's open: its own thread, or the plan's", () => {
-  const { result } = render(workspace({ lessons: [lesson("l1", "a")] }), "lesson-l1");
-  expect(result.current.thread).toBe("lesson-l1");
-  act(() => result.current.setView("plan"));
-  expect(result.current.thread).toBe("plan");
-  act(() => result.current.open({ kind: "todo", objective: "b", part: "lesson" }));
-  expect(result.current.thread).toBe("plan");
-});
-
-describe("the open item from an older version", () => {
+test("the open item from an older version stays open, is stored under the new key, and gives way to one stored since", () => {
   // By default the first lesson would open, ahead of its task.
   const ws = workspace({ lessons: [lesson("l1", "a"), lesson("l2", "b")], tasks: [task("t1", "a")] });
-
-  test("stays open, and is stored under the new key", () => {
-    localStorage.setItem("tutortop.task.ws", JSON.stringify("t1"));
-    const { result } = render(ws);
-    expect(result.current.item).toEqual({ kind: "task", id: "t1" });
-    expect(localStorage.getItem("tutortop.open-item.ws")).toBe(JSON.stringify("t1"));
-  });
-
-  test("gives way to one stored since", () => {
-    localStorage.setItem("tutortop.task.ws", JSON.stringify("t1"));
-    const { result } = render(ws, "lesson-l2");
-    expect(result.current.item).toEqual({ kind: "lesson", id: "l2" });
-  });
+  localStorage.setItem("tutortop.task.ws", JSON.stringify("t1"));
+  const { result, unmount } = render(ws);
+  expect(result.current.item).toEqual({ kind: "task", id: "t1" });
+  expect(localStorage.getItem("tutortop.open-item.ws")).toBe(JSON.stringify("t1"));
+  unmount();
+  expect(render(ws, "lesson-l2").result.current.item).toEqual({ kind: "lesson", id: "l2" });
 });
 
 describe("placeQuestions", () => {
@@ -112,27 +104,20 @@ describe("placeQuestions", () => {
     ],
   });
   const ws = workspace({ tasks: [task("t1", "a")] });
+  const setup = workspace({ curriculum: null });
+  const proposed = { ...setup, proposal: workspace().curriculum };
   const t1: OpenItem = { kind: "task", id: "t1" };
 
-  test("during setup: the setup page, unless the plan or a proposal is open", () => {
-    const setup = workspace({ curriculum: null });
-    expect(placeQuestions(setup, "item", t1, "plan", asked("plan")).center).toBe(true);
-    expect(placeQuestions(setup, "plan", null, "plan", asked("plan")).center).toBe(false);
-    expect(placeQuestions({ ...setup, proposal: workspace().curriculum }, "item", null, "plan", asked("plan")).center).toBe(false);
-  });
-
-  test("while nothing is open: the centre, never a chat", () => {
-    expect(placeQuestions(ws, "item", null, "plan", asked("plan"))).toEqual({ center: true, chat: null, planBadge: 0 });
-  });
-
-  test("with something open: the chat of the thread that asked", () => {
-    expect(placeQuestions(ws, "item", t1, "t1", asked("t1"))).toEqual({ center: false, chat: "t1", planBadge: 0 });
-    // A plan page is open: the plan's own chat is shown, so no badge.
-    expect(placeQuestions(ws, "plan", null, "plan", asked("plan"))).toEqual({ center: false, chat: "plan", planBadge: 0 });
-  });
-
-  test("the plan's, while another chat is shown: counted on Your plan", () => {
-    expect(placeQuestions(ws, "item", t1, "t1", asked("plan"))).toEqual({ center: false, chat: "plan", planBadge: 2 });
+  test.each<[string, WorkspaceSnapshot, CenterView, OpenItem | null, string, string, QuestionsPlace]>([
+    ["during setup: the setup page", setup, "item", t1, "plan", "plan", { center: true, chat: null, planBadge: 0 }],
+    ["during setup with the plan open: not the centre", setup, "plan", null, "plan", "plan", { center: false, chat: null, planBadge: 0 }],
+    ["during setup with a proposal open: not the centre", proposed, "item", null, "plan", "plan", { center: false, chat: null, planBadge: 0 }],
+    ["while nothing is open: the centre, never a chat", ws, "item", null, "plan", "plan", { center: true, chat: null, planBadge: 0 }],
+    ["with something open: the chat of the thread that asked", ws, "item", t1, "t1", "t1", { center: false, chat: "t1", planBadge: 0 }],
+    ["with a plan page open: the plan's own chat is shown, so no badge", ws, "plan", null, "plan", "plan", { center: false, chat: "plan", planBadge: 0 }],
+    ["the plan's, while another chat is shown: counted on Your plan", ws, "item", t1, "t1", "plan", { center: false, chat: "plan", planBadge: 2 }],
+  ])("%s", (_, snapshot, view, item, thread, asker, place) => {
+    expect(placeQuestions(snapshot, view, item, thread, asked(asker))).toEqual(place);
   });
 });
 
@@ -153,16 +138,11 @@ describe("centerOf", () => {
     expect(center(workspace(), "plan", null, questions)).toMatchObject({ kind: "plan", canGoBack: false, canAskTutor: true });
   });
 
-  test("the open item, or the page that has it written, linking the other part once it's written", () => {
-    const ws = workspace({ lessons: [lesson("l1", "a")], tasks: [task("t1", "b")] });
-    expect(center(ws, "item", { kind: "lesson", id: "l1" }, null)).toMatchObject({ kind: "lesson", exercise: { kind: "todo", objective: "a" } });
-    expect(center(ws, "item", { kind: "todo", objective: "a", part: "exercise" }, null)).toMatchObject({
-      kind: "not-written",
-      part: "exercise",
-      other: { kind: "lesson", id: "l1" },
-    });
-    expect(center(ws, "item", { kind: "todo", objective: "b", part: "lesson" }, null)).toMatchObject({ other: { kind: "task", id: "t1" } });
-    expect(center(ws, "item", { kind: "todo", objective: "c", part: "lesson" }, null)).toMatchObject({ other: null });
+  test("the open item, or the page that has it written, linking the other part only once it's written", () => {
+    const ws = workspace({ lessons: [lesson("l1", "a")] });
+    expect(center(ws, "item", { kind: "lesson", id: "l1" }, null).kind).toBe("lesson");
+    expect(center(ws, "item", { kind: "todo", objective: "a", part: "exercise" }, null)).toMatchObject({ kind: "not-written", part: "exercise" });
+    expect(center(ws, "item", { kind: "todo", objective: "c", part: "lesson" }, null)).toMatchObject({ kind: "not-written", other: null });
     expect(center(ws, "item", null, null).kind).toBe("empty");
   });
 

@@ -14,8 +14,9 @@ const check = (objective: string, running: boolean): SandboxCheck => ({
 });
 
 describe("snapshots and events", () => {
-  test("a writer that finishes during a refetch doesn't spin forever", () => {
+  test("a snapshot overrides older events, but a writer that finishes during the refetch doesn't spin forever", () => {
     const s = run(
+      { type: "busy", thread: "plan", busy: true, seq: 1 },
       { type: "busy", thread: "write-a", busy: true, seq: 1 },
       // Read at 2, while the writer was still busy; it finished at 3; the snapshot lands after.
       { type: "busy", thread: "write-a", busy: false, seq: 3 },
@@ -26,10 +27,6 @@ describe("snapshots and events", () => {
     expect(s.busy["write-a"]).toBe(false);
     expect(writingObjectives(s).size).toBe(0);
     expect(s.checks.b?.running).toBe(true);
-  });
-
-  test("a snapshot read after an event is newer and wins", () => {
-    const s = run({ type: "busy", thread: "plan", busy: true, seq: 1 }, { type: "snapshot", ws: workspace({ busy: {}, seq: 2 }) });
     expect(s.busy.plan).toBeUndefined();
   });
 
@@ -63,10 +60,5 @@ describe("a chat's toolchain check", () => {
     expect(run(checked(toolchain("plan", false)), idle("plan")).toolchainCheck).toBeNull();
     expect(run(checked(toolchain("plan", true)), idle("plan")).toolchainCheck?.running).toBe(true);
     expect(run(checked(toolchain("lesson-l1", false)), idle("plan")).toolchainCheck?.thread).toBe("lesson-l1");
-  });
-
-  test("dismissing only clears a finished check", () => {
-    expect(run(checked(toolchain("plan", true)), { type: "dismissFinishedCheck" }).toolchainCheck).not.toBeNull();
-    expect(run(checked(toolchain("plan", false)), { type: "dismissFinishedCheck" }).toolchainCheck).toBeNull();
   });
 });

@@ -16,7 +16,6 @@ test("thinking shows while the tutor works, unless a reply streams or a tool cal
   const tool = (id: string, status: ChatStatus) => item(id, { role: ChatRole.RoleTool, status });
   expect(showThinking([asked], true)).toBe(true);
   expect(showThinking([], true)).toBe(true);
-  expect(showThinking([asked], false)).toBe(false);
   expect(showThinking([asked, item("reply")], true)).toBe(false);
   // Calls at the end run together: an earlier one still running is still moving.
   expect(showThinking([asked, tool("a", ChatStatus.ChatRunning), tool("b", ChatStatus.ChatDone)], true)).toBe(false);

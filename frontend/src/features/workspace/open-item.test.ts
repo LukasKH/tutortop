@@ -38,11 +38,6 @@ describe("resolveOpen", () => {
   });
 });
 
-test("an objective's exercise is its newest unsolved task, else its last", () => {
-  expect(exerciseOf(workspace({ tasks: [task("t1", "a"), task("t2", "a"), task("t3", "a", true)] }), "a")).toEqual({ kind: "task", id: "t2" });
-  expect(exerciseOf(workspace({ tasks: [task("t1", "a", true), task("t2", "a", true)] }), "a")).toEqual({ kind: "task", id: "t2" });
-});
-
 describe("entryOf: clicking an objective", () => {
   test("opens its lesson until the quiz is done, then its exercise", () => {
     const tasks = [task("t1", "a")];
@@ -53,6 +48,11 @@ describe("entryOf: clicking an objective", () => {
   test("keeps the objective's open exercise open", () => {
     const ws = workspace({ tasks: [task("t1", "a"), task("t2", "a")] });
     expect(entryOf(ws, "a", { kind: "task", id: "t1" })).toEqual({ kind: "task", id: "t1" });
+  });
+
+  test("its exercise is its newest unsolved task, else its last", () => {
+    expect(exerciseOf(workspace({ tasks: [task("t1", "a"), task("t2", "a"), task("t3", "a", true)] }), "a")).toEqual({ kind: "task", id: "t2" });
+    expect(exerciseOf(workspace({ tasks: [task("t1", "a", true), task("t2", "a", true)] }), "a")).toEqual({ kind: "task", id: "t2" });
   });
 });
 
