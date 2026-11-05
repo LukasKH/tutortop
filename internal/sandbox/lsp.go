@@ -15,8 +15,7 @@ import (
 )
 
 // The language server protocol frames each message as a Content-Length
-// header, a blank line, then JSON. The editor relays them as they are;
-// ProbeLanguageServer checks a toolchain's server answers.
+// header, a blank line, then JSON. The editor relays them as they are.
 
 // ProbeLanguageServer checks that a toolchain's language server answers the
 // LSP initialize request, so a broken language_server command is caught when

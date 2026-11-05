@@ -102,15 +102,20 @@ func load(b []byte) Prefs {
 		s.Models = map[string]ModelChoice{}
 	}
 	if !knownProvider(s.Provider) {
-		s.Provider = string(agent.Providers()[0].ID)
-		for _, p := range agent.Providers() {
-			if _, err := exec.LookPath(p.Binary); err == nil {
-				s.Provider = string(p.ID)
-				break
-			}
-		}
+		s.Provider = installedProvider()
 	}
 	return s
+}
+
+// installedProvider is the first agent whose CLI is installed, or the first
+// one listed if none is.
+func installedProvider() string {
+	for _, p := range agent.Providers() {
+		if _, err := exec.LookPath(p.Binary); err == nil {
+			return string(p.ID)
+		}
+	}
+	return string(agent.Providers()[0].ID)
 }
 
 // prefsBeforeModels is where settings.yaml kept the model choices before

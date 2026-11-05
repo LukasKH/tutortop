@@ -108,19 +108,19 @@ func (t *threadTools) checkToolchain(ctx context.Context, tc sandbox.Toolchain, 
 	if err != nil {
 		return "", err
 	}
-	if res.Status != sandbox.StatusPassed {
-		var b strings.Builder
-		fmt.Fprintf(&b, "Toolchain check FAILED: the example's tests should all pass, but the run ended with status %q", res.Status)
-		if res.Status == sandbox.StatusError {
-			b.WriteString(" (no readable JUnit report at /tmp/junit.xml, or the code didn't build)")
-		}
-		for _, tr := range res.Tests {
-			if !tr.Passed {
-				fmt.Fprintf(&b, "\n- %s failed: %s", tr.Name, text.Tail(tr.Message, 400))
-			}
-		}
-		fmt.Fprintf(&b, "\nOutput:\n%s", text.Tail(res.Output, 2000))
-		return b.String(), nil
+	if res.Status == sandbox.StatusPassed {
+		return "", nil
 	}
-	return "", nil
+	var b strings.Builder
+	fmt.Fprintf(&b, "Toolchain check FAILED: the example's tests should all pass, but the run ended with status %q", res.Status)
+	if res.Status == sandbox.StatusError {
+		b.WriteString(" (no readable JUnit report at /tmp/junit.xml, or the code didn't build)")
+	}
+	for _, tr := range res.Tests {
+		if !tr.Passed {
+			fmt.Fprintf(&b, "\n- %s failed: %s", tr.Name, text.Tail(tr.Message, 400))
+		}
+	}
+	fmt.Fprintf(&b, "\nOutput:\n%s", text.Tail(res.Output, 2000))
+	return b.String(), nil
 }

@@ -189,14 +189,19 @@ func (w *Workspace) LessonStatuses() ([]LessonStatus, error) {
 	out := make([]LessonStatus, len(lessons))
 	for i, l := range lessons {
 		out[i] = LessonStatus{LessonInfo: l}
-		for _, r := range results[l.ID] {
-			out[i].Answered++
-			if r.Correct {
-				out[i].Correct++
-			}
-		}
+		out[i].count(results[l.ID])
 	}
 	return out, nil
+}
+
+// count adds the answered and correct questions in results.
+func (s *LessonStatus) count(results map[int]QuizResult) {
+	for _, r := range results {
+		s.Answered++
+		if r.Correct {
+			s.Correct++
+		}
+	}
 }
 
 func (w *Workspace) Lesson(id string) (LessonDetail, error) {
@@ -212,15 +217,14 @@ func (w *Workspace) Lesson(id string) (LessonDetail, error) {
 	results := w.history().quiz[id]
 	for i, q := range f.Quiz {
 		d.Quiz = append(d.Quiz, QuizPrompt{Question: q.Question, Options: q.Options})
-		if r, ok := results[i]; ok {
-			r.Answer, r.Explanation = q.Answer, q.Explanation
-			d.Results[i] = r
-			d.Answered++
-			if r.Correct {
-				d.Correct++
-			}
+		r, ok := results[i]
+		if !ok {
+			continue
 		}
+		r.Answer, r.Explanation = q.Answer, q.Explanation
+		d.Results[i] = r
 	}
+	d.count(d.Results)
 	return d, nil
 }
 

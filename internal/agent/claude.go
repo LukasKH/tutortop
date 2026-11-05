@@ -283,8 +283,8 @@ func (s *claudeSession) checkMCP(l claudeLine) {
 	}
 	// Missing, failed, or anything else.
 	s.checkedMCP.Store(true)
-	s.onEvent(Event{Kind: EventWarning, Text: fmt.Sprintf(
-		"The tutor couldn't connect to Tutortop's tools (status: %s), so it can't create tasks or ask questions. Restart the app and try again.", status)})
+	msg := fmt.Sprintf("The tutor couldn't connect to Tutortop's tools (status: %s), so it can't create tasks or ask questions. Restart the app and try again.", status)
+	s.onEvent(Event{Kind: EventWarning, Text: msg})
 }
 
 // answerControl handles Claude Code's requests to us. Permission requests
@@ -412,10 +412,11 @@ func claudeSessionExists(cwd, id string) bool {
 	// prefix, like the Python SDK does.
 	entries, _ := os.ReadDir(projects)
 	for _, e := range entries {
-		if e.IsDir() && strings.HasPrefix(e.Name(), name[:claudeMaxNameLen]+"-") {
-			if _, err := os.Stat(filepath.Join(projects, e.Name(), id+".jsonl")); err == nil {
-				return true
-			}
+		if !e.IsDir() || !strings.HasPrefix(e.Name(), name[:claudeMaxNameLen]+"-") {
+			continue
+		}
+		if _, err := os.Stat(filepath.Join(projects, e.Name(), id+".jsonl")); err == nil {
+			return true
 		}
 	}
 	return false

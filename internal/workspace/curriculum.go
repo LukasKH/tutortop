@@ -19,20 +19,14 @@ type Curriculum struct {
 	Modules      []Module     `yaml:"modules" json:"modules"`
 }
 
-// Languages reports whether a language can be used. *Workspace is the real
-// one; tests fake it.
-type Languages interface {
-	CheckLanguage(language string) error
-}
-
-// Validate fills defaults and reports every problem at once, so the agent can
-// fix them in one go. langs reports whether a language is usable. Plans
-// approved before references existed lack them; they're only checked here,
-// when the tutor proposes a plan.
-func (c *Curriculum) Validate(langs Languages) error {
+// validate fills defaults and reports every problem at once, so the agent can
+// fix them in one go. w reports whether a language is usable. Plans approved
+// before references existed lack them; they're only checked here, when the
+// tutor proposes a plan.
+func (c *Curriculum) validate(w *Workspace) error {
 	var p problems
 
-	if err := langs.CheckLanguage(c.Language); err != nil {
+	if err := w.CheckLanguage(c.Language); err != nil {
 		p.addf("language: %v", err)
 	}
 	c.TaskDefaults.validate(&p)
@@ -43,7 +37,7 @@ func (c *Curriculum) Validate(langs Languages) error {
 	// Module and objective ids share one namespace.
 	seen := map[string]bool{}
 	for mi := range c.Modules {
-		c.Modules[mi].validate(&p, seen, langs)
+		c.Modules[mi].validate(&p, seen, w)
 	}
 	return p.err("curriculum")
 }
@@ -87,7 +81,7 @@ func (w *Workspace) Proposal() (*Curriculum, error) {
 
 // Propose validates a plan and stores it until the learner approves it.
 func (w *Workspace) Propose(c Curriculum) error {
-	if err := c.Validate(w); err != nil {
+	if err := c.validate(w); err != nil {
 		return err
 	}
 	return writeYAML(w.path(".tutortop", "proposal.yaml"), c)
@@ -194,7 +188,7 @@ type Module struct {
 
 // validate fills the defaults of the module's objectives and adds what's
 // wrong to p. seen holds the ids taken so far.
-func (m *Module) validate(p *problems, seen map[string]bool, langs Languages) {
+func (m *Module) validate(p *problems, seen map[string]bool, w *Workspace) {
 	if !moduleID.MatchString(m.ID) {
 		p.addf("module id %q must be kebab-case", m.ID)
 	}
@@ -217,7 +211,7 @@ func (m *Module) validate(p *problems, seen map[string]bool, langs Languages) {
 		}
 	}
 	for oi := range m.Objectives {
-		m.Objectives[oi].validate(p, seen, langs)
+		m.Objectives[oi].validate(p, seen, w)
 	}
 }
 
@@ -249,7 +243,7 @@ type Objective struct {
 
 // validate fills the objective's defaults and adds what's wrong to p. seen
 // holds the ids taken so far.
-func (o *Objective) validate(p *problems, seen map[string]bool, langs Languages) {
+func (o *Objective) validate(p *problems, seen map[string]bool, w *Workspace) {
 	if !objectiveID.MatchString(o.ID) {
 		p.addf("objective id %q must be lowercase, dotted or dashed", o.ID)
 	}
@@ -272,7 +266,7 @@ func (o *Objective) validate(p *problems, seen map[string]bool, langs Languages)
 	if o.Language == "" {
 		return
 	}
-	if err := langs.CheckLanguage(o.Language); err != nil {
+	if err := w.CheckLanguage(o.Language); err != nil {
 		p.addf("objective %q: %v", o.ID, err)
 	}
 }

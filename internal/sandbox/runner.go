@@ -50,16 +50,7 @@ const (
 // or else Podman. With neither installed it keeps "docker", and Available says
 // how to get one.
 func New() *Runner {
-	engine := Engine(os.Getenv("TUTORTOP_RUNNER"))
-	if engine == "" {
-		engine = Docker
-		if _, err := exec.LookPath(string(Docker)); err != nil {
-			if _, err := exec.LookPath(string(Podman)); err == nil {
-				engine = Podman
-			}
-		}
-	}
-	return &Runner{Engine: engine, prepared: map[string]bool{}}
+	return &Runner{Engine: detectEngine(), prepared: map[string]bool{}}
 }
 
 // Available reports whether the sandbox's engine is usable, with a fix-it
@@ -102,32 +93,6 @@ func (r *Runner) Prepare(ctx context.Context, tc Toolchain) error {
 		return ctx.Err()
 	}
 }
-
-// buildTimeout only stops a stuck build. A healthy first build can take a
-// while: it pulls a base image of a gigabyte or more, and a custom toolchain
-// may compile tools.
-const buildTimeout = time.Hour
-
-func (r *Runner) build(ctx context.Context, tc Toolchain) error {
-	if exec.CommandContext(ctx, string(r.Engine), "image", "inspect", tc.Image).Run() != nil {
-		cmd := exec.CommandContext(ctx, string(r.Engine), "build", "-t", tc.Image, "-")
-		cmd.Stdin = strings.NewReader(tc.Dockerfile)
-		if out, err := cmd.CombinedOutput(); err != nil {
-			return fmt.Errorf("preparing the %s sandbox: %v\n%s", tc.Name, err, text.Tail(string(out), 1500))
-		}
-	}
-	r.mu.Lock()
-	r.prepared[tc.Image] = true
-	r.mu.Unlock()
-	return nil
-}
-
-const maxOutput = 4 << 20 // bytes of test output kept before the run is stopped
-
-var (
-	errTimeout       = errors.New("timed out")
-	errTooMuchOutput = errors.New("too much output")
-)
 
 // Run executes the job and returns per-test results. An error is returned only
 // for infrastructure problems; code that fails to build, hangs or floods the
@@ -196,41 +161,6 @@ func (r *Runner) Run(ctx context.Context, job Job) (Result, error) {
 	return res, nil
 }
 
-// exec unpacks the files into a fresh directory and runs the script there:
-// in a throwaway container, or in a temp dir on the host in local mode.
-func (r *Runner) exec(ctx context.Context, tc Toolchain, script string, files Files, out *cappedBuffer) error {
-	archive, err := tarFiles(files)
-	if err != nil {
-		return err
-	}
-	shell := "tar -xf - && " + script
-	var cmd *exec.Cmd
-	if r.Engine == Local {
-		dir, err := os.MkdirTemp("", "tutortop-run-")
-		if err != nil {
-			return err
-		}
-		defer os.RemoveAll(dir)
-		cmd = exec.CommandContext(ctx, "sh", "-c", shell)
-		cmd.Dir = dir
-	} else {
-		// The images run as an unprivileged user with a build cache baked in,
-		// so nothing is shared between runs.
-		name := "tutortop-" + uuid.New().String()
-		args := append([]string{"run", "--rm", "-i", "--name", name}, lockdownFlags("512m")...)
-		cmd = exec.CommandContext(ctx, string(r.Engine), append(args, tc.Image, "sh", "-c", shell)...)
-		// Killing the docker client doesn't stop the container, so remove it too.
-		cmd.Cancel = func() error {
-			_ = exec.Command(string(r.Engine), "rm", "-f", name).Run()
-			return cmd.Process.Kill()
-		}
-	}
-	cmd.WaitDelay = 5 * time.Second
-	cmd.Stdin = bytes.NewReader(archive)
-	cmd.Stdout, cmd.Stderr = out, out
-	return cmd.Run()
-}
-
 // Status is how a check run ended.
 type Status string
 
@@ -287,6 +217,80 @@ type Job struct {
 type TestNames struct {
 	Visible []string `yaml:"visible" json:"visible"`
 	Hidden  []string `yaml:"hidden" json:"hidden"`
+}
+
+func detectEngine() Engine {
+	if e := os.Getenv("TUTORTOP_RUNNER"); e != "" {
+		return Engine(e)
+	}
+	if _, err := exec.LookPath(string(Docker)); err == nil {
+		return Docker
+	}
+	if _, err := exec.LookPath(string(Podman)); err == nil {
+		return Podman
+	}
+	return Docker
+}
+
+// buildTimeout only stops a stuck build. A healthy first build can take a
+// while: it pulls a base image of a gigabyte or more, and a custom toolchain
+// may compile tools.
+const buildTimeout = time.Hour
+
+func (r *Runner) build(ctx context.Context, tc Toolchain) error {
+	if exec.CommandContext(ctx, string(r.Engine), "image", "inspect", tc.Image).Run() != nil {
+		cmd := exec.CommandContext(ctx, string(r.Engine), "build", "-t", tc.Image, "-")
+		cmd.Stdin = strings.NewReader(tc.Dockerfile)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			return fmt.Errorf("preparing the %s sandbox: %v\n%s", tc.Name, err, text.Tail(string(out), 1500))
+		}
+	}
+	r.mu.Lock()
+	r.prepared[tc.Image] = true
+	r.mu.Unlock()
+	return nil
+}
+
+const maxOutput = 4 << 20 // bytes of test output kept before the run is stopped
+
+var (
+	errTimeout       = errors.New("timed out")
+	errTooMuchOutput = errors.New("too much output")
+)
+
+// exec unpacks the files into a fresh directory and runs the script there:
+// in a throwaway container, or in a temp dir on the host in local mode.
+func (r *Runner) exec(ctx context.Context, tc Toolchain, script string, files Files, out *cappedBuffer) error {
+	archive, err := tarFiles(files)
+	if err != nil {
+		return err
+	}
+	shell := "tar -xf - && " + script
+	var cmd *exec.Cmd
+	if r.Engine == Local {
+		dir, err := os.MkdirTemp("", "tutortop-run-")
+		if err != nil {
+			return err
+		}
+		defer os.RemoveAll(dir)
+		cmd = exec.CommandContext(ctx, "sh", "-c", shell)
+		cmd.Dir = dir
+	} else {
+		// The images run as an unprivileged user with a build cache baked in,
+		// so nothing is shared between runs.
+		name := "tutortop-" + uuid.New().String()
+		args := append([]string{"run", "--rm", "-i", "--name", name}, lockdownFlags("512m")...)
+		cmd = exec.CommandContext(ctx, string(r.Engine), append(args, tc.Image, "sh", "-c", shell)...)
+		// Killing the docker client doesn't stop the container, so remove it too.
+		cmd.Cancel = func() error {
+			_ = exec.Command(string(r.Engine), "rm", "-f", name).Run()
+			return cmd.Process.Kill()
+		}
+	}
+	cmd.WaitDelay = 5 * time.Second
+	cmd.Stdin = bytes.NewReader(archive)
+	cmd.Stdout, cmd.Stderr = out, out
+	return cmd.Run()
 }
 
 // engineHint turns a failed `<engine> version` into a fix the learner can act on.

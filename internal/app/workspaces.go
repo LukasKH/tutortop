@@ -116,6 +116,27 @@ func (s *WorkspaceService) DeleteWorkspace(id string) error {
 	return s.store.Delete(id)
 }
 
+// WorkspaceSnapshot is everything the workspace screen shows, read at one
+// moment. The frontend keeps it current with events until the next one.
+type WorkspaceSnapshot struct {
+	ID         string                   `json:"id"`
+	Title      string                   `json:"title"`
+	Icon       string                   `json:"icon"`
+	Mission    string                   `json:"mission"`
+	Curriculum *workspace.Curriculum    `json:"curriculum"`
+	Proposal   *workspace.Curriculum    `json:"proposal"`
+	Progress   workspace.Progress       `json:"progress"`
+	Tasks      []workspace.TaskStatus   `json:"tasks"`
+	Lessons    []workspace.LessonStatus `json:"lessons"`
+	Questions  *workspace.Questions     `json:"questions"`
+	Busy       map[string]bool          `json:"busy"` // thread -> its tutor or writer is working
+	// Checks are writers' latest sandbox checks of new tasks, by objective.
+	Checks map[string]events.SandboxCheck `json:"checks"`
+	// Seq is when Busy and Checks were read, in the sequence that numbers
+	// busy and check events: one with a higher Seq happened after.
+	Seq uint64 `json:"seq"`
+}
+
 func (s *WorkspaceService) Workspace(id string) (WorkspaceSnapshot, error) {
 	w, err := s.store.Open(id)
 	if err != nil {
@@ -158,15 +179,6 @@ func (s *WorkspaceService) ApproveProposal(wsID string) error {
 	})
 	s.writers.KeepReady(w, "The learner just approved the plan.")
 	return nil
-}
-
-// prepareImage builds a language's sandbox image in the background, so the
-// first test run is fast. Plans prepare theirs when approved, and workspaces
-// when the app starts (ServiceStartup).
-func (s *WorkspaceService) prepareImage(w *workspace.Workspace, language string) {
-	if tc, err := w.Toolchain(language); err == nil {
-		go s.runner.Prepare(context.Background(), tc)
-	}
 }
 
 // SaveMission saves the learner's own edit of their mission, then asks the
@@ -229,23 +241,11 @@ func (s *WorkspaceService) WriteObjectiveNow(wsID, objectiveID string) error {
 	return nil
 }
 
-// WorkspaceSnapshot is everything the workspace screen shows, read at one
-// moment. The frontend keeps it current with events until the next one.
-type WorkspaceSnapshot struct {
-	ID         string                   `json:"id"`
-	Title      string                   `json:"title"`
-	Icon       string                   `json:"icon"`
-	Mission    string                   `json:"mission"`
-	Curriculum *workspace.Curriculum    `json:"curriculum"`
-	Proposal   *workspace.Curriculum    `json:"proposal"`
-	Progress   workspace.Progress       `json:"progress"`
-	Tasks      []workspace.TaskStatus   `json:"tasks"`
-	Lessons    []workspace.LessonStatus `json:"lessons"`
-	Questions  *workspace.Questions     `json:"questions"`
-	Busy       map[string]bool          `json:"busy"` // thread -> its tutor or writer is working
-	// Checks are writers' latest sandbox checks of new tasks, by objective.
-	Checks map[string]events.SandboxCheck `json:"checks"`
-	// Seq is when Busy and Checks were read, in the sequence that numbers
-	// busy and check events: one with a higher Seq happened after.
-	Seq uint64 `json:"seq"`
+// prepareImage builds a language's sandbox image in the background, so the
+// first test run is fast. Plans prepare theirs when approved, and workspaces
+// when the app starts (ServiceStartup).
+func (s *WorkspaceService) prepareImage(w *workspace.Workspace, language string) {
+	if tc, err := w.Toolchain(language); err == nil {
+		go s.runner.Prepare(context.Background(), tc)
+	}
 }

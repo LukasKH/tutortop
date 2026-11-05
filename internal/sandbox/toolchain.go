@@ -49,36 +49,6 @@ func (tc Toolchain) IsTestFile(name string) bool {
 	return ok
 }
 
-// builtins are the languages the app ships with. The app's descriptions and
-// prompts for the agent name them through BuiltinLanguages. Struct tags name
-// them by hand, and the shared prompt has each one's conventions, so a new
-// one is added to both by hand. docs/architecture.md has the steps for adding
-// one.
-var builtins = map[string]Toolchain{
-	"go":     goToolchain,
-	"python": pythonToolchain,
-}
-
-// Builtin returns a toolchain the app ships with. Other languages are set up
-// per workspace with a ToolchainSpec.
-func Builtin(language string) (Toolchain, bool) {
-	tc, ok := builtins[language]
-	return tc, ok
-}
-
-// BuiltinLanguages lists the ids of the languages the app ships with, sorted.
-func BuiltinLanguages() []string { return slices.Sorted(maps.Keys(builtins)) }
-
-// reportFormat is how a toolchain's test command reports results.
-type reportFormat int
-
-const (
-	// The zero value is no format, so a toolchain that forgets one parses
-	// nothing instead of guessing.
-	goJSON   reportFormat = iota + 1 // `go test -json`
-	junitXML                         // a JUnit XML report per run (junitScript)
-)
-
 // script returns the shell command that runs the tests in the task
 // directory, repeating each test `repeat` times, and prints everything parse
 // needs.
@@ -118,6 +88,36 @@ func (tc Toolchain) readable(stdout string) string {
 	}
 	return stdout
 }
+
+// builtins are the languages the app ships with. The app's descriptions and
+// prompts for the agent name them through BuiltinLanguages. Struct tags name
+// them by hand, and the shared prompt has each one's conventions, so a new
+// one is added to both by hand. docs/architecture.md has the steps for adding
+// one.
+var builtins = map[string]Toolchain{
+	"go":     goToolchain,
+	"python": pythonToolchain,
+}
+
+// Builtin returns a toolchain the app ships with. Other languages are set up
+// per workspace with a ToolchainSpec.
+func Builtin(language string) (Toolchain, bool) {
+	tc, ok := builtins[language]
+	return tc, ok
+}
+
+// BuiltinLanguages lists the ids of the languages the app ships with, sorted.
+func BuiltinLanguages() []string { return slices.Sorted(maps.Keys(builtins)) }
+
+// reportFormat is how a toolchain's test command reports results.
+type reportFormat int
+
+const (
+	// The zero value is no format, so a toolchain that forgets one parses
+	// nothing instead of guessing.
+	goJSON   reportFormat = iota + 1 // `go test -json`
+	junitXML                         // a JUnit XML report per run (junitScript)
+)
 
 // ---- Go ----
 

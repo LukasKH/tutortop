@@ -55,7 +55,7 @@ func (t Thread) String() string {
 	case PlanKind:
 		return "plan"
 	case TaskKind:
-		// A task thread's name is the task's id, returned below.
+		return t.ID
 	case LessonKind:
 		return "lesson-" + t.ID
 	case WriterKind:

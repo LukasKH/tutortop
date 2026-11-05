@@ -25,7 +25,7 @@ func TestCurriculumValidate(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			cur := plan("a", "b")
 			c.change(&cur)
-			wantProblems(t, cur.Validate(anyLanguage{}), c.want...)
+			wantProblems(t, newWorkspace(t).Propose(cur), c.want...)
 		})
 	}
 }
@@ -59,8 +59,3 @@ func TestApproveProposal(t *testing.T) {
 		}
 	}
 }
-
-// anyLanguage accepts every language.
-type anyLanguage struct{}
-
-func (anyLanguage) CheckLanguage(string) error { return nil }

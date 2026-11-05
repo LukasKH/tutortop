@@ -34,7 +34,7 @@ Each package is named after the part of the app it represents, so a name says wh
 - `internal/decode` turns JSON, YAML and XML into typed values (`decode.JSON[T]`, ...), for every package. `internal/text` and `internal/shellpath` are small helpers.
 - `frontend/src/lib/api.ts` wraps the generated bindings and events; components import from it. A few modules use the Wails runtime directly: links open in the browser, the settings pick a folder, the window zooms, and the language client listens to its event outside React. The frontend's own layout is described under [Frontend](#frontend).
 
-Imports point one way: `app` imports the packages below it; `agent/threads` imports `agent`, `mcp`, `settings`, `sandbox`, `workspace` and `events`; `mcp` and `editor` import only `sandbox`, `workspace` and `events`. Test doubles that several packages' tests share live in `mcp/mcptest` (fake links, a tool caller, a Go task that passes the gate) and `agent/threads/threadstest` (a fake agent CLI).
+Imports point one way: `app` imports the packages below it; `agent/threads` imports `agent`, `mcp`, `settings`, `sandbox`, `workspace` and `events`; `mcp` and `editor` import only `sandbox`, `workspace` and `events`. Test doubles that several packages' tests share live in `mcp/mcptest` (fake links, a tool caller and an MCP client session) and `agent/threads/threadstest` (a fake agent CLI).
 
 ## How Wails fits in
 

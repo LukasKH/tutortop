@@ -41,6 +41,29 @@ func NewAgents(settingsStore *settings.Store, tools *mcp.Server, cli CLI) *Agent
 	return &Agents{settings: settingsStore, mcp: tools, cli: cli, agents: map[threadKey]*threadAgent{}, seq: firstSeq()}
 }
 
+// Message is one thing sent to the tutor. What the learner sees in the chat
+// (Shown) can differ from what the tutor receives (Agent): the app attaches
+// the open task as context, and its own instructions to the tutor are shown
+// as short notices.
+type Message struct {
+	Role  workspace.ChatRole // workspace.RoleUser for the learner's words, RoleNotice for app events
+	Shown string
+	Agent string
+}
+
+// CLI opens a session with an agent's CLI. InstalledCLI opens the
+// learner's own; tests fake it.
+type CLI interface {
+	Start(ctx context.Context, provider string, opts agent.Options, onEvent func(agent.Event)) (agent.Session, error)
+}
+
+// InstalledCLI starts the agent CLI installed on the computer.
+type InstalledCLI struct{}
+
+func (InstalledCLI) Start(ctx context.Context, provider string, opts agent.Options, onEvent func(agent.Event)) (agent.Session, error) {
+	return agent.Start(ctx, provider, opts, onEvent)
+}
+
 // Send posts a message in a thread's chat and queues it for that thread's
 // agent, without waiting for the agent to start. Once the message is in the
 // chat, whatever goes wrong with it is posted there too.
@@ -166,12 +189,13 @@ func (ag *Agents) start(w *workspace.Workspace, t workspace.Thread, cfg agentCon
 	ta := &threadAgent{key: threadKey{w.ID, t.String()}, thread: t, cfg: cfg, queue: make(chan string, 32), cancel: cancel, ready: make(chan struct{})}
 	ag.agents[ta.key] = ta
 	go ag.loop(ctx, w, ta)
-	if t.Kind != workspace.PlanKind {
-		for _, other := range ag.agents {
-			tutor := other.thread.Kind == workspace.TaskKind || other.thread.Kind == workspace.LessonKind
-			if tutor && other != ta && other.key.ws == w.ID && other.pending == 0 {
-				ag.end(other)
-			}
+	if t.Kind == workspace.PlanKind {
+		return ta
+	}
+	for _, other := range ag.agents {
+		tutor := other.thread.Kind == workspace.TaskKind || other.thread.Kind == workspace.LessonKind
+		if tutor && other != ta && other.key.ws == w.ID && other.pending == 0 {
+			ag.end(other)
 		}
 	}
 	return ta
@@ -295,29 +319,6 @@ func (ag *Agents) end(ta *threadAgent) {
 		delete(ag.agents, ta.key)
 	}
 	ta.close()
-}
-
-// Message is one thing sent to the tutor. What the learner sees in the chat
-// (Shown) can differ from what the tutor receives (Agent): the app attaches
-// the open task as context, and its own instructions to the tutor are shown
-// as short notices.
-type Message struct {
-	Role  workspace.ChatRole // workspace.RoleUser for the learner's words, RoleNotice for app events
-	Shown string
-	Agent string
-}
-
-// CLI opens a session with an agent's CLI. InstalledCLI opens the
-// learner's own; tests fake it.
-type CLI interface {
-	Start(ctx context.Context, provider string, opts agent.Options, onEvent func(agent.Event)) (agent.Session, error)
-}
-
-// InstalledCLI starts the agent CLI installed on the computer.
-type InstalledCLI struct{}
-
-func (InstalledCLI) Start(ctx context.Context, provider string, opts agent.Options, onEvent func(agent.Event)) (agent.Session, error) {
-	return agent.Start(ctx, provider, opts, onEvent)
 }
 
 // A threadAgent is one thread's running agent: its CLI session and the
