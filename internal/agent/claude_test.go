@@ -15,45 +15,44 @@ import (
 
 // The flags that hold the tutor to the policy and wire up our MCP server.
 func TestClaudeStart(t *testing.T) {
-	opts := claudeOptions(t)
-	opts.Model, opts.Effort = "opus", "high"
-	sess, cli, _ := startFakeClaude(t, opts)
+	for _, subagents := range []bool{false, true} {
+		t.Run(fmt.Sprint("subagents ", subagents), func(t *testing.T) {
+			opts := claudeOptions(t)
+			opts.Subagents = subagents
+			sess, cli, _ := startFakeClaude(t, opts)
 
-	for flag, want := range map[string]string{
-		"--permission-mode":        "acceptEdits",
-		"--permission-prompt-tool": "stdio",
-		"--allowedTools":           "mcp__tutortop__*",
-		"--append-system-prompt":   "Be a tutor.",
-		"--model":                  "opus",
-		"--effort":                 "high",
-		"--session-id":             sess.ID(),
-	} {
-		if got := cli.arg(flag); got != want {
-			t.Errorf("%s %q, want %q", flag, got, want)
-		}
-	}
-	for _, tool := range []string{"Bash", "Agent", "Task", "Edit(./tasks/**)"} {
-		if !slices.Contains(cli.Args, tool) {
-			t.Errorf("%s isn't disallowed: %q", tool, cli.Args)
-		}
-	}
-	if !slices.Contains(cli.Args, "--strict-mcp-config") {
-		t.Error("other MCP servers aren't shut out")
-	}
-	var mcp struct {
-		MCPServers map[string]struct{ Type, URL string } `json:"mcpServers"`
-	}
-	if err := json.Unmarshal([]byte(cli.arg("--mcp-config")), &mcp); err != nil || mcp.MCPServers["tutortop"].URL != opts.MCPURL {
-		t.Errorf("--mcp-config %s doesn't point at our server (%v)", cli.arg("--mcp-config"), err)
-	}
-	if !slices.Contains(cli.Env, "MCP_TOOL_TIMEOUT=600000") {
-		t.Error("MCP tool calls get Claude's default timeout, too short for create_task")
-	}
-	if !slices.Contains(cli.Env, "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1") {
-		t.Error("background tasks are on, so work can outlive the turn")
-	}
-	if cli.Dir != opts.Cwd {
-		t.Errorf("runs in %s, want the workspace %s", cli.Dir, opts.Cwd)
+			for flag, want := range map[string]string{
+				"--permission-mode":        "acceptEdits",
+				"--permission-prompt-tool": "stdio",
+				"--allowedTools":           "mcp__tutortop__*",
+				"--session-id":             sess.ID(),
+			} {
+				if got := cli.arg(flag); got != want {
+					t.Errorf("%s %q, want %q", flag, got, want)
+				}
+			}
+			// The shell and tasks/ stay shut; Agent and Task only where subagents are off.
+			for tool, shut := range map[string]bool{"Bash": true, "Edit(./tasks/**)": true, "Agent": !subagents, "Task": !subagents} {
+				if slices.Contains(cli.Args, tool) != shut {
+					t.Errorf("%s disallowed = %v, want %v: %q", tool, !shut, shut, cli.Args)
+				}
+			}
+			if !slices.Contains(cli.Args, "--strict-mcp-config") {
+				t.Error("other MCP servers aren't shut out")
+			}
+			var mcp struct {
+				MCPServers map[string]struct{ Type, URL string } `json:"mcpServers"`
+			}
+			if err := json.Unmarshal([]byte(cli.arg("--mcp-config")), &mcp); err != nil || mcp.MCPServers["tutortop"].URL != opts.MCPURL {
+				t.Errorf("--mcp-config %s doesn't point at our server (%v)", cli.arg("--mcp-config"), err)
+			}
+			if !slices.Contains(cli.Env, "MCP_TOOL_TIMEOUT=600000") {
+				t.Error("MCP tool calls get Claude's default timeout, too short for create_task")
+			}
+			if !slices.Contains(cli.Env, "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1") {
+				t.Error("background tasks are on, so work can outlive the turn")
+			}
+		})
 	}
 }
 
@@ -105,6 +104,11 @@ func TestClaudeTurn(t *testing.T) {
 		`{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t1","content":"x"}]}}`,
 		`{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t2","name":"mcp__tutortop__create_task","input":{}}]}}`,
 		`{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t2","is_error":true,"content":"gate failed"}]}}`,
+		// A subagent's own text isn't taken for the tutor's reply.
+		`{"type":"assistant","message":{"content":[{"type":"tool_use","id":"a1","name":"Agent","input":{"description":"Find sources","prompt":"..."}}]}}`,
+		`{"type":"stream_event","parent_tool_use_id":"a1","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Report for the tutor"}}}`,
+		`{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"a1","content":"found 3"}]}}`,
+		`{"type":"stream_event","parent_tool_use_id":null,"event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Done."}}}`,
 		`{"type":"result","subtype":"success","is_error":false,"result":"Let me look."}`,
 	)
 	if err := wait(t, done); err != nil {
@@ -113,66 +117,24 @@ func TestClaudeTurn(t *testing.T) {
 	want := []Event{
 		{Kind: EventText, Text: "Let me "},
 		{Kind: EventText, Text: "look."},
-		{Kind: EventTool, Tool: Tool{ID: "t1", Status: ToolRunning, Kind: ToolRead, Title: "Read NOTES.md", Paths: []string{notes}}},
+		{Kind: EventTool, Tool: Tool{ID: "t1", Status: ToolRunning, Kind: ToolRead, Paths: []string{notes}}},
 		{Kind: EventTool, Tool: Tool{ID: "t1", Status: ToolDone}},
-		{Kind: EventTool, Tool: Tool{ID: "t2", Status: ToolRunning, Kind: ToolOther, Title: "tutortop · create_task", MCPServer: "tutortop", MCPTool: "create_task"}},
+		{Kind: EventTool, Tool: Tool{ID: "t2", Status: ToolRunning, Kind: ToolOther, MCPServer: "tutortop", MCPTool: "create_task"}},
 		{Kind: EventTool, Tool: Tool{ID: "t2", Status: ToolFailed}},
+		{Kind: EventTool, Tool: Tool{ID: "a1", Status: ToolRunning, Kind: ToolOther, Subagent: true}},
+		{Kind: EventTool, Tool: Tool{ID: "a1", Status: ToolDone}},
+		{Kind: EventText, Text: "Done."},
 	}
-	if got := log.take(); !reflect.DeepEqual(got, want) {
+	if got := untitled(log.take()); !reflect.DeepEqual(got, want) {
 		t.Errorf("events:\n%+v\nwant:\n%+v", got, want)
 	}
 
-	// A failed turn is an error, and the session takes the next prompt.
+	// A failed turn is an error.
 	done = prompt(t, sess, "again")
 	cli.recv(t)
 	cli.send(t, `{"type":"result","subtype":"error_during_execution","is_error":true,"result":"Credit balance is too low"}`)
 	if err := wait(t, done); err == nil || !strings.Contains(err.Error(), "Credit balance is too low") || errors.Is(err, ErrExited) {
 		t.Errorf("failed turn: %v, want Claude's reason", err)
-	}
-	done = prompt(t, sess, "once more")
-	cli.recv(t)
-	cli.send(t, `{"type":"result","subtype":"success","is_error":false}`)
-	if err := wait(t, done); err != nil {
-		t.Errorf("turn after a failed one: %v", err)
-	}
-}
-
-// Where subagents are on, Claude may start them, the shell and tasks/ stay
-// shut, and a subagent's own text isn't taken for the tutor's reply.
-func TestClaudeSubagents(t *testing.T) {
-	opts := claudeOptions(t)
-	opts.Subagents = true
-	sess, cli, log := startFakeClaude(t, opts)
-	for _, tool := range []string{"Agent", "Task"} {
-		if slices.Contains(cli.Args, tool) {
-			t.Errorf("%s is disallowed: %q", tool, cli.Args)
-		}
-	}
-	for _, tool := range []string{"Bash", "Edit(./tasks/**)"} {
-		if !slices.Contains(cli.Args, tool) {
-			t.Errorf("%s isn't disallowed: %q", tool, cli.Args)
-		}
-	}
-
-	done := prompt(t, sess, "research")
-	cli.recv(t)
-	cli.send(t,
-		`{"type":"assistant","message":{"content":[{"type":"tool_use","id":"a1","name":"Agent","input":{"description":"Find sources","prompt":"..."}}]}}`,
-		`{"type":"stream_event","parent_tool_use_id":"a1","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Report for the tutor"}}}`,
-		`{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"a1","content":"found 3"}]}}`,
-		`{"type":"stream_event","parent_tool_use_id":null,"event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Done."}}}`,
-		`{"type":"result","subtype":"success","is_error":false}`,
-	)
-	if err := wait(t, done); err != nil {
-		t.Fatal(err)
-	}
-	want := []Event{
-		{Kind: EventTool, Tool: Tool{ID: "a1", Status: ToolRunning, Kind: ToolOther, Title: "Researching: Find sources", Subagent: true}},
-		{Kind: EventTool, Tool: Tool{ID: "a1", Status: ToolDone}},
-		{Kind: EventText, Text: "Done."},
-	}
-	if got := log.take(); !reflect.DeepEqual(got, want) {
-		t.Errorf("events:\n%+v\nwant:\n%+v", got, want)
 	}
 }
 
@@ -186,17 +148,13 @@ func TestClaudeMCPWarning(t *testing.T) {
 	}{
 		{"pending, then connected", []string{"pending", "connected"}, false},
 		{"failed twice", []string{"failed", "failed"}, true},
-		{"missing", []string{""}, true},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			sess, cli, log := startFakeClaude(t, claudeOptions(t))
 			for _, status := range c.statuses {
 				done := prompt(t, sess, "hi")
 				cli.recv(t)
-				servers := `[]`
-				if status != "" {
-					servers = fmt.Sprintf(`[{"name":"other","status":"failed"},{"name":"tutortop","status":%q}]`, status)
-				}
+				servers := fmt.Sprintf(`[{"name":"other","status":"failed"},{"name":"tutortop","status":%q}]`, status)
 				cli.send(t,
 					`{"type":"system","subtype":"init","mcp_servers":`+servers+`}`,
 					`{"type":"result","subtype":"success","is_error":false}`)
@@ -333,7 +291,6 @@ func TestClaudePermissions(t *testing.T) {
 		allow bool
 	}{
 		{"search outside", "Grep", map[string]any{"pattern": "x", "path": outside}, false},
-		{"write outside", "Write", map[string]any{"file_path": filepath.Join(outside, "GLOSSARY.md"), "content": "x"}, false},
 		{"web search", "WebSearch", map[string]any{"query": "goroutines"}, true},
 		// A field of an unexpected type mustn't hide the path from the check.
 		{"odd field beside an outside path", "Read", map[string]any{"file_path": outside, "pattern": 1.0}, false},

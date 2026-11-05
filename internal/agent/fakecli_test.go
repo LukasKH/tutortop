@@ -291,6 +291,14 @@ func (l *eventLog) take() []Event {
 	return evs
 }
 
+// untitled clears the tools' titles, which are wording, so tests don't pin them.
+func untitled(evs []Event) []Event {
+	for i := range evs {
+		evs[i].Tool.Title = ""
+	}
+	return evs
+}
+
 // async runs f, which blocks, while the test plays the CLI.
 func async(f func() error) <-chan error {
 	done := make(chan error, 1)

@@ -53,7 +53,6 @@ func TestLive(t *testing.T) {
 				t.Fatal(err)
 			}
 			mu.Lock()
-			defer mu.Unlock()
 			t.Logf("session=%s tools=%v text=%q", sess.ID(), tools, text.String())
 			if !*called {
 				t.Error("the MCP tool was never called")
@@ -61,8 +60,19 @@ func TestLive(t *testing.T) {
 			if !strings.Contains(text.String(), "TURTLE") {
 				t.Error("reply doesn't contain the secret word")
 			}
+			mu.Unlock()
 			if sess.ID() == "" {
 				t.Error("no session id")
+			}
+
+			// Stopping a turn ends it cleanly, and the session goes on.
+			stop := time.AfterFunc(6*time.Second, sess.Cancel)
+			defer stop.Stop()
+			if err := sess.Prompt(ctx, "Write a 400 word essay about goroutines."); err != nil {
+				t.Fatalf("stopped turn: %v", err)
+			}
+			if err := sess.Prompt(ctx, "Say OK."); err != nil {
+				t.Fatalf("turn after a stopped one: %v", err)
 			}
 		})
 	}
