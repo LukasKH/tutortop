@@ -153,7 +153,7 @@ func rSpec() ToolchainSpec {
 		Language:       "r",
 		Name:           "R",
 		EditorLanguage: "r",
-		Dockerfile:     "FROM r-base:4\nRUN R -e 'install.packages(\"testthat\")'\n",
+		Dockerfile:     "FROM docker.io/library/r-base:4\nRUN R -e 'install.packages(\"testthat\")'\n",
 		TestCommand:    "Rscript -e 'testthat::test_dir(\".\", reporter = testthat::JunitReporter$new(file = \"/tmp/junit.xml\"))'",
 		TestFiles:      "test-*.R",
 	}

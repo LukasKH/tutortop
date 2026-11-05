@@ -129,7 +129,7 @@ var goToolchain = Toolchain{
 	// Runs as an unprivileged user, with the standard library, vet and
 	// test2json already compiled so a check only builds the task's package.
 	// (Pattern from Exercism's go-test-runner image.) gopls powers the editor.
-	Dockerfile: `FROM golang:1.27-alpine
+	Dockerfile: `FROM docker.io/library/golang:1.27-alpine
 RUN adduser -D -u 1000 runner && mkdir /work && chown runner /work
 USER runner
 ENV CGO_ENABLED=0 GOFLAGS=-mod=mod GOTOOLCHAIN=local GOPATH=/home/runner/go
@@ -260,7 +260,7 @@ var pythonToolchain = Toolchain{
 	EditorLanguage: "python",
 	Image:          "tutortop-python:4",
 	// basedpyright powers the editor (it ships its own Node.js).
-	Dockerfile: `FROM python:3.14-slim
+	Dockerfile: `FROM docker.io/library/python:3.14-slim
 RUN pip install --no-cache-dir 'pytest==8.*' 'pytest-timeout==2.*' 'pytest-repeat==0.9.*' 'basedpyright==1.*' \
  && useradd -m -u 1000 runner && mkdir /work && chown runner /work
 USER runner
