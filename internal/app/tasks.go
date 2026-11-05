@@ -76,20 +76,25 @@ func (s *TaskService) RunTests(wsID, taskID string, files sandbox.Files, submit 
 	_ = w.RecordAttempt(workspace.Attempt{TaskID: taskID, Kind: kind, Status: res.Status, Passed: p, Total: t})
 	events.Emit(events.WorkspaceChanged, events.Workspace{Workspace: wsID})
 	if firstPass {
-		w.Commit("Pass " + taskID)
-		d, _ := w.Task(taskID)
-		shown := fmt.Sprintf("You passed “%s” (%d/%d tests).", d.Title, p, t)
-		threads.Post(w, workspace.ChatItem{Thread: taskID, Role: workspace.RoleNotice, Text: shown})
-		// Writers keep the next objectives ready, so the learner never waits;
-		// the planning tutor records what was learned.
-		s.writers.KeepReady(w, fmt.Sprintf("The learner just passed “%s”.", d.Title))
-		s.agents.Send(w, workspace.PlanThread, threads.Message{
-			Role:  workspace.RoleNotice,
-			Shown: shown,
-			Agent: fmt.Sprintf("[app] I passed task %s on submit (%d/%d tests). %s Record what I learned if there's evidence worth recording. Writers are preparing what comes next, so don't write lessons or tasks. Reply in one sentence at most.", taskID, p, t, hintSummary(w, taskID)),
-		})
+		s.announcePass(w, taskID, p, t)
 	}
 	return res, nil
+}
+
+// announcePass marks a task's first pass: a commit, a notice in its chat,
+// writers keeping the next objectives ready so the learner never waits, and
+// the planning tutor recording what was learned.
+func (s *TaskService) announcePass(w *workspace.Workspace, taskID string, passed, total int) {
+	w.Commit("Pass " + taskID)
+	d, _ := w.Task(taskID)
+	shown := fmt.Sprintf("You passed “%s” (%d/%d tests).", d.Title, passed, total)
+	threads.Post(w, workspace.ChatItem{Thread: taskID, Role: workspace.RoleNotice, Text: shown})
+	s.writers.KeepReady(w, fmt.Sprintf("The learner just passed “%s”.", d.Title))
+	s.agents.Send(w, workspace.PlanThread, threads.Message{
+		Role:  workspace.RoleNotice,
+		Shown: shown,
+		Agent: fmt.Sprintf("[app] I passed task %s on submit (%d/%d tests). %s Record what I learned if there's evidence worth recording. Writers are preparing what comes next, so don't write lessons or tasks. Reply in one sentence at most.", taskID, passed, total, hintSummary(w, taskID)),
+	})
 }
 
 // hintSummary states exactly how many hints the learner used on a task, so

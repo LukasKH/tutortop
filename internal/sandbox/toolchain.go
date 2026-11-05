@@ -33,17 +33,14 @@ type Toolchain struct {
 	// Empty means the editor gets syntax highlighting only.
 	LanguageServer []string
 
-	// script returns the shell command that runs the tests in the task
-	// directory, repeating each test `repeat` times, and prints everything
-	// parse needs.
-	script func(repeat int) string
-	// parse turns the script's output into per-test results, labelling
-	// those in hidden as hidden. ok is false when the code didn't build.
-	parse func(stdout string, hidden map[string]bool) (tests []TestResult, ok bool)
-	// readable turns the script's output into text for the learner, without
-	// what only parse needs.
-	readable  func(stdout string) string
-	testFiles string // glob matching a test file's base name
+	report reportFormat
+	// testCommand runs a junitXML toolchain's tests once, writing the
+	// report to /tmp/junit.xml.
+	testCommand string
+	// repeatFlag, if set, makes testCommand repeat each test itself, with %d
+	// for the count. Without it the command is run again for each repeat.
+	repeatFlag string
+	testFiles  string // glob matching a test file's base name
 }
 
 // IsTestFile reports whether a file name is one of this language's test files.
@@ -72,6 +69,56 @@ func Builtin(language string) (Toolchain, bool) {
 // BuiltinLanguages lists the ids of the languages the app ships with, sorted.
 func BuiltinLanguages() []string { return slices.Sorted(maps.Keys(builtins)) }
 
+// reportFormat is how a toolchain's test command reports results.
+type reportFormat int
+
+const (
+	// The zero value is no format, so a toolchain that forgets one parses
+	// nothing instead of guessing.
+	goJSON   reportFormat = iota + 1 // `go test -json`
+	junitXML                         // a JUnit XML report per run (junitScript)
+)
+
+// script returns the shell command that runs the tests in the task
+// directory, repeating each test `repeat` times, and prints everything parse
+// needs.
+func (tc Toolchain) script(repeat int) string {
+	switch tc.report {
+	case goJSON:
+		return goScript(repeat)
+	case junitXML:
+		if tc.repeatFlag == "" || repeat <= 1 {
+			return junitScript(tc.testCommand, repeat)
+		}
+		return junitScript(tc.testCommand+" "+fmt.Sprintf(tc.repeatFlag, repeat), 1)
+	}
+	return ""
+}
+
+// parse turns the script's output into per-test results, labelling those in
+// hidden as hidden. ok is false when the code didn't build.
+func (tc Toolchain) parse(stdout string, hidden map[string]bool) (tests []TestResult, ok bool) {
+	switch tc.report {
+	case goJSON:
+		return parseGoTestJSON(stdout, hidden)
+	case junitXML:
+		return parseJUnitRuns(stdout, hidden)
+	}
+	return nil, false
+}
+
+// readable turns the script's output into text for the learner, without
+// what only parse needs.
+func (tc Toolchain) readable(stdout string) string {
+	switch tc.report {
+	case goJSON:
+		return humanGoOutput(stdout)
+	case junitXML:
+		return stripJUnit(stdout)
+	}
+	return stdout
+}
+
 // ---- Go ----
 
 var goToolchain = Toolchain{
@@ -93,25 +140,35 @@ RUN mkdir /tmp/warm && cd /tmp/warm \
  && go test -json ./... > /dev/null && go build std && rm -rf /tmp/warm
 WORKDIR /work
 `,
-	ExtraFiles: map[string]string{"go.mod": "module task\n\ngo 1.27\n"},
-	script: func(repeat int) string {
-		flags := "-count=1"
-		if repeat > 1 {
-			flags = fmt.Sprintf("-count=%d -shuffle=on", repeat)
-		}
-		return "CGO_ENABLED=0 GOFLAGS=-mod=mod GOTOOLCHAIN=local go test -json " + flags + " -timeout=20s ./... 2>&1"
-	},
-	parse:          parseGoTestJSON,
-	readable:       humanGoOutput,
+	ExtraFiles:     map[string]string{"go.mod": "module task\n\ngo 1.27\n"},
+	report:         goJSON,
 	LanguageServer: []string{"/home/runner/go/bin/gopls"},
 	testFiles:      "*_test.go",
 }
 
+func goScript(repeat int) string {
+	flags := "-count=1"
+	if repeat > 1 {
+		flags = fmt.Sprintf("-count=%d -shuffle=on", repeat)
+	}
+	return "CGO_ENABLED=0 GOFLAGS=-mod=mod GOTOOLCHAIN=local go test -json " + flags + " -timeout=20s ./... 2>&1"
+}
+
 type goTestEvent struct {
-	Action string
+	Action goAction
 	Test   string
 	Output string
 }
+
+// goAction is a `go test -json` event's action, those the app reads.
+type goAction string
+
+const (
+	goOutput      goAction = "output"
+	goBuildOutput goAction = "build-output"
+	goPass        goAction = "pass"
+	goFail        goAction = "fail"
+)
 
 // parseGoTestJSON reads `go test -json` output. Build failures produce no test
 // events, so ok=false tells the caller the code didn't compile.
@@ -129,7 +186,7 @@ func parseGoTestJSON(stdout string, hidden map[string]bool) ([]TestResult, bool)
 			continue
 		}
 		if ev.Test == "" {
-			packageFailed = packageFailed || ev.Action == "fail"
+			packageFailed = packageFailed || ev.Action == goFail
 			continue
 		}
 		sawEvents = true
@@ -141,21 +198,23 @@ func parseGoTestJSON(stdout string, hidden map[string]bool) ([]TestResult, bool)
 			order = append(order, top)
 		}
 		switch ev.Action {
-		case "output":
+		case goOutput:
 			if !strings.HasPrefix(strings.TrimSpace(ev.Output), "=== ") {
 				output[top].WriteString(ev.Output)
 			}
-		case "pass":
+		case goPass:
 			// With -count>1 a test reports once per repetition; one failed
 			// repetition fails the test.
 			if ev.Test == top && !failed[top] {
 				results[top].Passed = true
 			}
-		case "fail":
+		case goFail:
 			if ev.Test == top {
 				results[top].Passed = false
 				failed[top] = true
 			}
+		case goBuildOutput:
+			// Build output has no test; it's shown with the whole output.
 		}
 	}
 	out := make([]TestResult, 0, len(order))
@@ -183,7 +242,7 @@ func humanGoOutput(s string) string {
 	for line := range strings.Lines(s) {
 		ev = goTestEvent{} // or the previous line's fields leak into this one
 		if json.Unmarshal([]byte(line), &ev) == nil && ev.Action != "" {
-			if ev.Action == "output" || ev.Action == "build-output" {
+			if ev.Action == goOutput || ev.Action == goBuildOutput {
 				b.WriteString(ev.Output)
 			}
 			continue
@@ -208,16 +267,10 @@ USER runner
 ENV PYTHONDONTWRITEBYTECODE=1
 WORKDIR /work
 `,
+	report:      junitXML,
+	testCommand: "python -m pytest -q -p no:cacheprovider --timeout=20 --junitxml=/tmp/junit.xml",
 	// pytest repeats tests itself (pytest-repeat), so the report is written once.
-	script: func(repeat int) string {
-		count := ""
-		if repeat > 1 {
-			count = fmt.Sprintf(" --count=%d", repeat)
-		}
-		return junitScript("python -m pytest -q -p no:cacheprovider --timeout=20"+count+" --junitxml=/tmp/junit.xml", 1)
-	},
-	parse:          parseJUnitRuns,
-	readable:       stripJUnit,
+	repeatFlag:     "--count=%d",
 	LanguageServer: []string{"basedpyright-langserver", "--stdio"},
 	testFiles:      "test_*.py",
 }

@@ -2,20 +2,9 @@
 // server per thread. It knows the workspaces and the sandbox, not the agents
 // that call it: a thread's agent hands it Checks to show its sandbox checks.
 //
-// tools (tools.go) lists which kind of thread gets which tool, and the line
-// its calls show as in the chat, if any. Each tool is an *mcpsdk.Tool (its
-// name, and a description the agent reads as instructions), a method on
-// threadTools that handles it, and its input and output types, kept together,
-// one file per area: get_state in state.go, the plan's tools in plan.go,
-// set_toolchain in toolchain.go, and the writers' create_task and
-// create_lesson in task.go and lesson.go.
-//
-// To add a tool, write those three next to the others, then add a line to
-// tools with its chat line (or hidden) and the kinds of thread that get it,
-// and say when to use it in the threads' prompts/shared.md
-// (docs/architecture.md has the steps). The SDK derives the input schema
-// from the input type's json and jsonschema tags and rejects calls that
-// don't match it, so the handler only checks what the schema can't say.
+// tools (tools.go) lists which kind of thread gets which tool. Each area's
+// tools live in their own file; docs/architecture.md ("MCP tools") has the
+// steps for adding one.
 package mcp
 
 import (
@@ -31,6 +20,14 @@ import (
 	"github.com/LukasKH/tutortop/internal/workspace"
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
+
+// Checks shows the learner how a sandbox check is going.
+type Checks interface {
+	Show(wsID string, c events.SandboxCheck)
+}
+
+// Name is the name agents know Tutortop's MCP server by.
+const Name = "tutortop"
 
 // Server serves one MCP server per thread, chats and writers alike, on
 // localhost. Each gets a random token in its URL, so an agent can only reach
@@ -52,7 +49,13 @@ func Start(runner *sandbox.Runner, links *LinkChecker) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
-	s := &Server{runner: runner, links: links, baseURL: "http://" + ln.Addr().String(), servers: map[string]*mcpsdk.Server{}, tokens: map[threadKey]string{}}
+	s := &Server{
+		runner:  runner,
+		links:   links,
+		baseURL: "http://" + ln.Addr().String(),
+		servers: map[string]*mcpsdk.Server{},
+		tokens:  map[threadKey]string{},
+	}
 	handler := mcpsdk.NewStreamableHTTPHandler(func(r *http.Request) *mcpsdk.Server {
 		token := strings.TrimPrefix(r.URL.Path, "/mcp/")
 		s.mu.Lock()
@@ -100,14 +103,6 @@ func (s *Server) newServer(w *workspace.Workspace, thread workspace.Thread, chec
 	}
 	return srv
 }
-
-// Checks shows the learner how a sandbox check is going.
-type Checks interface {
-	Show(wsID string, c events.SandboxCheck)
-}
-
-// Name is the name agents know Tutortop's MCP server by.
-const Name = "tutortop"
 
 // threadKey names one thread of one workspace by the thread's name.
 type threadKey struct{ ws, name string }

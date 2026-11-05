@@ -50,12 +50,12 @@ The backend is a set of [Wails services](https://v3.wails.io/features/bindings/s
 | `TaskService` | `app.TaskService` (`internal/app/tasks.go`) | `Task`, `SaveWork`, `ResetWork`, `RunTests` | |
 | `LessonService` | `app.LessonService` (`internal/app/lessons.go`) | `Lesson`, `AnswerQuiz` | |
 | `ChatService` | `threads.ChatService` (`internal/agent/threads/chat.go`) | `Chat`, `SendMessage`, `AnswerQuestions`, `DismissQuestions`, `RequestHint`, `StopAgent` | ending the thread agents as the app quits (`ServiceShutdown`) |
-| `SettingsService` | `settings.Service` (`internal/settings/service.go`) | `Settings`, `SaveSettings`, `Models`, `Environment` | |
+| `SettingsService` | `settings.Service` (`internal/settings/service.go`) | `Load`, `Save`, `Models`, `Environment` | |
 | `EditorService` | `editor.Service` (`internal/editor/editor.go`) | `StartLanguageServer`, `SendLanguageServer`, `StopLanguageServer` | stopping the language servers as the app quits (`ServiceShutdown`) |
 
 `app.New` reads the settings, opens the workspaces folder, starts the MCP server (`mcp.Start`) and the thread agents (`threads.NewAgents`), and hands them to `newServices`. That builds the rest of the pieces several services share once (`threads.Writers`, `editor.Servers`) and passes each service the ones it uses. When one area sets off another, the service gets the narrow piece, not the other service: `RunTests` and the workspace calls message the plan's tutor through `threads.Agents.Send`, and keep objectives written through `threads.Writers`. Tests build the services the same way, with thread agents on a fake CLI (`newTestAppWith` in `internal/app/app_test.go`). `main.go` registers them in order; Wails starts them in that order and shuts them down in reverse, and none depends on another's.
 
-`wails3 generate bindings` reads the registered services and writes `frontend/bindings`, one folder per Go package with a module per service, one TypeScript function per exported method, and a TypeScript type for every struct those methods take or return. A service named `Service` in its package (`settings.Service`, `editor.Service`) is the module `Service` in its package's folder. `lib/api.ts` re-exports each service under its frontend name, so a component writes `TaskService.RunTests(wsID, taskID, files, false)` or `SettingsService.Settings()`. A returned Go error becomes a rejected promise.
+`wails3 generate bindings` reads the registered services and writes `frontend/bindings`, one folder per Go package with a module per service, one TypeScript function per exported method, and a TypeScript type for every struct those methods take or return. A service named `Service` in its package (`settings.Service`, `editor.Service`) is the module `Service` in its package's folder. `lib/api.ts` re-exports each service under its frontend name, so a component writes `TaskService.RunTests(wsID, taskID, files, false)` or `SettingsService.Load()`. A returned Go error becomes a rejected promise.
 
 To add a service, for a new area that fits none of the others:
 
@@ -265,11 +265,11 @@ A toolchain says how one language's tests run in the sandbox and how their resul
 
 To add a built-in language:
 
-1. `internal/sandbox/toolchain.go`: a `Toolchain` and its entry in `builtins`. Its Dockerfile installs the language, the test framework and a language server, and runs as user 1000 (`runner`) in `/work` with no network, like the others. Tag the image `tutortop-<language>:1`, and bump the tag whenever the Dockerfile changes. `script` runs the tests `repeat` times, shuffled if the framework can.
-2. The same `Toolchain`'s `parse`, which reads the results, and `readable`, which turns the output into text for the learner. A framework that writes JUnit can use `junitScript`, `parseJUnitRuns` and `stripJUnit`, as Python does. One with its own format needs its own, tested on recorded output in `internal/sandbox` (see `TestRunGo` and `TestParseJUnit`).
+1. `internal/sandbox/toolchain.go`: a `Toolchain` and its entry in `builtins`. Its Dockerfile installs the language, the test framework and a language server, and runs as user 1000 (`runner`) in `/work` with no network, like the others. Tag the image `tutortop-<language>:1`, and bump the tag whenever the Dockerfile changes. Set `report` to how its test command reports results: `junitXML` with a `testCommand` (and a `repeatFlag` if the framework repeats tests itself), or `goJSON`.
+2. A framework that writes JUnit needs nothing more, as Python shows. One with its own format needs a `reportFormat` constant, and a case for it in `Toolchain.script` (runs the tests `repeat` times, shuffled if the framework can), `parse` (reads the results) and `readable` (turns the output into text for the learner), tested on recorded output in `internal/sandbox` (see `TestRunGo` and `TestParseJUnit`).
 3. `internal/agent/threads/prompts/shared.md`, under "Language conventions": a line `- **<Name> <version>**: …` saying how its tasks are laid out. The prompts' lists of built-in languages (`{{builtins}}`) and `set_toolchain`'s description fill themselves in from `sandbox.BuiltinLanguages`.
 4. The `jsonschema` struct tags in `internal/mcp`, `internal/workspace` and `internal/sandbox` that list the other built-ins (such as `stateOutput.Toolchains` in `internal/mcp/state.go`): tags can't be filled in, so add the name by hand.
 5. Search the prompts for its name: `set_toolchain`'s line in `shared.md` gives R, Rust and JavaScript as examples of languages the app doesn't ship.
-6. `internal/workspace/icons.go`: a picture in `Icons`, if there's none for it.
+6. `internal/workspace/icons.go`: a picture in `icons`, if there's none for it.
 
 A workspace whose tutor set the language up before it was built in keeps its own toolchain: `Workspace.Toolchain` looks in the workspace first, because that workspace's tasks passed the quality gate with it. `set_toolchain` refuses to set up a built-in language anew.

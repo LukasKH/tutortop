@@ -1,4 +1,4 @@
-import type { LessonStatus, TaskStatus, WorkspaceSnapshot } from "@/lib/api";
+import { TaskSize, type LessonStatus, type TaskStatus, type WorkspaceSnapshot } from "@/lib/api";
 
 // Workspace snapshots for tests: only what a test sets differs from an empty workspace.
 
@@ -26,7 +26,7 @@ export function workspace(over: Partial<WorkspaceSnapshot> = {}): WorkspaceSnaps
 }
 
 export function task(id: string, objective: string, passed = false): TaskStatus {
-  return { id, title: `Task ${id}`, objective, language: "go", size: "small", files: [], createdAt: "", passed, hintLevel: 0 };
+  return { id, title: `Task ${id}`, objective, language: "go", size: TaskSize.SizeSmall, files: [], createdAt: "", passed, hintLevel: 0 };
 }
 
 export function lesson(id: string, objective: string, answered = 0): LessonStatus {

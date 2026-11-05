@@ -1,8 +1,9 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { cn } from "cn";
 import { Dialogs } from "@wailsio/runtime";
-import { SettingsService, errorText, type Model, type Environment, type Settings } from "@/lib/api";
-import { cachedModels, cachedProviders, currentModel, effortLabel, loadModels, providerName } from "@/lib/agents";
+import { errorText, type Environment, type Prefs } from "@/lib/api";
+import { checkEnvironment, currentModel, effortLabel, loadModels, providerName, useEnvironment, useModels } from "@/lib/agents";
+import { useTutor } from "@/features/settings/use-tutor";
 import { ErrorText } from "@/components/error-text";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
@@ -10,41 +11,31 @@ import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 
 type Props = {
-  settings: Settings;
-  onChange: (s: Settings) => Promise<void>;
+  settings: Prefs;
+  onChange: (s: Prefs) => Promise<void>;
   onClose: () => void;
 };
 
 /** App settings in a modal: which agent tutors, with which model and reasoning effort. */
 export function SettingsDialog({ settings, onChange, onClose }: Props) {
-  const [env, setEnv] = useState<Environment | null>(null);
-  // The models as last loaded, for the agent they were loaded for.
-  const [loaded, setLoaded] = useState<{ agent: string; models: Model[] | null; error: string } | null>(null);
+  const env = useEnvironment();
+  const [modelsFailed, setModelsFailed] = useState<{ agent: string; error: string } | null>(null);
   const [error, setError] = useState("");
 
   const agent = settings.agent;
   const choice = settings.models?.[agent] ?? { model: "", effort: "" };
+  const models = useModels(agent);
+  const modelsError = !models && modelsFailed?.agent === agent ? modelsFailed.error : "";
 
   useEffect(() => {
-    SettingsService.Environment()
-      .then(setEnv)
-      .catch(() => {});
+    checkEnvironment().catch(() => {});
   }, []);
 
   useEffect(() => {
-    let live = true;
-    loadModels(agent)
-      .then((list) => live && setLoaded({ agent, models: list, error: "" }))
-      .catch((e) => live && setLoaded({ agent, models: null, error: errorText(e) }));
-    return () => {
-      live = false;
-    };
+    loadModels(agent).catch((e) => setModelsFailed({ agent, error: errorText(e) }));
   }, [agent]);
-  const current = loaded?.agent === agent ? loaded : null;
-  const models = current?.models ?? cachedModels(agent);
-  const modelsError = current?.error ?? "";
 
-  function save(next: Settings) {
+  function save(next: Prefs) {
     setError("");
     onChange(next).catch((e) => setError(errorText(e)));
   }
@@ -61,8 +52,8 @@ export function SettingsDialog({ settings, onChange, onClose }: Props) {
   const efforts =
     selected?.efforts?.length && !selected.defaultEffort ? [{ id: "", description: "Let the agent decide" }, ...selected.efforts] : (selected?.efforts ?? []);
   const effort = choice.effort || selected?.defaultEffort || "";
-  // Until a fresh check of what's installed arrives, the agents as the app last saw them, or at least the chosen one.
-  const providers = env?.providers ?? cachedProviders() ?? [{ id: agent, name: providerName(agent), installed: true }];
+  // Until the first check of what's installed arrives, at least the chosen agent.
+  const providers = env?.providers ?? [{ id: agent, name: agent, installed: true }];
 
   return (
     // Closing unmounts the dialog. Escape and a click on the backdrop close it too.
@@ -86,7 +77,15 @@ export function SettingsDialog({ settings, onChange, onClose }: Props) {
 
           <fieldset className={FIELD}>
             <legend className={FIELD_LABEL}>Agent</legend>
-            <RadioGroup aria-label="Agent" className={CHOICES} value={agent} onValueChange={(id) => save({ ...settings, agent: id })}>
+            <RadioGroup
+              aria-label="Agent"
+              className={CHOICES}
+              value={agent}
+              onValueChange={(id) => {
+                setModelsFailed(null);
+                save({ ...settings, agent: id });
+              }}
+            >
               {providers.map((p) => (
                 <Choice key={p.id} value={p.id} title={p.path || undefined} disabled={!p.installed}>
                   <span>{p.name}</span>
@@ -101,7 +100,7 @@ export function SettingsDialog({ settings, onChange, onClose }: Props) {
             {modelsError ? (
               <ErrorText error={modelsError} />
             ) : !shownModels ? (
-              <p className="text-muted-foreground">Loading {providerName(agent)} models…</p>
+              <p className="text-muted-foreground">Loading {providerName(providers, agent)} models…</p>
             ) : (
               <RadioGroup
                 aria-label="Model"
@@ -163,14 +162,15 @@ export function SettingsDialog({ settings, onChange, onClose }: Props) {
 }
 
 /** The configured tutor with a way to change it. */
-export function TutorLine({ tutor, action = "Change", onSettings }: { tutor: string; action?: string; onSettings: () => void }) {
+export function TutorLine() {
+  const tutor = useTutor();
   return (
     <div className="flex min-w-0 items-center justify-between gap-2 text-sm text-soft-foreground">
-      <span className="min-w-0 truncate" title={tutor}>
-        {tutor || "…"}
+      <span className="min-w-0 truncate" title={tutor.label}>
+        {tutor.label || "…"}
       </span>
-      <Button type="button" variant="ghost" className="flex-none" onClick={onSettings}>
-        {action}
+      <Button type="button" variant="ghost" className="flex-none" onClick={tutor.openSettings}>
+        Change
       </Button>
     </div>
   );

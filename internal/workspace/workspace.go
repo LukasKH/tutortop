@@ -32,6 +32,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/LukasKH/tutortop/internal/atomicfile"
 	"github.com/adrg/xdg"
 )
 
@@ -136,19 +137,6 @@ func (s *Store) workspace(id string) *Workspace {
 	return &Workspace{ID: id, Dir: filepath.Join(s.Root, id), PrivateDir: filepath.Join(s.PrivateRoot, id), mu: mu.(*sync.Mutex)}
 }
 
-var nonSlug = regexp.MustCompile(`[^a-z0-9]+`)
-
-func slugify(s string) string {
-	s = strings.Trim(nonSlug.ReplaceAllString(strings.ToLower(s), "-"), "-")
-	if len(s) > 40 {
-		s = strings.TrimRight(s[:40], "-")
-	}
-	if s == "" {
-		s = "topic"
-	}
-	return s
-}
-
 type Summary struct {
 	ID       string   `json:"id"`
 	Title    string   `json:"title"`
@@ -190,12 +178,6 @@ func (w *Workspace) path(parts ...string) string {
 // private is a file outside the workspace that the learner and tutor don't see.
 func (w *Workspace) private(parts ...string) string {
 	return filepath.Join(append([]string{w.PrivateDir}, parts...)...)
-}
-
-// validName reports whether s can name a workspace, task or chat thread: a
-// single path element that isn't "." or "..".
-func validName(s string) bool {
-	return s != "" && s != "." && s != ".." && !strings.ContainsAny(s, `/\`)
 }
 
 func (w *Workspace) saveMeta() error {
@@ -267,7 +249,7 @@ func (w *Workspace) SaveMission(mission string) (bool, error) {
 	if mission == strings.TrimSpace(w.ReadDoc("MISSION.md")) {
 		return false, nil
 	}
-	if err := WriteFileAtomic(w.path("MISSION.md"), []byte(mission+"\n")); err != nil {
+	if err := atomicfile.Write(w.path("MISSION.md"), []byte(mission+"\n")); err != nil {
 		return false, err
 	}
 	w.commit("Edit mission by hand")
@@ -295,3 +277,23 @@ func (w *Workspace) git(args ...string) {
 	cmd.Env = slices.DeleteFunc(os.Environ(), func(kv string) bool { return strings.HasPrefix(kv, "GIT_") })
 	_ = cmd.Run() // git is a convenience; the app works without it
 }
+
+// validName reports whether s can name a workspace, task or chat thread: a
+// single path element that isn't "." or "..".
+func validName(s string) bool {
+	return s != "" && s != "." && s != ".." && !strings.ContainsAny(s, `/\`)
+}
+
+// slugify turns a title into a file-name-safe slug for an id.
+func slugify(s string) string {
+	s = strings.Trim(nonSlug.ReplaceAllString(strings.ToLower(s), "-"), "-")
+	if len(s) > 40 {
+		s = strings.TrimRight(s[:40], "-")
+	}
+	if s == "" {
+		s = "topic"
+	}
+	return s
+}
+
+var nonSlug = regexp.MustCompile(`[^a-z0-9]+`)

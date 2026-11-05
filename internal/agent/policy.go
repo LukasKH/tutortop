@@ -39,22 +39,24 @@ func newPolicy(opts Options) policy {
 // allow decides one tool call, or explains why it's refused. The reason goes
 // back to the agent, so it says what to do instead.
 func (p policy) allow(t Tool) error {
-	switch {
-	case t.Subagent:
+	if t.Subagent {
 		if !p.subagents {
 			return errNoSubagents
 		}
 		return nil
-	case t.MCPServer != "":
+	}
+	if t.MCPServer != "" {
 		if t.MCPServer != p.mcpServer {
 			return fmt.Errorf("only the %s tools are available, not %s", p.mcpServer, t.MCPServer)
 		}
 		return nil
-	case t.Kind == ToolExecute:
+	}
+	switch t.Kind {
+	case ToolExecute:
 		return errNoShell
-	case t.Kind == ToolOther:
+	case ToolOther:
 		return errUnavailable
-	case t.Kind == ToolEdit:
+	case ToolEdit:
 		// A change whose paths we never saw is declined rather than guessed at.
 		if len(t.Paths) == 0 {
 			return errors.New("unknown file change")
@@ -64,14 +66,16 @@ func (p policy) allow(t Tool) error {
 				return err
 			}
 		}
-	default:
+		return nil
+	case ToolRead, ToolSearch, ToolFetch, ToolThink:
 		for _, path := range t.Paths {
 			if _, inside := p.workspaceRel(path); !inside {
 				return errors.New("only files inside the learner's workspace are available")
 			}
 		}
+		return nil
 	}
-	return nil
+	return errUnavailable // a kind this policy doesn't know yet
 }
 
 var (

@@ -308,8 +308,8 @@ export interface Summary {
 }
 
 export interface TaskDefaults {
-    "size"?: string;
-    "shape"?: string;
+    "size"?: TaskSize;
+    "shape"?: TaskShape;
 }
 
 /**
@@ -320,7 +320,7 @@ export interface TaskDetail {
     "title": string;
     "objective": string;
     "language": string;
-    "size": string;
+    "size": TaskSize;
 
     /**
      * learner-editable files
@@ -353,7 +353,7 @@ export interface TaskInfo {
     "title": string;
     "objective": string;
     "language": string;
-    "size": string;
+    "size": TaskSize;
 
     /**
      * learner-editable files
@@ -361,6 +361,40 @@ export interface TaskInfo {
     "files": string[] | null;
     "createdAt": string;
 }
+
+/**
+ * TaskShape is how a plan's tasks relate to each other.
+ */
+export enum TaskShape {
+    /**
+     * The Go zero value for the underlying type of the enum.
+     */
+    $zero = "",
+
+    /**
+     * standalone function exercises
+     */
+    ShapeKata = "kata",
+
+    /**
+     * one program grown over many tasks
+     */
+    ShapeProject = "project",
+};
+
+/**
+ * TaskSize is about how long a task takes.
+ */
+export enum TaskSize {
+    /**
+     * The Go zero value for the underlying type of the enum.
+     */
+    $zero = "",
+
+    SizeSmall = "small",
+    SizeMedium = "medium",
+    SizeLarge = "large",
+};
 
 /**
  * TaskStatus is a task plus whether the learner has passed it, and the
@@ -371,7 +405,7 @@ export interface TaskStatus {
     "title": string;
     "objective": string;
     "language": string;
-    "size": string;
+    "size": TaskSize;
 
     /**
      * learner-editable files

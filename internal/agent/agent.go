@@ -33,7 +33,13 @@ func Start(ctx context.Context, providerID string, opts Options, onEvent func(Ev
 	if !ok {
 		return nil, fmt.Errorf("unknown agent provider %q", providerID)
 	}
-	return p.start(ctx, opts, onEvent)
+	switch p.ID {
+	case Claude:
+		return startClaude(ctx, opts, onEvent)
+	case Codex:
+		return startCodex(ctx, opts, onEvent)
+	}
+	return nil, fmt.Errorf("agent provider %q has no adapter", p.ID)
 }
 
 // Options says how to start a session. Every adapter must honour all of them.
@@ -159,28 +165,34 @@ const (
 )
 
 // Provider is one coding agent CLI. Adding an agent means adding it to
-// [Providers].
+// [Providers], and its adapter to the switches on [ProviderID].
 type Provider struct {
-	ID     string // saved in settings and workspaces, e.g. "claude"
+	ID     ProviderID
 	Name   string // shown to people
 	Binary string // looked up on PATH; the app reports it missing
-	start  func(ctx context.Context, opts Options, onEvent func(Event)) (Session, error)
-	models func(ctx context.Context) ([]Model, error)
 }
+
+// ProviderID names an agent in settings and workspaces.
+type ProviderID string
+
+const (
+	Claude ProviderID = "claude"
+	Codex  ProviderID = "codex"
+)
 
 // Providers lists the agents Tutortop can drive, in the order the app offers
 // them.
 func Providers() []Provider {
 	return []Provider{
-		{ID: "claude", Name: "Claude Code", Binary: "claude", start: startClaude, models: claudeModels},
-		{ID: "codex", Name: "Codex", Binary: "codex", start: startCodex, models: codexModels},
+		{ID: Claude, Name: "Claude Code", Binary: "claude"},
+		{ID: Codex, Name: "Codex", Binary: "codex"},
 	}
 }
 
 // Lookup returns the provider with this id.
 func Lookup(id string) (Provider, bool) {
 	ps := Providers()
-	i := slices.IndexFunc(ps, func(p Provider) bool { return p.ID == id })
+	i := slices.IndexFunc(ps, func(p Provider) bool { return p.ID == ProviderID(id) })
 	if i < 0 {
 		return Provider{}, false
 	}
@@ -189,7 +201,15 @@ func Lookup(id string) (Provider, bool) {
 
 // Models lists the models the provider's CLI can use, the default first.
 // The app caches the answer for a few minutes, so asking the CLI is fine.
-func (p Provider) Models(ctx context.Context) ([]Model, error) { return p.models(ctx) }
+func (p Provider) Models(ctx context.Context) ([]Model, error) {
+	switch p.ID {
+	case Claude:
+		return claudeModels(ctx)
+	case Codex:
+		return codexModels(ctx)
+	}
+	return nil, fmt.Errorf("agent provider %q has no adapter", p.ID)
+}
 
 // Model is one model a provider offers, with the reasoning efforts it accepts.
 type Model struct {

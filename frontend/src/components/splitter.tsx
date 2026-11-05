@@ -5,6 +5,10 @@ import { useRef, type KeyboardEvent, type PointerEvent } from "react";
  * A drag handle between two panes. It reports the pointer position along its
  * axis; the parent turns that into a size. Arrow keys nudge it, and a
  * double-click can reset it.
+ *
+ * Not shadcn's Resizable (react-resizable-panels), which lays the panes out
+ * itself: these sit in CSS grids, the chat panel folds into its rail in the
+ * same drag, and a container query stacks the exercise's panes when narrow.
  */
 export function Splitter({
   axis,

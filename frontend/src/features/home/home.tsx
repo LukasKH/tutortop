@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { cn } from "cn";
 import { ActivityPanel } from "@/features/home/activity-panel";
-import { SettingsService, WorkspaceService, errorText, type Activity, type Environment, type Summary } from "@/lib/api";
+import { WorkspaceService, errorText, type Activity, type Environment, type Summary } from "@/lib/api";
+import { checkEnvironment, useEnvironment } from "@/lib/agents";
 import { IDEAS, type Idea } from "@/features/home/ideas";
 import { SettingsIcon } from "lucide-react";
 import { Logo } from "@/components/logo";
 import { TutorLine } from "@/features/settings/settings-dialog";
+import { useTutor } from "@/features/settings/use-tutor";
 import { TopicIcon } from "@/components/topic-icon";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { ErrorText } from "@/components/error-text";
@@ -15,19 +17,17 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
 type Props = {
-  /** The tutor as configured in Settings, e.g. "Claude Code · Opus · High". */
-  tutor: string;
   /** The workspace opened last, shown in focus. */
   lastId: string | null;
-  onSettings: () => void;
   onOpen: (id: string) => void;
 };
 
 /** The topic in the new-workspace form: typed, or picked from an idea. */
 type Draft = { title: string; icon: string };
 
-export function Home({ tutor, lastId, onSettings, onOpen }: Props) {
-  const [env, setEnv] = useState<Environment | null>(lastEnv);
+export function Home({ lastId, onOpen }: Props) {
+  const { openSettings } = useTutor();
+  const env = useEnvironment();
   const [workspaces, setWorkspaces] = useState<Summary[] | null>(null);
   const [creating, setCreating] = useState(false);
   const [draft, setDraft] = useState<Draft>({ title: "", icon: "" });
@@ -55,20 +55,17 @@ export function Home({ tutor, lastId, onSettings, onOpen }: Props) {
     WorkspaceService.Activity()
       .then(setActivity)
       .catch(() => {});
-    SettingsService.Environment()
-      .then((e) => setEnv((lastEnv = e)))
-      .catch((e) => setError(errorText(e)));
+    checkEnvironment().catch((e) => setError(errorText(e)));
   }, []);
 
   return (
     <div className="flex h-full flex-col">
-      {/* Name on the left, Settings on the right; no sidebar, the cards list the workspaces. */}
       <header className="flex flex-none items-center justify-between gap-4 border-b px-6 py-3.5">
         <div className="flex items-center gap-2.5">
           <Logo size={20} className="flex-none text-foreground" />
           <span className="text-[17px] leading-none font-bold">Tutortop</span>
         </div>
-        <Button type="button" variant="outline" className="h-[35px] px-3.5 text-base [&_svg]:text-soft-foreground" onClick={onSettings}>
+        <Button type="button" variant="outline" className="h-[35px] px-3.5 text-base [&_svg]:text-soft-foreground" onClick={openSettings}>
           <SettingsIcon size={16} /> Settings
         </Button>
       </header>
@@ -98,17 +95,7 @@ export function Home({ tutor, lastId, onSettings, onOpen }: Props) {
           )}
           <ErrorText error={error} />
 
-          {creating && (
-            <NewWorkspace
-              key={draft.title}
-              draft={draft}
-              env={env}
-              tutor={tutor}
-              onSettings={onSettings}
-              onCancel={() => setCreating(false)}
-              onCreated={onOpen}
-            />
-          )}
+          {creating && <NewWorkspace key={draft.title} draft={draft} env={env} onCancel={() => setCreating(false)} onCreated={onOpen} />}
 
           {activity && (
             <div className={cn(creating && DIMMED)}>
@@ -155,10 +142,6 @@ export function Home({ tutor, lastId, onSettings, onOpen }: Props) {
   );
 }
 
-// Environment() checks the sandbox and can take a few seconds, so the last
-// answer is kept while a fresh one loads.
-let lastEnv: Environment | null = null;
-
 // What's not in focus steps back until it's pointed at.
 const DIMMED = "opacity-[0.42] transition-opacity duration-160 hover:opacity-100 focus-within:opacity-100";
 
@@ -200,7 +183,6 @@ function WorkspaceCard({ ws, focused, onOpen, onDelete }: { ws: Summary; focused
           </span>
         </span>
       </button>
-      {/* shown on hover or focus */}
       <Button
         variant="ghost"
         className="absolute right-2.5 bottom-1.5 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
@@ -243,21 +225,7 @@ function IdeaCard({ idea, picked, onPick }: { idea: Idea; picked: boolean; onPic
   );
 }
 
-function NewWorkspace({
-  draft,
-  env,
-  tutor,
-  onSettings,
-  onCancel,
-  onCreated,
-}: {
-  draft: Draft;
-  env: Environment | null;
-  tutor: string;
-  onSettings: () => void;
-  onCancel: () => void;
-  onCreated: (id: string) => void;
-}) {
+function NewWorkspace({ draft, env, onCancel, onCreated }: { draft: Draft; env: Environment | null; onCancel: () => void; onCreated: (id: string) => void }) {
   const [title, setTitle] = useState(draft.title);
   const { pending, error, setError, run } = usePending();
   const providers = env?.providers ?? [];
@@ -296,7 +264,7 @@ function NewWorkspace({
 
       <div className={FIELD}>
         <span className={FIELD_LABEL}>Tutor</span>
-        <TutorLine tutor={tutor} onSettings={onSettings} />
+        <TutorLine />
         <ErrorText error={noAgent ? `Install ${agents}, sign in, then restart Tutortop.` : ""} />
       </div>
 

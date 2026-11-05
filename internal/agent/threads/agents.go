@@ -18,34 +18,10 @@ import (
 	"github.com/LukasKH/tutortop/internal/workspace"
 )
 
-// Agents runs each thread's agent, at most one per thread. The app sends a
-// thread a message (Send), reads what the agents are doing (State) and ends
-// a deleted workspace's agents (EndWorkspace); the MCP tools show sandbox
-// checks (Show). Inside this package, the writers queue messages, and the
-// chats stop a thread's turn and end all agents as the app quits.
-//
-// A thread's agent (threadAgent):
-//
-//   - starts with the first message queued for its thread, in the
-//     background: queue doesn't wait for the start. A writer's agent opens a
-//     fresh conversation; any other resumes the thread's saved one.
-//   - keeps its thread busy from the moment a message is queued until it has
-//     answered every queued message. That includes opening the CLI, which
-//     can take several seconds, so the learner sees the tutor working
-//     meanwhile.
-//   - posts why in the thread's chat, once, if its CLI doesn't open, drops
-//     the waiting messages and ends; the thread turns idle.
-//   - restarts with the next message once it's idle, if the settings changed.
-//   - ends when its CLI exits, its workspace is deleted or the app quits. A
-//     writer also ends as soon as it's idle (its writing is done), and a
-//     busy writer takes no second message (it's already writing its
-//     objective). Starting any thread but the plan ends the workspace's idle
-//     task and lesson agents, so moving through tasks doesn't pile up
-//     processes; their conversations resume if they're reopened.
-//
-// Each verb here means one thing: a thread agent starts and ends, its CLI
-// session opens and closes, a message is queued and then answered, and stop
-// interrupts the current turn.
+// Agents runs each thread's agent, at most one per thread. Each verb means
+// one thing: a thread agent starts and ends, its CLI session opens and
+// closes, a message is queued and then answered, and stop interrupts the
+// current turn. docs/architecture.md ("Thread agents") has the lifecycle.
 type Agents struct {
 	settings *settings.Store // the agent, model and effort, read for every message
 	mcp      *mcp.Server
@@ -73,16 +49,6 @@ func (ag *Agents) Send(w *workspace.Workspace, t workspace.Thread, m Message) {
 	if err := ag.queue(w, t, m.Agent); err != nil {
 		postFailure(w, t.String(), err.Error())
 	}
-}
-
-// Message is one thing sent to the tutor. What the learner sees in the chat
-// (Shown) can differ from what the tutor receives (Agent): the app attaches
-// the open task as context, and its own instructions to the tutor are shown
-// as short notices.
-type Message struct {
-	Role  workspace.ChatRole // workspace.RoleUser for the learner's words, RoleNotice for app events
-	Shown string
-	Agent string
 }
 
 // The UI learns which threads are busy, and how writers' sandbox checks go,
@@ -139,19 +105,6 @@ func (ag *Agents) EndWorkspace(wsID string) {
 	ag.mcp.Forget(wsID)
 }
 
-// CLI opens a session with an agent's CLI. InstalledCLI opens the
-// learner's own; tests fake it.
-type CLI interface {
-	Start(ctx context.Context, provider string, opts agent.Options, onEvent func(agent.Event)) (agent.Session, error)
-}
-
-// InstalledCLI starts the agent CLI installed on the computer.
-type InstalledCLI struct{}
-
-func (InstalledCLI) Start(ctx context.Context, provider string, opts agent.Options, onEvent func(agent.Event)) (agent.Session, error) {
-	return agent.Start(ctx, provider, opts, onEvent)
-}
-
 // queue queues a message for a thread's agent, starting the agent if it
 // isn't running. It doesn't wait for the start: the CLI opens in the
 // background, and if it doesn't, one notice is posted in the thread's chat.
@@ -206,69 +159,6 @@ func (ag *Agents) endAll() {
 		ag.end(ta)
 	}
 }
-
-// firstSeq is where Agents.seq starts. Counting from the time in
-// microseconds keeps the numbers rising across a restart, for a page that
-// outlives one in server mode.
-func firstSeq() uint64 {
-	return uint64(time.Now().UnixMicro())
-}
-
-// agentConfig is what a thread's agent is started with. One started with an
-// older config restarts once it's idle.
-type agentConfig struct {
-	Provider string
-	Model    string
-	Effort   string
-}
-
-// configOf is the agent, model and effort the settings choose.
-func configOf(s settings.Settings) agentConfig {
-	c := s.Models[s.Provider]
-	return agentConfig{Provider: s.Provider, Model: c.Model, Effort: c.Effort}
-}
-
-// A threadAgent is one thread's running agent: its CLI session and the
-// queue of messages it answers, one turn at a time, in order.
-type threadAgent struct {
-	key     threadKey
-	thread  workspace.Thread
-	cfg     agentConfig // the agent, model and effort it was started with
-	queue   chan string
-	cancel  context.CancelFunc
-	once    sync.Once   // close runs once
-	stopped atomic.Bool // the learner pressed Stop during the current turn
-
-	ready chan struct{} // closed once the CLI has opened, or failed to
-	cli   agent.Session // set before ready is closed; nil if it didn't open
-
-	// Guarded by Agents.mu.
-	pending int                  // messages queued or being answered; the thread is busy while it's above 0
-	check   *events.SandboxCheck // a writer's latest sandbox check of its task
-}
-
-// opened reports whether the CLI is open, without blocking.
-func (ta *threadAgent) opened() bool {
-	select {
-	case <-ta.ready:
-		return ta.cli != nil
-	default:
-		return false
-	}
-}
-
-// close closes the CLI, if it's open or opening.
-func (ta *threadAgent) close() {
-	ta.once.Do(func() {
-		ta.cancel()
-		if ta.opened() {
-			_ = ta.cli.Close()
-		}
-	})
-}
-
-// threadKey names one thread of one workspace by the thread's name.
-type threadKey struct{ ws, name string }
 
 // start starts a thread's agent. Call with ag.mu held.
 func (ag *Agents) start(w *workspace.Workspace, t workspace.Thread, cfg agentConfig) *threadAgent {
@@ -348,8 +238,13 @@ func (ag *Agents) open(ctx context.Context, w *workspace.Workspace, ta *threadAg
 	// A writer starts fresh every time, so its conversation isn't kept.
 	resume := ta.thread.Kind != workspace.WriterKind
 	opts := agent.Options{
-		Cwd: w.Dir, MCPName: mcp.Name, MCPURL: ag.mcp.URL(w, ta.thread, ag), Instructions: instructions(w, ta.thread),
-		Model: ta.cfg.Model, Effort: ta.cfg.Effort, Subagents: usesSubagents(ta.thread.Kind),
+		Cwd:          w.Dir,
+		MCPName:      mcp.Name,
+		MCPURL:       ag.mcp.URL(w, ta.thread, ag),
+		Instructions: instructions(w, ta.thread),
+		Model:        ta.cfg.Model,
+		Effort:       ta.cfg.Effort,
+		Subagents:    usesSubagents(ta.thread.Kind),
 	}
 	if resume {
 		opts.ResumeID = saved[ta.key.name]
@@ -361,13 +256,6 @@ func (ag *Agents) open(ctx context.Context, w *workspace.Workspace, ta *threadAg
 		_ = w.SetResumeID(ta.cfg.Provider, ta.key.name, cli.ID())
 	}
 	return cli, err
-}
-
-// usesSubagents reports whether a kind of thread may hand research to
-// subagents. The plan and writers may; task and lesson chats answer a
-// learner who's waiting, so they don't.
-func usesSubagents(kind workspace.ThreadKind) bool {
-	return kind == workspace.PlanKind || kind == workspace.WriterKind
 }
 
 // answered counts one of an agent's messages as answered, or given up on.
@@ -407,4 +295,103 @@ func (ag *Agents) end(ta *threadAgent) {
 		delete(ag.agents, ta.key)
 	}
 	ta.close()
+}
+
+// Message is one thing sent to the tutor. What the learner sees in the chat
+// (Shown) can differ from what the tutor receives (Agent): the app attaches
+// the open task as context, and its own instructions to the tutor are shown
+// as short notices.
+type Message struct {
+	Role  workspace.ChatRole // workspace.RoleUser for the learner's words, RoleNotice for app events
+	Shown string
+	Agent string
+}
+
+// CLI opens a session with an agent's CLI. InstalledCLI opens the
+// learner's own; tests fake it.
+type CLI interface {
+	Start(ctx context.Context, provider string, opts agent.Options, onEvent func(agent.Event)) (agent.Session, error)
+}
+
+// InstalledCLI starts the agent CLI installed on the computer.
+type InstalledCLI struct{}
+
+func (InstalledCLI) Start(ctx context.Context, provider string, opts agent.Options, onEvent func(agent.Event)) (agent.Session, error) {
+	return agent.Start(ctx, provider, opts, onEvent)
+}
+
+// A threadAgent is one thread's running agent: its CLI session and the
+// queue of messages it answers, one turn at a time, in order.
+type threadAgent struct {
+	key     threadKey
+	thread  workspace.Thread
+	cfg     agentConfig // the agent, model and effort it was started with
+	queue   chan string
+	cancel  context.CancelFunc
+	once    sync.Once   // close runs once
+	stopped atomic.Bool // the learner pressed Stop during the current turn
+
+	ready chan struct{} // closed once the CLI has opened, or failed to
+	cli   agent.Session // set before ready is closed; nil if it didn't open
+
+	// Guarded by Agents.mu.
+	pending int                  // messages queued or being answered; the thread is busy while it's above 0
+	check   *events.SandboxCheck // a writer's latest sandbox check of its task
+}
+
+// opened reports whether the CLI is open, without blocking.
+func (ta *threadAgent) opened() bool {
+	select {
+	case <-ta.ready:
+		return ta.cli != nil
+	default:
+		return false
+	}
+}
+
+// close closes the CLI, if it's open or opening.
+func (ta *threadAgent) close() {
+	ta.once.Do(func() {
+		ta.cancel()
+		if ta.opened() {
+			_ = ta.cli.Close()
+		}
+	})
+}
+
+// threadKey names one thread of one workspace by the thread's name.
+type threadKey struct{ ws, name string }
+
+// agentConfig is what a thread's agent is started with. One started with an
+// older config restarts once it's idle.
+type agentConfig struct {
+	Provider string
+	Model    string
+	Effort   string
+}
+
+// configOf is the agent, model and effort the settings choose.
+func configOf(s settings.Prefs) agentConfig {
+	c := s.Models[s.Provider]
+	return agentConfig{Provider: s.Provider, Model: c.Model, Effort: c.Effort}
+}
+
+// firstSeq is where Agents.seq starts. Counting from the time in
+// microseconds keeps the numbers rising across a restart, for a page that
+// outlives one in server mode.
+func firstSeq() uint64 {
+	return uint64(time.Now().UnixMicro())
+}
+
+// usesSubagents reports whether a kind of thread may hand research to
+// subagents. The plan and writers may; task and lesson chats answer a
+// learner who's waiting, so they don't.
+func usesSubagents(kind workspace.ThreadKind) bool {
+	switch kind {
+	case workspace.PlanKind, workspace.WriterKind:
+		return true
+	case workspace.TaskKind, workspace.LessonKind:
+		return false
+	}
+	return false
 }

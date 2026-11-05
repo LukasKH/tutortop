@@ -1,7 +1,6 @@
 import { useEffect, useEffectEvent, useRef, useState, type ComponentProps, type ReactNode } from "react";
 import Editor from "@monaco-editor/react";
 import { cn } from "cn";
-import type { TaskStatus } from "@/lib/api";
 import { plural } from "@/lib/format";
 import { clamp } from "@/lib/math";
 import { editorOptions, monaco } from "@/lib/monaco";
@@ -23,16 +22,12 @@ type Props = {
   passed: boolean;
   /** The module the task's objective belongs to, for the task bar. */
   moduleTitle: string;
-  /** The first unsolved task after this one, if the tutor has written it yet. */
-  nextTask: TaskStatus | null;
-  /** The plan has objectives left, so a next task is coming if there isn't one yet. */
-  moreComing: boolean;
-  /** Opens the next task (or first its lesson). */
-  onOpenNext: () => void;
+  /** Shown beside the check buttons once solved: the way on (NextExercise). */
+  next: ReactNode;
 };
 
 /** An exercise: the statement and tests beside the learner's editor, and the check results under it. */
-export function TaskPanel({ wsId, taskId, passed, moduleTitle, nextTask, moreComing, onOpenNext }: Props) {
+export function TaskPanel({ wsId, taskId, passed, moduleTitle, next }: Props) {
   const work = useTaskWork(wsId, taskId);
   const { detail, files, dirty, error, run, running } = work;
   const [activeFile, setActiveFile] = useState("");
@@ -177,19 +172,17 @@ export function TaskPanel({ wsId, taskId, passed, moduleTitle, nextTask, moreCom
             />
           )}
           <Results
-            detail={detail}
+            hiddenCount={detail.hiddenCount}
             run={run}
             running={running}
             error={error}
             solved={solved}
-            nextTask={nextTask}
-            moreComing={moreComing}
+            next={next}
             open={resultsOpen}
             height={sizedResults ? resultsHeight : undefined}
             onToggle={() => setResultsOpen(!resultsOpen)}
             onReset={work.reset}
             onCheck={check}
-            onOpenNext={onOpenNext}
           />
         </section>
       </div>

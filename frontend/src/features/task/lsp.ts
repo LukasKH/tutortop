@@ -3,6 +3,10 @@
 // this maps them onto Monaco: completions, hover, signature help, errors
 // and formatting. Positions are UTF-16 in both, so only the base differs
 // (LSP counts from 0, Monaco from 1).
+//
+// Hand-rolled because monaco-languageclient needs @codingame/monaco-vscode-api
+// in place of the plain monaco-editor (and @monaco-editor/react) used here,
+// and a socket or worker transport, where these messages come as app events.
 import { Events } from "@wailsio/runtime";
 import { EditorService, AppEvents, errorText } from "@/lib/api";
 import { monaco } from "@/lib/monaco";

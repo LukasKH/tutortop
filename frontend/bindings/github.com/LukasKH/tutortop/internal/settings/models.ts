@@ -28,18 +28,11 @@ export interface ModelChoice {
     "effort": string;
 }
 
-export interface ProviderStatus {
-    "id": string;
-    "name": string;
-    "installed": boolean;
-    "path"?: string;
-}
-
 /**
- * Settings are app-wide preferences, kept in settings.yaml in the user's
+ * Prefs are the app-wide settings, kept in settings.yaml in the user's
  * config folder. They apply to every workspace.
  */
-export interface Settings {
+export interface Prefs {
     /**
      * Provider is the coding agent every thread runs on, tutors and writers
      * alike, an agent.Provider ID. It's "agent" in settings.yaml and to the
@@ -59,4 +52,14 @@ export interface Settings {
      * The app reads it at startup.
      */
     "workspacesFolder"?: string;
+}
+
+/**
+ * ProviderStatus is whether an agent's CLI is installed, and where.
+ */
+export interface ProviderStatus {
+    "id": string;
+    "name": string;
+    "installed": boolean;
+    "path"?: string;
 }

@@ -8,26 +8,6 @@ import { clamp } from "@/lib/math";
 // Ctrl + / - / scroll adjust from there, and Ctrl 0 goes back to automatic.
 // In a browser (server mode) the browser's own zoom does all this.
 
-type Bridge = {
-  chrome?: { webview?: unknown };
-  webkit?: { messageHandlers?: { external?: unknown } };
-};
-const bridge = window as unknown as Bridge;
-const isDesktop = !!(bridge.chrome?.webview || bridge.webkit?.messageHandlers?.external);
-
-/** At this window width (at 100%) and below, the app is at 100%. */
-const BASE_WIDTH = 1600;
-const STEP = 1.1;
-// The Linux webview can't zoom below 100%.
-const MIN = navigator.userAgent.includes("Linux") ? 1 : 0.5;
-const MAX = 3;
-const KEY = "zoom.factor";
-
-/** The learner's adjustment on top of the automatic size. */
-let factor = Number(localStorage.getItem(KEY)) || 1;
-/** The zoom the window has now. */
-let applied = 1;
-
 export async function startZoom() {
   if (!isDesktop) return;
   applied = (await Window.GetZoom().catch(() => 1)) || 1;
@@ -66,6 +46,26 @@ export async function startZoom() {
     { passive: false, capture: true },
   );
 }
+
+type Bridge = {
+  chrome?: { webview?: unknown };
+  webkit?: { messageHandlers?: { external?: unknown } };
+};
+const bridge = window as unknown as Bridge;
+const isDesktop = !!(bridge.chrome?.webview || bridge.webkit?.messageHandlers?.external);
+
+/** At this window width (at 100%) and below, the app is at 100%. */
+const BASE_WIDTH = 1600;
+const STEP = 1.1;
+// The Linux webview can't zoom below 100%.
+const MIN = navigator.userAgent.includes("Linux") ? 1 : 0.5;
+const MAX = 3;
+const KEY = "zoom.factor";
+
+/** The learner's adjustment on top of the automatic size. */
+let factor = Number(localStorage.getItem(KEY)) || 1;
+/** The zoom the window has now. */
+let applied = 1;
 
 function zoom(by: number | null) {
   factor = by === null ? 1 : factor * by;

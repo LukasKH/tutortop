@@ -25,7 +25,7 @@ func TestLiveInterview(t *testing.T) {
 	a := newTestAppWith(t, mcptest.Links(), threads.InstalledCLI{})
 	defer a.Chat.ServiceShutdown()
 
-	if err := a.Settings.SaveSettings(settings.Settings{Provider: provider}); err != nil {
+	if err := a.Settings.Save(settings.Prefs{Provider: provider}); err != nil {
 		t.Fatal(err)
 	}
 	id, err := a.Workspaces.CreateWorkspace("Go", "")

@@ -28,17 +28,11 @@ func TestCurriculumValidate(t *testing.T) {
 			c.Modules[0].References = nil
 		}, []string{"size must be", "needs references"}},
 	}
-	known := func(lang string) error {
-		if lang == "go" || lang == "python" {
-			return nil
-		}
-		return errors.New(lang + " is unknown")
-	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			cur := plan("a", "b")
 			c.change(&cur)
-			wantProblems(t, cur.Validate(known), c.want...)
+			wantProblems(t, cur.Validate(knownLanguages{}), c.want...)
 		})
 	}
 }
@@ -95,4 +89,14 @@ func TestApproveProposal(t *testing.T) {
 	if p, _ := w.Proposal(); p != nil {
 		t.Fatal("the proposal is still pending after discarding it")
 	}
+}
+
+// knownLanguages knows Go and Python only.
+type knownLanguages struct{}
+
+func (knownLanguages) CheckLanguage(lang string) error {
+	if lang == "go" || lang == "python" {
+		return nil
+	}
+	return errors.New(lang + " is unknown")
 }

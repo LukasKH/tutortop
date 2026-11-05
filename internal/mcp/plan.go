@@ -41,7 +41,7 @@ func (t *threadTools) askUser(_ context.Context, _ *mcpsdk.CallToolRequest, in a
 var setIconTool = &mcpsdk.Tool{
 	Name: "set_icon",
 	Description: "Pick the picture the app shows for this workspace on its card, in the curriculum and on lessons. " +
-		"Choose the language or tool the workspace centres on, else the glyph closest to the topic. One of: " + strings.Join(workspace.Icons, ", ") + ".",
+		"Choose the language or tool the workspace centres on, else the glyph closest to the topic. One of: " + strings.Join(workspace.Icons(), ", ") + ".",
 }
 
 type setIconInput struct {

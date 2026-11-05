@@ -1,3 +1,5 @@
+import { TaskSize } from "@/lib/api";
+
 // How the app words things.
 
 /**
@@ -11,10 +13,10 @@ export function languageLabel(lang: string): string {
 }
 
 /** Rough minutes per task size, as the tutor is told to aim for. */
-export const TASK_MINUTES: Record<string, number> = {
-  small: 10,
-  medium: 25,
-  large: 60,
-};
+export const TASK_MINUTES: Partial<Record<TaskSize, number>> = {
+  [TaskSize.SizeSmall]: 10,
+  [TaskSize.SizeMedium]: 25,
+  [TaskSize.SizeLarge]: 60,
+} satisfies Record<Exclude<TaskSize, TaskSize.$zero>, number>;
 
 export const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;

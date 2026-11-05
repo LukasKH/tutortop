@@ -30,8 +30,9 @@ func (s *LessonService) AnswerQuiz(wsID, lessonID string, question, choice int) 
 		return workspace.QuizResult{}, err
 	}
 	r, err := w.AnswerQuiz(lessonID, question, choice)
-	if err == nil {
-		events.Emit(events.WorkspaceChanged, events.Workspace{Workspace: wsID})
+	if err != nil {
+		return r, err
 	}
-	return r, err
+	events.Emit(events.WorkspaceChanged, events.Workspace{Workspace: wsID})
+	return r, nil
 }

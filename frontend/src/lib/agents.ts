@@ -1,51 +1,51 @@
-import { SettingsService, type Model, type ProviderStatus, type Settings } from "@/lib/api";
+import { useSyncExternalStore } from "react";
+import { SettingsService, type Environment, type Model, type Prefs, type ProviderStatus } from "@/lib/api";
 
-// The agents the backend offers and their models, for Settings and the
-// tutor's label. Names come from the backend, so a new agent needs no change here.
+// What's installed and the agents' models, kept for the session and shared by
+// Home, Settings and the tutor's label. Names come from the backend, so a new
+// agent needs no change here.
 
-/** The agents and whether each is installed, asked once per session. */
-export function loadProviders(): Promise<ProviderStatus[]> {
-  if (providers) return Promise.resolve(providers);
-  return SettingsService.Environment().then((env) => (providers = env.providers ?? []));
+/** What's installed as last checked (checkEnvironment), or null before the first check. */
+export function useEnvironment(): Environment | null {
+  return useSyncExternalStore(subscribe, () => store.env);
 }
 
-/** An agent's name as people know it ("Claude Code"), or its id until the agents are loaded. */
-export function providerName(id: string): string {
-  return providers?.find((p) => p.id === id)?.name ?? id;
+/** Checks what's installed again. It checks the sandbox too, which takes a few seconds, so useEnvironment keeps the last answer meanwhile. */
+export async function checkEnvironment(): Promise<Environment> {
+  const env = await SettingsService.Environment();
+  update({ env });
+  return env;
 }
 
-/** The agents if they're loaded already, else null. */
-export const cachedProviders = () => providers;
+/** The agent's models once loaded (loadModels), else null. */
+export function useModels(agent: string): Model[] | null {
+  return useSyncExternalStore(subscribe, () => store.models[agent] ?? null);
+}
 
-// Environment also checks the sandbox, which takes a few seconds, so its list of agents is kept.
-let providers: ProviderStatus[] | null = null;
-
-/** The agent's models, asked once per session. */
-export function loadModels(agent: string): Promise<Model[]> {
-  const cached = modelCache.get(agent);
-  if (cached) return Promise.resolve(cached);
-  return SettingsService.Models(agent).then((list) => {
-    modelCache.set(agent, list ?? []);
-    return list ?? [];
-  });
+/** Loads the agent's models, once per session: Codex is asked live, which takes a moment. */
+export async function loadModels(agent: string): Promise<Model[]> {
+  const cached = store.models[agent];
+  if (cached) return cached;
+  const list = (await SettingsService.Models(agent)) ?? [];
+  update({ models: { ...store.models, [agent]: list } });
+  return list;
 }
 
 /** "Claude Code · Opus · High": the tutor as configured. */
-export function tutorLabel(s: Settings): string {
+export function tutorLabel(s: Prefs, providers: ProviderStatus[], models: Model[] | null): string {
   const choice = s.models?.[s.agent] ?? { model: "", effort: "" };
-  const model = currentModel(modelCache.get(s.agent) ?? null, choice.model);
-  const parts = [providerName(s.agent)];
+  const model = currentModel(models, choice.model);
+  const parts = [providerName(providers, s.agent)];
   if (model?.id || choice.model) parts.push(model?.name ?? choice.model);
   const effort = choice.effort || model?.defaultEffort;
   if (effort) parts.push(effortLabel(effort));
   return parts.join(" · ");
 }
 
-/** The agent's models if they're loaded already, else null. */
-export const cachedModels = (agent: string) => modelCache.get(agent) ?? null;
-
-// Model lists per agent, kept for the session: Codex is asked live, which takes a moment.
-const modelCache = new Map<string, Model[]>();
+/** An agent's name as people know it ("Claude Code"), or its id until the agents are loaded. */
+export function providerName(providers: ProviderStatus[], id: string): string {
+  return providers.find((p) => p.id === id)?.name ?? id;
+}
 
 /**
  * The chosen model. No choice means the agent's default: Claude Code lists
@@ -70,3 +70,20 @@ const EFFORT_LABELS: Record<string, string> = {
   max: "Max",
   ultra: "Ultra",
 };
+
+// The store behind the hooks, as useSyncExternalStore expects: replaced, never
+// changed in place, so a hook sees a new value.
+let store: { env: Environment | null; models: Record<string, Model[]> } = { env: null, models: {} };
+const listeners = new Set<() => void>();
+
+function subscribe(listener: () => void) {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+}
+
+function update(change: Partial<typeof store>) {
+  store = { ...store, ...change };
+  listeners.forEach((l) => l());
+}

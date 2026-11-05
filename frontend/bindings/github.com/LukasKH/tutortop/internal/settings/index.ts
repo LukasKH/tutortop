@@ -9,6 +9,6 @@ export {
 export type {
     Environment,
     ModelChoice,
-    ProviderStatus,
-    Settings
+    Prefs,
+    ProviderStatus
 } from "./models.js";

@@ -1,7 +1,10 @@
 import { useLayoutEffect, useRef, type Ref, type TextareaHTMLAttributes } from "react";
 import { Textarea } from "@/components/ui/textarea";
 
-/** A textarea that grows with its content up to maxHeight. */
+/**
+ * A textarea that grows with its content up to maxHeight. Measured here, not
+ * with CSS field-sizing, which not every WebKit the desktop app runs on has.
+ */
 export function AutoTextarea({
   maxHeight = 200,
   ref,

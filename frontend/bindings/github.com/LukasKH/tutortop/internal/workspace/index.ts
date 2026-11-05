@@ -5,7 +5,9 @@ export {
     ChatMark,
     ChatRole,
     ChatStatus,
-    ObjectiveStatus
+    ObjectiveStatus,
+    TaskShape,
+    TaskSize
 } from "./models.js";
 
 export type {

@@ -10,9 +10,17 @@ import (
 // time, or a lesson whose quiz they answered in full. Both come from the
 // attempt log, so the record can't drift from progress.
 type Completion struct {
-	Kind string    `json:"kind"` // "task" | "lesson"
-	At   time.Time `json:"at"`
+	Kind CompletionKind `json:"kind"`
+	At   time.Time      `json:"at"`
 }
+
+// CompletionKind is what a Completion finished.
+type CompletionKind string
+
+const (
+	CompletionTask   CompletionKind = "task"
+	CompletionLesson CompletionKind = "lesson"
+)
 
 func (w *Workspace) Completions() ([]Completion, error) {
 	attempts, err := w.Attempts()
@@ -32,7 +40,7 @@ func (w *Workspace) Completions() ([]Completion, error) {
 		case AttemptSubmit:
 			if a.passedTask() && !passed[a.TaskID] {
 				passed[a.TaskID] = true
-				out = append(out, Completion{Kind: "task", At: a.At})
+				out = append(out, Completion{Kind: CompletionTask, At: a.At})
 			}
 		case AttemptQuiz:
 			qs := answered[a.LessonID]
@@ -45,7 +53,7 @@ func (w *Workspace) Completions() ([]Completion, error) {
 			}
 			qs[a.Question] = true
 			if n := questions[a.LessonID]; n > 0 && len(qs) == n {
-				out = append(out, Completion{Kind: "lesson", At: a.At})
+				out = append(out, Completion{Kind: CompletionLesson, At: a.At})
 			}
 		case AttemptRun, AttemptHint:
 			// Neither finishes anything.
@@ -81,10 +89,11 @@ func Summarize(cs []Completion, now time.Time) Activity {
 			d = &ActivityDay{Date: date}
 			byDate[date] = d
 		}
-		if c.Kind == "lesson" {
-			d.Lessons++
-		} else {
+		switch c.Kind {
+		case CompletionTask:
 			d.Tasks++
+		case CompletionLesson:
+			d.Lessons++
 		}
 	}
 

@@ -1,4 +1,4 @@
-import type { WorkspaceSnapshot } from "@/lib/api";
+import { ObjectiveStatus, type WorkspaceSnapshot } from "@/lib/api";
 import { lessonDone, lessonThread } from "@/lib/workspace";
 
 /**
@@ -77,7 +77,7 @@ export function viaLesson(ws: WorkspaceSnapshot, taskId: string): OpenItem {
  */
 export function entryOf(ws: WorkspaceSnapshot, objective: string, current: OpenItem | null): OpenItem {
   const lesson = (ws.lessons ?? []).find((l) => l.objective === objective);
-  const passed = ws.progress.objectives?.[objective]?.status === "passed";
+  const passed = ws.progress.objectives?.[objective]?.status === ObjectiveStatus.ObjectivePassed;
   if (lesson && !passed && !lessonDone(lesson)) return { kind: "lesson", id: lesson.id };
   const tasks = (ws.tasks ?? []).filter((t) => t.objective === objective);
   if (current?.kind === "task" && tasks.some((t) => t.id === current.id)) return current;

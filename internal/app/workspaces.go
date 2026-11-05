@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"slices"
 	"strings"
 	"time"
 
@@ -77,14 +76,14 @@ func (s *WorkspaceService) Activity() (workspace.Activity, error) {
 
 // CreateWorkspace starts a workspace tutored by the agent in the settings.
 // The icon is "" (the tutor picks one during the interview) or one of
-// workspace.Icons, as when the topic comes from an idea.
+// workspace.Icons(), as when the topic comes from an idea.
 func (s *WorkspaceService) CreateWorkspace(title, icon string) (string, error) {
 	provider := s.settings.Load().Provider
 	title = strings.TrimSpace(title)
 	if title == "" {
 		return "", errors.New("give the topic a name")
 	}
-	if icon != "" && !slices.Contains(workspace.Icons, icon) {
+	if !workspace.ValidIcon(icon) {
 		return "", fmt.Errorf("unknown icon %q", icon)
 	}
 	existing, _ := s.store.List()
@@ -117,33 +116,18 @@ func (s *WorkspaceService) DeleteWorkspace(id string) error {
 	return s.store.Delete(id)
 }
 
-// WorkspaceSnapshot is everything the workspace screen shows, read at one
-// moment. The frontend keeps it current with events until the next one.
-type WorkspaceSnapshot struct {
-	ID         string                   `json:"id"`
-	Title      string                   `json:"title"`
-	Icon       string                   `json:"icon"`
-	Mission    string                   `json:"mission"`
-	Curriculum *workspace.Curriculum    `json:"curriculum"`
-	Proposal   *workspace.Curriculum    `json:"proposal"`
-	Progress   workspace.Progress       `json:"progress"`
-	Tasks      []workspace.TaskStatus   `json:"tasks"`
-	Lessons    []workspace.LessonStatus `json:"lessons"`
-	Questions  *workspace.Questions     `json:"questions"`
-	Busy       map[string]bool          `json:"busy"` // thread -> its tutor or writer is working
-	// Checks are writers' latest sandbox checks of new tasks, by objective.
-	Checks map[string]events.SandboxCheck `json:"checks"`
-	// Seq is when Busy and Checks were read, in the sequence that numbers
-	// busy and check events: one with a higher Seq happened after.
-	Seq uint64 `json:"seq"`
-}
-
 func (s *WorkspaceService) Workspace(id string) (WorkspaceSnapshot, error) {
 	w, err := s.store.Open(id)
 	if err != nil {
 		return WorkspaceSnapshot{}, err
 	}
-	st := WorkspaceSnapshot{ID: w.ID, Title: w.Meta.Title, Icon: w.Meta.Icon, Mission: w.ReadDoc("MISSION.md"), Progress: w.Progress()}
+	st := WorkspaceSnapshot{
+		ID:       w.ID,
+		Title:    w.Meta.Title,
+		Icon:     w.Meta.Icon,
+		Mission:  w.ReadDoc("MISSION.md"),
+		Progress: w.Progress(),
+	}
 	if st.Curriculum, err = w.Curriculum(); err != nil {
 		return st, err
 	}
@@ -167,8 +151,10 @@ func (s *WorkspaceService) ApproveProposal(wsID string) error {
 	events.Emit(events.WorkspaceChanged, events.Workspace{Workspace: wsID})
 	s.prepareImage(w, c.Language)
 	threads.Post(w, workspace.ChatItem{
-		Thread: workspace.PlanThread.String(), Role: workspace.RoleNotice, Mark: workspace.MarkPlanApproved,
-		Text: fmt.Sprintf("You approved the plan (revision %d).", c.Revision),
+		Thread: workspace.PlanThread.String(),
+		Role:   workspace.RoleNotice,
+		Mark:   workspace.MarkPlanApproved,
+		Text:   fmt.Sprintf("You approved the plan (revision %d).", c.Revision),
 	})
 	s.writers.KeepReady(w, "The learner just approved the plan.")
 	return nil
@@ -241,4 +227,25 @@ func (s *WorkspaceService) WriteObjectiveNow(wsID, objectiveID string) error {
 	}
 	s.writers.Write(w, o, "The learner opened it and is waiting for it, so be quick. Write the lesson first, as they read it first.")
 	return nil
+}
+
+// WorkspaceSnapshot is everything the workspace screen shows, read at one
+// moment. The frontend keeps it current with events until the next one.
+type WorkspaceSnapshot struct {
+	ID         string                   `json:"id"`
+	Title      string                   `json:"title"`
+	Icon       string                   `json:"icon"`
+	Mission    string                   `json:"mission"`
+	Curriculum *workspace.Curriculum    `json:"curriculum"`
+	Proposal   *workspace.Curriculum    `json:"proposal"`
+	Progress   workspace.Progress       `json:"progress"`
+	Tasks      []workspace.TaskStatus   `json:"tasks"`
+	Lessons    []workspace.LessonStatus `json:"lessons"`
+	Questions  *workspace.Questions     `json:"questions"`
+	Busy       map[string]bool          `json:"busy"` // thread -> its tutor or writer is working
+	// Checks are writers' latest sandbox checks of new tasks, by objective.
+	Checks map[string]events.SandboxCheck `json:"checks"`
+	// Seq is when Busy and Checks were read, in the sequence that numbers
+	// busy and check events: one with a higher Seq happened after.
+	Seq uint64 `json:"seq"`
 }

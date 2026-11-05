@@ -21,7 +21,7 @@ func TestPrepareSharesBuild(t *testing.T) {
 	if err := os.WriteFile(engine, []byte(script), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	r := &Runner{Engine: engine, prepared: map[string]bool{}}
+	r := &Runner{Engine: Engine(engine), prepared: map[string]bool{}}
 	tc := Toolchain{Name: "Go", Image: "tutortop-test:1", Dockerfile: "FROM scratch"}
 	calls := func() string { b, _ := os.ReadFile(log); return string(b) }
 

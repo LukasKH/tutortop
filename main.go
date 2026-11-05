@@ -37,8 +37,8 @@ func main() {
 			application.NewService(services.Chat),
 			application.NewService(services.Editor),
 		},
-		Assets:      application.AssetOptions{Handler: application.AssetFileServerFS(assets)},
-		Mac:         application.MacOptions{ApplicationShouldTerminateAfterLastWindowClosed: true},
+		Assets: application.AssetOptions{Handler: application.AssetFileServerFS(assets)},
+		Mac:    application.MacOptions{ApplicationShouldTerminateAfterLastWindowClosed: true},
 		// Used by server mode (`wails3 task run:server`): checks can take a
 		// while the first time a sandbox image is pulled.
 		Server: application.ServerOptions{ReadTimeout: 5 * time.Minute, WriteTimeout: 5 * time.Minute},

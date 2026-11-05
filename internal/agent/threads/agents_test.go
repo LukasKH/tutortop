@@ -83,7 +83,7 @@ func TestSettingsRestartIdleSession(t *testing.T) {
 	ag, fake, w := newHeldAgents(t)
 	queue(t, ag, w, workspace.PlanThread, "one")
 	first := fake.next(t)
-	if err := ag.settings.Save(settings.Settings{Provider: "claude", Models: map[string]settings.ModelChoice{"claude": {Model: "other"}}}); err != nil {
+	if err := ag.settings.Save(settings.Prefs{Provider: "claude", Models: map[string]settings.ModelChoice{"claude": {Model: "other"}}}); err != nil {
 		t.Fatal(err)
 	}
 	queue(t, ag, w, workspace.PlanThread, "two")
@@ -192,7 +192,7 @@ func newHeldAgents(t *testing.T) (*Agents, *heldAgents, *workspace.Workspace) {
 	t.Helper()
 	fake := &heldAgents{turns: make(chan heldTurn, 8)}
 	ag, store := newTestAgents(t, fake)
-	if err := ag.settings.Save(settings.Settings{Provider: "claude"}); err != nil {
+	if err := ag.settings.Save(settings.Prefs{Provider: "claude"}); err != nil {
 		t.Fatal(err)
 	}
 	w, err := store.Create("Go", "claude")

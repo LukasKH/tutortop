@@ -26,84 +26,36 @@ import (
 	"github.com/LukasKH/tutortop/internal/text"
 )
 
-// Status is how a check run ended.
-type Status string
-
-const (
-	StatusPassed Status = "passed" // compiled and every test passed
-	StatusFailed Status = "failed" // compiled, at least one test failed
-	StatusError  Status = "error"  // didn't compile, timed out, or the sandbox broke
-)
-
-type TestResult struct {
-	Name    string `json:"name"`
-	Hidden  bool   `json:"hidden"`
-	Passed  bool   `json:"passed"`
-	NotRun  bool   `json:"notRun,omitempty"` // the run stopped before reaching it
-	Message string `json:"message,omitempty"`
-}
-
-type Result struct {
-	Status     Status       `json:"status"`
-	Tests      []TestResult `json:"tests"`
-	Output     string       `json:"output"`
-	DurationMs int64        `json:"durationMs"`
-}
-
-func (r Result) Counts() (passed, total int) {
-	for _, t := range r.Tests {
-		if t.Passed {
-			passed++
-		}
-	}
-	return passed, len(r.Tests)
-}
-
-// Files maps relative paths to file contents.
-type Files map[string]string
-
-// Job is one check run: the learner's (or reference/mutant) solution plus tests.
-type Job struct {
-	Toolchain   Toolchain
-	Solution    Files
-	Tests       Files // visible tests
-	HiddenTests Files // only included when running a full submission
-	// Repeat runs every test this many times (shuffled where the language
-	// supports it); a test passes only if every repetition passes.
-	Repeat  int
-	Timeout time.Duration
-	// Names are the task's tests as the quality gate saw them run. They label
-	// results hidden, and a test missing from a run shows as not run. Empty
-	// while the gate itself runs.
-	Names TestNames
-}
-
-// TestNames are a task's tests, named as its test framework reports them.
-type TestNames struct {
-	Visible []string `yaml:"visible" json:"visible"`
-	Hidden  []string `yaml:"hidden" json:"hidden"`
-}
-
 // Runner runs jobs either in containers (default) or directly on the host
 // (TUTORTOP_RUNNER=local, meant for development only).
 type Runner struct {
-	Engine string // "docker", "podman" or "local"
+	Engine Engine
 
 	builds   singleflight.Group // callers that need the same image share one build
 	mu       sync.Mutex
 	prepared map[string]bool
 }
 
+// Engine is the container CLI that runs the checks: Docker, Podman, another
+// CLI that takes Docker's arguments, or Local.
+type Engine string
+
+const (
+	Docker Engine = "docker"
+	Podman Engine = "podman"
+	Local  Engine = "local" // straight on the host, for development only
+)
+
 // New uses the engine in TUTORTOP_RUNNER, or else Docker if it's installed,
 // or else Podman. With neither installed it keeps "docker", and Available says
 // how to get one.
 func New() *Runner {
-	engine := os.Getenv("TUTORTOP_RUNNER")
+	engine := Engine(os.Getenv("TUTORTOP_RUNNER"))
 	if engine == "" {
-		engine = "docker"
-		if _, err := exec.LookPath("docker"); err != nil {
-			if _, err := exec.LookPath("podman"); err == nil {
-				engine = "podman"
+		engine = Docker
+		if _, err := exec.LookPath(string(Docker)); err != nil {
+			if _, err := exec.LookPath(string(Podman)); err == nil {
+				engine = Podman
 			}
 		}
 	}
@@ -113,43 +65,22 @@ func New() *Runner {
 // Available reports whether the sandbox's engine is usable, with a fix-it
 // hint if not.
 func (r *Runner) Available(ctx context.Context) error {
-	if r.Engine == "local" {
+	if r.Engine == Local {
 		return nil
 	}
 	// Works for both engines, and for Podman's `docker` shim: it fails when
 	// Docker's daemon or the Podman machine can't be reached.
-	out, err := exec.CommandContext(ctx, r.Engine, "version", "--format", "{{.Server.Version}}").CombinedOutput()
+	out, err := exec.CommandContext(ctx, string(r.Engine), "version", "--format", "{{.Server.Version}}").CombinedOutput()
 	if err != nil {
 		return engineHint(r.Engine, strings.TrimSpace(string(out)), errors.Is(err, exec.ErrNotFound))
 	}
 	return nil
 }
 
-// engineHint turns a failed `<engine> version` into a fix the learner can act on.
-func engineHint(engine, output string, notFound bool) error {
-	desktop := runtime.GOOS == "windows" || runtime.GOOS == "darwin"
-	switch {
-	case notFound && desktop:
-		return errors.New("install Docker Desktop (or Podman Desktop), then restart Tutortop")
-	case notFound:
-		return errors.New("install docker or podman with your package manager, then restart Tutortop")
-	case engine == "podman" && desktop:
-		return fmt.Errorf("can't reach Podman. Start it with `podman machine start`: %s", output)
-	case strings.Contains(output, "permission denied") && runtime.GOOS == "linux":
-		return errors.New("can't reach Docker (permission denied). Add yourself to the docker group: `sudo usermod -aG docker $USER`, then log out and back in")
-	case desktop:
-		return fmt.Errorf("can't reach Docker. Start Docker Desktop: %s", output)
-	case engine == "docker":
-		return fmt.Errorf("can't reach Docker. Start it with `sudo systemctl start docker`: %s", output)
-	default:
-		return fmt.Errorf("can't reach %s: %s", engine, output)
-	}
-}
-
 // Prepare builds the language image. The first call can take a few minutes.
 // A caller can give up waiting; the build carries on for the others.
 func (r *Runner) Prepare(ctx context.Context, tc Toolchain) error {
-	if r.Engine == "local" {
+	if r.Engine == Local {
 		return nil
 	}
 	r.mu.Lock()
@@ -178,8 +109,8 @@ func (r *Runner) Prepare(ctx context.Context, tc Toolchain) error {
 const buildTimeout = time.Hour
 
 func (r *Runner) build(ctx context.Context, tc Toolchain) error {
-	if exec.CommandContext(ctx, r.Engine, "image", "inspect", tc.Image).Run() != nil {
-		cmd := exec.CommandContext(ctx, r.Engine, "build", "-t", tc.Image, "-")
+	if exec.CommandContext(ctx, string(r.Engine), "image", "inspect", tc.Image).Run() != nil {
+		cmd := exec.CommandContext(ctx, string(r.Engine), "build", "-t", tc.Image, "-")
 		cmd.Stdin = strings.NewReader(tc.Dockerfile)
 		if out, err := cmd.CombinedOutput(); err != nil {
 			return fmt.Errorf("preparing the %s sandbox: %v\n%s", tc.Name, err, text.Tail(string(out), 1500))
@@ -265,6 +196,120 @@ func (r *Runner) Run(ctx context.Context, job Job) (Result, error) {
 	return res, nil
 }
 
+// exec unpacks the files into a fresh directory and runs the script there:
+// in a throwaway container, or in a temp dir on the host in local mode.
+func (r *Runner) exec(ctx context.Context, tc Toolchain, script string, files Files, out *cappedBuffer) error {
+	archive, err := tarFiles(files)
+	if err != nil {
+		return err
+	}
+	shell := "tar -xf - && " + script
+	var cmd *exec.Cmd
+	if r.Engine == Local {
+		dir, err := os.MkdirTemp("", "tutortop-run-")
+		if err != nil {
+			return err
+		}
+		defer os.RemoveAll(dir)
+		cmd = exec.CommandContext(ctx, "sh", "-c", shell)
+		cmd.Dir = dir
+	} else {
+		// The images run as an unprivileged user with a build cache baked in,
+		// so nothing is shared between runs.
+		name := "tutortop-" + uuid.New().String()
+		args := append([]string{"run", "--rm", "-i", "--name", name}, lockdownFlags("512m")...)
+		cmd = exec.CommandContext(ctx, string(r.Engine), append(args, tc.Image, "sh", "-c", shell)...)
+		// Killing the docker client doesn't stop the container, so remove it too.
+		cmd.Cancel = func() error {
+			_ = exec.Command(string(r.Engine), "rm", "-f", name).Run()
+			return cmd.Process.Kill()
+		}
+	}
+	cmd.WaitDelay = 5 * time.Second
+	cmd.Stdin = bytes.NewReader(archive)
+	cmd.Stdout, cmd.Stderr = out, out
+	return cmd.Run()
+}
+
+// Status is how a check run ended.
+type Status string
+
+const (
+	StatusPassed Status = "passed" // compiled and every test passed
+	StatusFailed Status = "failed" // compiled, at least one test failed
+	StatusError  Status = "error"  // didn't compile, timed out, or the sandbox broke
+)
+
+type TestResult struct {
+	Name    string `json:"name"`
+	Hidden  bool   `json:"hidden"`
+	Passed  bool   `json:"passed"`
+	NotRun  bool   `json:"notRun,omitempty"` // the run stopped before reaching it
+	Message string `json:"message,omitempty"`
+}
+
+type Result struct {
+	Status     Status       `json:"status"`
+	Tests      []TestResult `json:"tests"`
+	Output     string       `json:"output"`
+	DurationMs int64        `json:"durationMs"`
+}
+
+func (r Result) Counts() (passed, total int) {
+	for _, t := range r.Tests {
+		if t.Passed {
+			passed++
+		}
+	}
+	return passed, len(r.Tests)
+}
+
+// Files maps relative paths to file contents.
+type Files map[string]string
+
+// Job is one check run: the learner's (or reference/mutant) solution plus tests.
+type Job struct {
+	Toolchain   Toolchain
+	Solution    Files
+	Tests       Files // visible tests
+	HiddenTests Files // only included when running a full submission
+	// Repeat runs every test this many times (shuffled where the language
+	// supports it); a test passes only if every repetition passes.
+	Repeat  int
+	Timeout time.Duration
+	// Names are the task's tests as the quality gate saw them run. They label
+	// results hidden, and a test missing from a run shows as not run. Empty
+	// while the gate itself runs.
+	Names TestNames
+}
+
+// TestNames are a task's tests, named as its test framework reports them.
+type TestNames struct {
+	Visible []string `yaml:"visible" json:"visible"`
+	Hidden  []string `yaml:"hidden" json:"hidden"`
+}
+
+// engineHint turns a failed `<engine> version` into a fix the learner can act on.
+func engineHint(engine Engine, output string, notFound bool) error {
+	desktop := runtime.GOOS == "windows" || runtime.GOOS == "darwin"
+	switch {
+	case notFound && desktop:
+		return errors.New("install Docker Desktop (or Podman Desktop), then restart Tutortop")
+	case notFound:
+		return errors.New("install docker or podman with your package manager, then restart Tutortop")
+	case engine == Podman && desktop:
+		return fmt.Errorf("can't reach Podman. Start it with `podman machine start`: %s", output)
+	case strings.Contains(output, "permission denied") && runtime.GOOS == "linux":
+		return errors.New("can't reach Docker (permission denied). Add yourself to the docker group: `sudo usermod -aG docker $USER`, then log out and back in")
+	case desktop:
+		return fmt.Errorf("can't reach Docker. Start Docker Desktop: %s", output)
+	case engine == Docker:
+		return fmt.Errorf("can't reach Docker. Start it with `sudo systemctl start docker`: %s", output)
+	default:
+		return fmt.Errorf("can't reach %s: %s", engine, output)
+	}
+}
+
 // notRun lists the task's tests that never reported a result. A crash can
 // end a run early: a panic stops `go test` at the crashing test, so later
 // tests (often the visible ones) would silently vanish from the results.
@@ -289,44 +334,9 @@ func notRun(job Job, got []TestResult) []TestResult {
 	return missing
 }
 
-// exec unpacks the files into a fresh directory and runs the script there:
-// in a throwaway container, or in a temp dir on the host in local mode.
-func (r *Runner) exec(ctx context.Context, tc Toolchain, script string, files Files, out *cappedBuffer) error {
-	archive, err := tarFiles(files)
-	if err != nil {
-		return err
-	}
-	shell := "tar -xf - && " + script
-	var cmd *exec.Cmd
-	if r.Engine == "local" {
-		dir, err := os.MkdirTemp("", "tutortop-run-")
-		if err != nil {
-			return err
-		}
-		defer os.RemoveAll(dir)
-		cmd = exec.CommandContext(ctx, "sh", "-c", shell)
-		cmd.Dir = dir
-	} else {
-		// The images run as an unprivileged user with a build cache baked in,
-		// so nothing is shared between runs.
-		name := "tutortop-" + uuid.New().String()
-		args := append([]string{"run", "--rm", "-i", "--name", name}, sandboxFlags("512m")...)
-		cmd = exec.CommandContext(ctx, r.Engine, append(args, tc.Image, "sh", "-c", shell)...)
-		// Killing the docker client doesn't stop the container, so remove it too.
-		cmd.Cancel = func() error {
-			_ = exec.Command(r.Engine, "rm", "-f", name).Run()
-			return cmd.Process.Kill()
-		}
-	}
-	cmd.WaitDelay = 5 * time.Second
-	cmd.Stdin = bytes.NewReader(archive)
-	cmd.Stdout, cmd.Stderr = out, out
-	return cmd.Run()
-}
-
-// sandboxFlags lock a container down: no network, no capabilities, and
+// lockdownFlags lock a container down: no network, no capabilities, and
 // capped memory, CPU and processes.
-func sandboxFlags(memory string) []string {
+func lockdownFlags(memory string) []string {
 	return []string{
 		"--network", "none",
 		"--cap-drop", "ALL", "--security-opt", "no-new-privileges",

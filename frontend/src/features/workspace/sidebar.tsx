@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { lessonDone } from "@/lib/workspace";
-import { type LessonStatus, type TaskStatus, type WorkspaceSnapshot } from "@/lib/api";
+import { ObjectiveStatus, type LessonStatus, type TaskStatus, type WorkspaceSnapshot } from "@/lib/api";
 import { describeItem, entryOf, itemKey, lessonOf, sameItem, type OpenItem } from "@/features/workspace/open-item";
 import type { Attention } from "@/features/chat/chat-panel";
 import { PencilIcon } from "lucide-react";
@@ -43,7 +43,7 @@ export function Sidebar(p: Props) {
   // The module in focus holds the open objective, else the first unfinished
   // one. Finished modules and those further ahead step back.
   const modules = curriculum?.modules ?? [];
-  const isPassed = (id: string) => objectives[id]?.status === "passed";
+  const isPassed = (id: string) => objectives[id]?.status === ObjectiveStatus.ObjectivePassed;
   let focus = modules.findIndex((m) => (m.objectives ?? []).some((o) => o.id === openObjective));
   if (focus === -1) focus = modules.findIndex((m) => !(m.objectives ?? []).every((o) => isPassed(o.id)));
   // The suggested next objective: the first one not passed, in plan order.
@@ -145,14 +145,12 @@ export function Sidebar(p: Props) {
       </nav>
 
       <div className="mt-auto flex justify-between border-t p-2">
-        {/* The mission and the curriculum, with the planning tutor. It says it can be changed. */}
         <button
           className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-soft-foreground transition-colors hover:bg-muted hover:text-foreground aria-[current=page]:bg-muted aria-[current=page]:text-foreground"
           aria-current={p.planOpen ? "page" : undefined}
           onClick={p.onShowPlan}
         >
           <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-            {/* The planning tutor wants attention: a dot after the name. */}
             <span
               className={cn(
                 "text-sm font-semibold text-foreground",

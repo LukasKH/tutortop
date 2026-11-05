@@ -3,8 +3,7 @@
 
 /**
  * Service serves the Settings screen: the app-wide settings, the models each
- * agent offers, and what's installed. Wails and the frontend know it as
- * SettingsService.
+ * agent offers, and what's installed.
  * @module
  */
 
@@ -20,8 +19,19 @@ import * as agent$0 from "../agent/models.js";
 // @ts-ignore: Unused imports
 import * as $models from "./models.js";
 
+/**
+ * Environment reports what's installed.
+ */
 export function Environment(): $CancellablePromise<$models.Environment> {
     return $Call.ByID(1653071239);
+}
+
+/**
+ * Load returns the saved settings. Without a saved agent it picks the first
+ * one that's installed, or the first one listed if none is.
+ */
+export function Load(): $CancellablePromise<$models.Prefs> {
+    return $Call.ByID(3902483058);
 }
 
 /**
@@ -33,17 +43,9 @@ export function Models(provider: string): $CancellablePromise<agent$0.Model[] | 
 }
 
 /**
- * SaveSettings stores the settings. Running agents pick up a new agent,
- * model or effort with the next message once they're idle.
+ * Save stores the settings. Running agents pick up a new agent, model or
+ * effort with the next message once they're idle.
  */
-export function SaveSettings(settings: $models.Settings): $CancellablePromise<void> {
-    return $Call.ByID(4020494010, settings);
-}
-
-/**
- * Settings returns the saved settings. Without a saved agent it picks the
- * first one that's installed, or the first one listed if none is.
- */
-export function Settings(): $CancellablePromise<$models.Settings> {
-    return $Call.ByID(3130372735);
+export function Save(p: $models.Prefs): $CancellablePromise<void> {
+    return $Call.ByID(2233171911, p);
 }

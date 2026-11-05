@@ -35,7 +35,7 @@ export function ApproveProposal(wsID: string): $CancellablePromise<void> {
 /**
  * CreateWorkspace starts a workspace tutored by the agent in the settings.
  * The icon is "" (the tutor picks one during the interview) or one of
- * workspace.Icons, as when the topic comes from an idea.
+ * workspace.Icons(), as when the topic comes from an idea.
  */
 export function CreateWorkspace(title: string, icon: string): $CancellablePromise<string> {
     return $Call.ByID(3637000632, title, icon);

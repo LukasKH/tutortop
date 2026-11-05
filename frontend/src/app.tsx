@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
-import { SettingsService, type Settings } from "@/lib/api";
+import { SettingsService, type Prefs } from "@/lib/api";
 import { Home } from "@/features/home/home";
 import { SettingsDialog } from "@/features/settings/settings-dialog";
-import { loadModels, loadProviders, tutorLabel } from "@/lib/agents";
+import { TutorContext } from "@/features/settings/use-tutor";
+import { checkEnvironment, loadModels, tutorLabel, useEnvironment, useModels } from "@/lib/agents";
 import { WorkspaceView } from "@/features/workspace/workspace-view";
 import { useStored } from "@/hooks/use-stored";
 
@@ -15,46 +16,38 @@ export function AppRoot() {
     setLastId(id);
     setWorkspaceId(id);
   };
-  const [settings, setSettings] = useState<Settings | null>(null);
+  const [settings, setSettings] = useState<Prefs | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
+  // The tutor's label names the agent and model, which come with these lists.
+  const agent = settings?.agent ?? "";
+  const providers = useEnvironment()?.providers ?? [];
+  const models = useModels(agent);
   useEffect(() => {
-    // The tutor label shows the agent's and model's names, which come with
-    // the backend's lists; it's drawn again as each arrives.
-    const redraw = () => setSettings((cur) => cur && { ...cur });
-    loadProviders()
-      .then(redraw)
-      .catch(() => {});
-    SettingsService.Settings().then((s) => {
-      setSettings(s);
-      loadModels(s.agent)
-        .then(redraw)
-        .catch(() => {});
-    });
+    checkEnvironment().catch(() => {});
+    SettingsService.Load().then(setSettings);
   }, []);
+  useEffect(() => {
+    if (agent) loadModels(agent).catch(() => {});
+  }, [agent]);
 
-  async function changeSettings(next: Settings) {
+  async function changeSettings(next: Prefs) {
     const prev = settings;
     setSettings(next);
     try {
-      await SettingsService.SaveSettings(next);
+      await SettingsService.Save(next);
     } catch (e) {
       setSettings(prev);
       throw e;
     }
   }
 
-  const tutor = settings ? tutorLabel(settings) : "";
-  const openSettings = () => setSettingsOpen(true);
+  const tutor = { label: settings ? tutorLabel(settings, providers, models) : "", openSettings: () => setSettingsOpen(true) };
 
   return (
-    <>
-      {workspaceId ? (
-        <WorkspaceView key={workspaceId} id={workspaceId} tutor={tutor} onSettings={openSettings} onBack={() => setWorkspaceId(null)} />
-      ) : (
-        <Home tutor={tutor} lastId={lastId} onSettings={openSettings} onOpen={open} />
-      )}
+    <TutorContext value={tutor}>
+      {workspaceId ? <WorkspaceView key={workspaceId} id={workspaceId} onBack={() => setWorkspaceId(null)} /> : <Home lastId={lastId} onOpen={open} />}
       {settingsOpen && settings && <SettingsDialog settings={settings} onChange={changeSettings} onClose={() => setSettingsOpen(false)} />}
-    </>
+    </TutorContext>
   );
 }

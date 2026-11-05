@@ -55,22 +55,30 @@ type history struct {
 }
 
 func (w *Workspace) history() history {
-	h := history{passed: map[string]bool{}, hints: map[string]HintUse{}, quiz: map[string]map[int]QuizResult{}}
+	h := history{
+		passed: map[string]bool{},
+		hints:  map[string]HintUse{},
+		quiz:   map[string]map[int]QuizResult{},
+	}
 	attempts, _ := w.Attempts()
 	for _, a := range attempts {
-		switch {
-		case a.passedTask():
-			h.passed[a.TaskID] = true
-		case a.Kind == AttemptHint:
+		switch a.Kind {
+		case AttemptSubmit:
+			if a.passedTask() {
+				h.passed[a.TaskID] = true
+			}
+		case AttemptHint:
 			u := h.hints[a.TaskID]
 			h.hints[a.TaskID] = HintUse{Count: u.Count + 1, Highest: max(u.Highest, a.HintLevel)}
-		case a.Kind == AttemptQuiz:
+		case AttemptQuiz:
 			if h.quiz[a.LessonID] == nil {
 				h.quiz[a.LessonID] = map[int]QuizResult{}
 			}
 			if _, seen := h.quiz[a.LessonID][a.Question]; !seen {
 				h.quiz[a.LessonID][a.Question] = QuizResult{Choice: a.Choice, Correct: a.Passed == 1}
 			}
+		case AttemptRun:
+			// A run isn't progress.
 		}
 	}
 	return h

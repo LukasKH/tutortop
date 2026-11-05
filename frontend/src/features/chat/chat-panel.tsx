@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef, type ReactNode } from "react";
-import { type ChatItem, type SandboxCheck } from "@/lib/api";
+import { ChatRole, ChatStatus, type ChatItem, type SandboxCheck } from "@/lib/api";
+import { useTutor } from "@/features/settings/use-tutor";
 import type { OpenItem } from "@/features/workspace/open-item";
 import type { NewItem } from "@/features/workspace/use-open-item";
 import type { Composer } from "@/features/chat/use-composer";
@@ -37,12 +38,10 @@ type Props = {
   composer: Composer;
   onSend: (text: string) => void;
   onCollapse: () => void;
-  /** The configured agent, model and effort, shown under the composer; clicking opens Settings. */
-  tutor: string;
-  onSettings: () => void;
 };
 
 export function ChatPanel({ composer: { draft, setDraft, inputRef }, ...p }: Props) {
+  const tutor = useTutor();
   const listRef = useRef<HTMLDivElement>(null);
   const stickToBottom = useRef(true);
 
@@ -129,10 +128,10 @@ export function ChatPanel({ composer: { draft, setDraft, inputRef }, ...p }: Pro
       <Button
         variant="ghost"
         className="mx-3 mb-2 h-auto max-w-[calc(100%-24px)] flex-none justify-start rounded-sm px-1 py-0.5 text-xs font-normal text-faint hover:not-disabled:bg-transparent hover:not-disabled:text-foreground"
-        onClick={p.onSettings}
+        onClick={tutor.openSettings}
         title="Change the tutor's agent, model and reasoning"
       >
-        <span className="min-w-0 truncate">{p.tutor}</span>
+        <span className="min-w-0 truncate">{tutor.label}</span>
       </Button>
     </aside>
   );
@@ -214,9 +213,9 @@ export function StatusLine({ check, newItem, busy, onStop, onOpen }: StatusProps
 
 function Message({ item, lang }: { item: ChatItem; lang?: string }) {
   switch (item.role) {
-    case "user":
+    case ChatRole.RoleUser:
       return <div className="max-w-[85%] self-end rounded-xl bg-muted px-[11px] py-2 leading-[1.5] wrap-anywhere whitespace-pre-wrap">{item.text}</div>;
-    case "assistant":
+    case ChatRole.RoleAssistant:
       return (
         <Markdown
           text={item.text}
@@ -224,18 +223,21 @@ function Message({ item, lang }: { item: ChatItem; lang?: string }) {
           lang={lang}
         />
       );
-    case "tool":
+    case ChatRole.RoleTool:
       return (
         <div className="-my-2 flex items-center gap-1.5 text-xs text-muted-foreground" title={item.text}>
-          <span className="grid w-3 flex-none">{item.status === "running" ? <Spinner className="size-[10px]" /> : item.status === "failed" ? "✗" : "✓"}</span>
+          <span className="grid w-3 flex-none">
+            {item.status === ChatStatus.ChatRunning ? <Spinner className="size-[10px]" /> : item.status === ChatStatus.ChatFailed ? "✗" : "✓"}
+          </span>
           <span className="min-w-0 truncate">{item.text}</span>
         </div>
       );
-    default:
+    case ChatRole.RoleNotice:
+    case ChatRole.$zero:
       return (
         <div
           className="max-w-[88%] self-center text-center text-xs text-balance wrap-anywhere whitespace-pre-wrap text-muted-foreground"
-          role={item.status === "failed" ? "alert" : undefined}
+          role={item.status === ChatStatus.ChatFailed ? "alert" : undefined}
         >
           {item.text.replace(/^\[app\]\s*/, "")}
         </div>

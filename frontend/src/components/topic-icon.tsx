@@ -65,7 +65,7 @@ export function TopicIcon({ name, size = 24, keepSpace, className }: Props) {
   return keepSpace ? <span className="flex-none" style={{ width: size, height: size }} aria-hidden="true" /> : null;
 }
 
-// A workspace's picture. The names match workspace.Icons in Go, which the
+// A workspace's picture. The names match workspace.Icons() in Go, which the
 // tutor picks from with set_icon; keep the two lists in step. Languages and
 // tools use their logo (Simple Icons, CC0), drawn in one colour. Other topics
 // use a Lucide icon.

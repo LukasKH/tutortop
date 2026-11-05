@@ -38,7 +38,7 @@ func (r *Runner) StartLanguageServer(ctx context.Context, tc Toolchain, files Fi
 	maps.Copy(all, tc.ExtraFiles)
 	maps.Copy(all, files)
 
-	if r.Engine == "local" {
+	if r.Engine == Local {
 		dir, err := os.MkdirTemp("", "tutortop-lsp-")
 		if err != nil {
 			return nil, err
@@ -67,19 +67,19 @@ func (r *Runner) StartLanguageServer(ctx context.Context, tc Toolchain, files Fi
 		return nil, err
 	}
 	name := "tutortop-lsp-" + uuid.New().String()
-	args := append([]string{"create", "-i", "--rm", "--name", name}, sandboxFlags("1g")...)
+	args := append([]string{"create", "-i", "--rm", "--name", name}, lockdownFlags("1g")...)
 	args = append(append(args, tc.Image), tc.LanguageServer...)
-	if out, err := exec.CommandContext(ctx, r.Engine, args...).CombinedOutput(); err != nil {
+	if out, err := exec.CommandContext(ctx, string(r.Engine), args...).CombinedOutput(); err != nil {
 		return nil, errors.New("starting the language server: " + string(bytes.TrimSpace(out)))
 	}
-	remove := func() { _ = exec.Command(r.Engine, "rm", "-f", name).Run() }
-	cp := exec.CommandContext(ctx, r.Engine, "cp", "-a", "-", name+":/work")
+	remove := func() { _ = exec.Command(string(r.Engine), "rm", "-f", name).Run() }
+	cp := exec.CommandContext(ctx, string(r.Engine), "cp", "-a", "-", name+":/work")
 	cp.Stdin = bytes.NewReader(archive)
 	if out, err := cp.CombinedOutput(); err != nil {
 		remove()
 		return nil, errors.New("copying files to the language server: " + string(bytes.TrimSpace(out)))
 	}
-	return startServer(exec.Command(r.Engine, "start", "-a", "-i", name), "/work", remove)
+	return startServer(exec.Command(string(r.Engine), "start", "-a", "-i", name), "/work", remove)
 }
 
 // Close stops the server and removes its container or temp directory.
@@ -106,10 +106,16 @@ func startServer(cmd *exec.Cmd, root string, cleanup func()) (*Server, error) {
 		cleanup()
 		return nil, err
 	}
-	s := &Server{Stdin: stdin, Stdout: stdout, Root: root, cmd: cmd, cleanup: func() {
-		cleanup()
-		_ = stdout.Close()
-	}}
+	s := &Server{
+		Stdin:  stdin,
+		Stdout: stdout,
+		Root:   root,
+		cmd:    cmd,
+		cleanup: func() {
+			cleanup()
+			_ = stdout.Close()
+		},
+	}
 	// Reap the process when it exits on its own; the reader then sees EOF.
 	go func() {
 		err := cmd.Wait()

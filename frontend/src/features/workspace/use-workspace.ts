@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useReducer } from "react";
+import { createContext, use, useCallback, useEffect, useReducer } from "react";
 import { ChatService, WorkspaceService, AppEvents, errorText, useEvent } from "@/lib/api";
 import { initialWorkspace, isBusy, reduceWorkspace, tutorBusy, writingObjectives } from "@/features/workspace/workspace-state";
 
@@ -77,3 +77,12 @@ export function useWorkspace(id: string) {
 
 /** What useWorkspace returns: the LiveWorkspace, kept current, and the calls that change it. Not workspace.Workspace or WorkspaceSnapshot. */
 export type UseWorkspaceResult = ReturnType<typeof useWorkspace>;
+
+/** The open workspace's id and useWorkspace's result. WorkspaceView provides it to the panes inside it. */
+export const LiveWorkspaceContext = createContext<{ id: string; live: UseWorkspaceResult } | null>(null);
+
+export function useLiveWorkspace() {
+  const ws = use(LiveWorkspaceContext);
+  if (!ws) throw new Error("useLiveWorkspace is only for components inside WorkspaceView");
+  return ws;
+}

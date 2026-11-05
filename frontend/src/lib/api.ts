@@ -1,12 +1,12 @@
 import { useEffect, useEffectEvent } from "react";
 import { Events } from "@wailsio/runtime";
 // The generated bindings, one module per Go package. Services and types are
-// re-exported below under the names components use.
+// re-exported below under their Go names.
 import * as app from "@bindings/github.com/LukasKH/tutortop/internal/app";
 import * as threads from "@bindings/github.com/LukasKH/tutortop/internal/agent/threads";
 import * as settings from "@bindings/github.com/LukasKH/tutortop/internal/settings";
 import type { WorkspaceSnapshot } from "@bindings/github.com/LukasKH/tutortop/internal/app";
-import type { Environment, ProviderStatus, Settings } from "@bindings/github.com/LukasKH/tutortop/internal/settings";
+import type { Environment, Prefs, ProviderStatus } from "@bindings/github.com/LukasKH/tutortop/internal/settings";
 import type { SandboxCheck } from "@bindings/github.com/LukasKH/tutortop/internal/events";
 import type { Model } from "@bindings/github.com/LukasKH/tutortop/internal/agent";
 import type {
@@ -27,10 +27,10 @@ import type {
 } from "@bindings/github.com/LukasKH/tutortop/internal/workspace";
 import type { Result, TestResult } from "@bindings/github.com/LukasKH/tutortop/internal/sandbox";
 
-/** Who said a chat item: the learner, the tutor, a tool call worth showing, or the app; how a tool call went; and what an item is, for code that looks for it. */
-export { ChatMark, ChatRole, ChatStatus } from "@bindings/github.com/LukasKH/tutortop/internal/workspace";
-/** What a sandbox check is for: a writer's new task or a toolchain. */
+// The backend's enums, compared against instead of their string values.
+export { ChatMark, ChatRole, ChatStatus, ObjectiveStatus, TaskShape, TaskSize } from "@bindings/github.com/LukasKH/tutortop/internal/workspace";
 export { CheckKind } from "@bindings/github.com/LukasKH/tutortop/internal/events";
+export { Status } from "@bindings/github.com/LukasKH/tutortop/internal/sandbox";
 
 export type {
   Activity,
@@ -47,9 +47,9 @@ export type {
   Questions,
   QuizResult,
   Result,
+  Prefs,
   SandboxCheck,
   Source,
-  Settings,
   Summary,
   TaskDetail,
   TaskStatus,
@@ -79,9 +79,11 @@ export const LessonService = { ...app.LessonService, Lesson: patiently(app.Lesso
 
 export const ChatService = { ...threads.ChatService, Chat: patiently(threads.ChatService.Chat) };
 
+// settings.Service and editor.Service are both named Service in Go, so they
+// take their package's name here.
 export const SettingsService = {
   ...settings.Service,
-  Settings: patiently(settings.Service.Settings),
+  Load: patiently(settings.Service.Load),
   Models: patiently(settings.Service.Models),
   Environment: patiently(settings.Service.Environment),
 };

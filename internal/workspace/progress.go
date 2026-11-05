@@ -89,6 +89,14 @@ func (w *Workspace) NeedsWriting(ahead int) []Objective {
 	return out
 }
 
+func (w *Workspace) TaskPassed(id string) bool { return w.history().passed[id] }
+
+// HintUse is how many hints the learner asked for on a task, and the deepest.
+type HintUse struct{ Count, Highest int }
+
+// Hints reports the hints the learner asked for on a task.
+func (w *Workspace) Hints(id string) HintUse { return w.history().hints[id] }
+
 // progress works out how far the learner got with each objective of the
 // plan, from the tasks and which of them passed. cur may be nil.
 func progress(cur *Curriculum, tasks []TaskInfo, passedTask map[string]bool) Progress {
@@ -124,14 +132,6 @@ func progress(cur *Curriculum, tasks []TaskInfo, passedTask map[string]bool) Pro
 	}
 	return p
 }
-
-func (w *Workspace) TaskPassed(id string) bool { return w.history().passed[id] }
-
-// HintUse is how many hints the learner asked for on a task, and the deepest.
-type HintUse struct{ Count, Highest int }
-
-// Hints reports the hints the learner asked for on a task.
-func (w *Workspace) Hints(id string) HintUse { return w.history().hints[id] }
 
 // nextTask is the title of the first task the learner hasn't passed.
 func (w *Workspace) nextTask() string {

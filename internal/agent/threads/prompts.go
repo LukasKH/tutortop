@@ -112,13 +112,14 @@ func taskContext(w *workspace.Workspace, id string, last *sandbox.Result) string
 		p, t := last.Counts()
 		fmt.Fprintf(&b, "Last check: %s, %d/%d tests passing.\n", last.Status, p, t)
 		for _, tr := range last.Tests {
-			if !tr.Passed {
-				kind := "visible"
-				if tr.Hidden {
-					kind = "hidden"
-				}
-				fmt.Fprintf(&b, "- %s (%s) failed: %s\n", tr.Name, kind, text.Truncate(tr.Message, 400))
+			if tr.Passed {
+				continue
 			}
+			kind := "visible"
+			if tr.Hidden {
+				kind = "hidden"
+			}
+			fmt.Fprintf(&b, "- %s (%s) failed: %s\n", tr.Name, kind, text.Truncate(tr.Message, 400))
 		}
 		if last.Status == sandbox.StatusError {
 			fmt.Fprintf(&b, "Output:\n%s\n", text.Truncate(last.Output, 1500))

@@ -28,8 +28,10 @@ func (r *Runner) ProbeLanguageServer(ctx context.Context, tc Toolchain, files Fi
 	}
 	defer srv.Close()
 	init, _ := json.Marshal(map[string]any{
-		"jsonrpc": "2.0", "id": 1, "method": "initialize",
-		"params": map[string]any{"processId": nil, "rootUri": "file://" + srv.Root, "capabilities": map[string]any{}},
+		"jsonrpc": "2.0",
+		"id":      1,
+		"method":  "initialize",
+		"params":  map[string]any{"processId": nil, "rootUri": "file://" + srv.Root, "capabilities": map[string]any{}},
 	})
 	if err := WriteMessage(srv.Stdin, init); err != nil {
 		return err
@@ -44,14 +46,15 @@ func (r *Runner) ProbeLanguageServer(ctx context.Context, tc Toolchain, files Fi
 				return
 			}
 			resp, err := decode.JSON[lspResponse](msg)
-			if err == nil && string(resp.ID) == "1" && (resp.Result != nil || resp.Error != nil) {
-				if resp.Error != nil {
-					done <- errors.New("initialize failed: " + resp.Error.Message)
-				} else {
-					done <- nil
-				}
+			if err != nil || string(resp.ID) != "1" || (resp.Result == nil && resp.Error == nil) {
+				continue // not the answer to initialize
+			}
+			if resp.Error != nil {
+				done <- errors.New("initialize failed: " + resp.Error.Message)
 				return
 			}
+			done <- nil
+			return
 		}
 	}()
 	ctx, cancel := context.WithTimeoutCause(ctx, 90*time.Second, errors.New("the language server didn't answer initialize within 90 seconds"))

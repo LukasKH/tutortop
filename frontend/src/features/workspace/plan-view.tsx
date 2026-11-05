@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from "react";
-import { WorkspaceService, type WorkspaceSnapshot } from "@/lib/api";
+import { ObjectiveStatus, WorkspaceService, type WorkspaceSnapshot } from "@/lib/api";
+import { useLiveWorkspace } from "@/features/workspace/use-workspace";
 import { PencilIcon } from "lucide-react";
 import { Markdown } from "@/components/markdown";
 import { AutoTextarea } from "@/components/auto-textarea";
@@ -10,7 +11,6 @@ import { usePending } from "@/hooks/use-pending";
 import { CurriculumTitle, ModuleItem, ModuleList, ModuleNote, ObjectiveItem, ObjectiveName, ObjectiveNote } from "@/features/workspace/curriculum-list";
 
 type Props = {
-  wsId: string;
   ws: WorkspaceSnapshot;
   onClose?: () => void;
   /** Opens the tutor beside the page, ready for a message about the plan. Not offered before the first plan. */
@@ -23,12 +23,12 @@ type Props = {
  * yourself, or ask the tutor, who proposes curriculum changes for you to
  * review. The curriculum isn't edited by hand.
  */
-export function PlanView({ wsId, ws, onClose, onAskTutor }: Props) {
+export function PlanView({ ws, onClose, onAskTutor }: Props) {
   const [editing, setEditing] = useState(false);
-  if (editing) return <MissionEditor wsId={wsId} mission={ws.mission} onDone={() => setEditing(false)} />;
+  if (editing) return <MissionEditor mission={ws.mission} onDone={() => setEditing(false)} />;
 
   const objectives = ws.progress.objectives ?? {};
-  const passed = (id: string) => objectives[id]?.status === "passed";
+  const passed = (id: string) => objectives[id]?.status === ObjectiveStatus.ObjectivePassed;
   const modules = ws.curriculum?.modules ?? [];
   return (
     <ReadingPage>
@@ -99,7 +99,8 @@ export function PlanView({ wsId, ws, onClose, onAskTutor }: Props) {
 }
 
 /** The mission as plain text. Saving tells the tutor, who proposes plan changes to match if needed. */
-function MissionEditor({ wsId, mission: initial, onDone }: { wsId: string; mission: string; onDone: () => void }) {
+function MissionEditor({ mission: initial, onDone }: { mission: string; onDone: () => void }) {
+  const { id: wsId } = useLiveWorkspace();
   const [mission, setMission] = useState(initial);
   const { pending: saving, error, run } = usePending();
   const save = () =>

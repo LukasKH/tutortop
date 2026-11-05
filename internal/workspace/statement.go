@@ -20,12 +20,6 @@ type Statement struct {
 	Background   string    `json:"background,omitempty" jsonschema:"optional markdown: a short refresher on what this task needs that the objective's lesson didn't cover, with a worked example in a code block on a DIFFERENT problem. Leave out when the lesson covers it"`
 }
 
-type Example struct {
-	Input       string `json:"input" jsonschema:"the call, as code, e.g. NewNote(2, \"\", \"x\")"`
-	Output      string `json:"output" jsonschema:"exactly what it returns, as code, e.g. Note{}, error \"new note: empty title\""`
-	Explanation string `json:"explanation,omitempty" jsonschema:"why, in a sentence, when it isn't obvious"`
-}
-
 // Markdown renders the statement as the task's README.md.
 func (s Statement) Markdown(title, language string) string {
 	var b strings.Builder
@@ -56,25 +50,6 @@ func (s Statement) Markdown(title, language string) string {
 	return b.String()
 }
 
-// inlineCode puts a value on one line in a code span, with a longer fence
-// when the value itself contains backticks.
-func inlineCode(s string) string {
-	s = oneLine(s)
-	if s == "" {
-		return ""
-	}
-	if strings.Contains(s, "`") {
-		return "`` " + s + " ``"
-	}
-	return "`" + s + "`"
-}
-
-// oneLine joins lines with a space. Spaces inside stay as written: in an
-// example like NewNote(2, "   ", "") they're the point.
-func oneLine(s string) string {
-	return strings.TrimSpace(strings.ReplaceAll(s, "\n", " "))
-}
-
 func (s Statement) check(p *problems) {
 	if strings.TrimSpace(s.Task) == "" {
 		p.addf("statement.task is required: say what to write, e.g. 'Change NewNote so that …'")
@@ -99,4 +74,29 @@ func (s Statement) check(p *problems) {
 	if b := strings.TrimSpace(s.Background); b != "" && !strings.Contains(b, "```") {
 		p.addf("statement.background must show the technique with a worked example in a code block, on a different problem than the task")
 	}
+}
+
+type Example struct {
+	Input       string `json:"input" jsonschema:"the call, as code, e.g. NewNote(2, \"\", \"x\")"`
+	Output      string `json:"output" jsonschema:"exactly what it returns, as code, e.g. Note{}, error \"new note: empty title\""`
+	Explanation string `json:"explanation,omitempty" jsonschema:"why, in a sentence, when it isn't obvious"`
+}
+
+// inlineCode puts a value on one line in a code span, with a longer fence
+// when the value itself contains backticks.
+func inlineCode(s string) string {
+	s = oneLine(s)
+	if s == "" {
+		return ""
+	}
+	if strings.Contains(s, "`") {
+		return "`` " + s + " ``"
+	}
+	return "`" + s + "`"
+}
+
+// oneLine joins lines with a space. Spaces inside stay as written: in an
+// example like NewNote(2, "   ", "") they're the point.
+func oneLine(s string) string {
+	return strings.TrimSpace(strings.ReplaceAll(s, "\n", " "))
 }

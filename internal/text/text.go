@@ -1,4 +1,5 @@
-// Package text has small string helpers shared across packages.
+// Package text shortens and joins text for display: in the chat, in test
+// output and in what the agent reads.
 package text
 
 import (

@@ -31,7 +31,7 @@ func (t *threadTools) createTask(ctx context.Context, _ *mcpsdk.CallToolRequest,
 	if err := t.ownObjective(spec.ObjectiveID); err != nil {
 		return nil, createTaskOutput{}, err
 	}
-	tc, err := t.w.ValidateSpec(&spec)
+	spec, tc, err := t.w.ValidateSpec(spec)
 	if err != nil {
 		return nil, createTaskOutput{}, err
 	}
@@ -61,8 +61,12 @@ func (t *threadTools) qualityGate(ctx context.Context, spec workspace.TaskSpec, 
 	status := events.SandboxCheck{Kind: events.CheckTask, Thread: t.thread.String(), Title: spec.Title, Running: true}
 	t.checks.Show(t.w.ID, status)
 	rep, err := t.runner.Gate(ctx, sandbox.GateInput{
-		Toolchain: tc, Starter: spec.Starter, Reference: spec.Reference,
-		Tests: spec.Tests, HiddenTests: spec.HiddenTests, Mutants: spec.Mutants,
+		Toolchain:   tc,
+		Starter:     spec.Starter,
+		Reference:   spec.Reference,
+		Tests:       spec.Tests,
+		HiddenTests: spec.HiddenTests,
+		Mutants:     spec.Mutants,
 	})
 	status.Running, status.Passed = false, rep.Passed
 	t.checks.Show(t.w.ID, status)

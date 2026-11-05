@@ -19,11 +19,8 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
-// Service serves the code editor: language servers give it completions,
-// hover docs and errors. Each open task gets one, running in the task's
-// sandbox image. The app only relays protocol messages: the frontend speaks
-// LSP, we frame it over stdio. It stops the servers as the app quits. Wails
-// and the frontend know it as EditorService.
+// Service serves the editor its language servers, and stops them as the app
+// quits. The frontend speaks LSP; Service frames it over stdio.
 type Service struct {
 	store   *workspace.Store
 	runner  *sandbox.Runner
@@ -42,13 +39,6 @@ func NewService(store *workspace.Store, runner *sandbox.Runner, servers *Servers
 func (s *Service) ServiceShutdown() error {
 	s.servers.stopAll()
 	return nil
-}
-
-// LanguageServerInfo tells the editor how to talk to a started server.
-type LanguageServerInfo struct {
-	ID string `json:"id"`
-	// RootURI is the task folder as the server sees it, e.g. file:///work.
-	RootURI string `json:"rootUri"`
 }
 
 // StartLanguageServer starts a language server for a task with the learner's
@@ -97,6 +87,13 @@ func (s *Service) SendLanguageServer(id, message string) error {
 // StopLanguageServer stops a server the editor no longer needs.
 func (s *Service) StopLanguageServer(id string) { s.servers.stop(id) }
 
+// LanguageServerInfo tells the editor how to talk to a started server.
+type LanguageServerInfo struct {
+	ID string `json:"id"`
+	// RootURI is the task folder as the server sees it, e.g. file:///work.
+	RootURI string `json:"rootUri"`
+}
+
 // Servers are the running language servers, by id. The editor's Service
 // starts them; a workspace's are stopped before it's deleted.
 type Servers struct {
@@ -124,23 +121,6 @@ func (r *Servers) StopWorkspace(wsID string) {
 		ls.srv.Close()
 	}
 }
-
-type languageServer struct {
-	id      string
-	key     taskKey // the task whose code it serves
-	srv     *sandbox.Server
-	started time.Time
-
-	writeMu sync.Mutex
-}
-
-// taskKey names one task of one workspace.
-type taskKey struct{ ws, task string }
-
-// maxLanguageServers bounds how many run at once; starting another stops the
-// oldest. The UI shows one task at a time, so this only matters when a
-// reloaded window leaves its old server behind.
-const maxLanguageServers = 2
 
 // add keeps a started server. It stops the task's other servers, and the
 // oldest ones beyond maxLanguageServers.
@@ -220,3 +200,20 @@ func (r *Servers) relay(ls *languageServer) {
 	ls.srv.Close()
 	events.Emit(events.LSPMessage, events.LSP{ID: ls.id, Closed: true})
 }
+
+type languageServer struct {
+	id      string
+	key     taskKey // the task whose code it serves
+	srv     *sandbox.Server
+	started time.Time
+
+	writeMu sync.Mutex
+}
+
+// taskKey names one task of one workspace.
+type taskKey struct{ ws, task string }
+
+// maxLanguageServers bounds how many run at once; starting another stops the
+// oldest. The UI shows one task at a time, so this only matters when a
+// reloaded window leaves its old server behind.
+const maxLanguageServers = 2

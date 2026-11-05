@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { WorkspaceService, type Curriculum, type Progress } from "@/lib/api";
+import { ObjectiveStatus, TaskShape, TaskSize, WorkspaceService, type Curriculum, type Progress } from "@/lib/api";
 import { TASK_MINUTES, languageLabel, plural } from "@/lib/format";
 import { objectivesOf } from "@/lib/workspace";
 import { Markdown } from "@/components/markdown";
@@ -30,7 +30,7 @@ type Props = {
 
 export function ProposalView({ wsId, proposal, current, progress, mission }: Props) {
   // The backend fills in defaults when it validates a proposal.
-  const { size = "medium", shape = "kata" } = proposal.taskDefaults ?? {};
+  const { size = TaskSize.SizeMedium, shape = TaskShape.ShapeKata } = proposal.taskDefaults ?? {};
   const [editing, setEditing] = useState(false);
   const [feedback, setFeedback] = useState("");
   const { pending, error, run } = usePending();
@@ -81,7 +81,7 @@ export function ProposalView({ wsId, proposal, current, progress, mission }: Pro
                 {(m.objectives ?? []).map((o) => {
                   const isNew = !!current && !before.has(o.id);
                   const renamed = !!current && before.has(o.id) && before.get(o.id) !== o.title;
-                  const done = objectives[o.id]?.status === "passed";
+                  const done = objectives[o.id]?.status === ObjectiveStatus.ObjectivePassed;
                   return (
                     <ObjectiveItem key={o.id} done={done}>
                       <span className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
@@ -104,9 +104,9 @@ export function ProposalView({ wsId, proposal, current, progress, mission }: Pro
             <ModuleHeading>Removed</ModuleHeading>
             <ul>
               {removed.map(([id, title]) => (
-                <ObjectiveItem key={id} done={objectives[id]?.status === "passed"}>
+                <ObjectiveItem key={id} done={objectives[id]?.status === ObjectiveStatus.ObjectivePassed}>
                   <span className="text-muted-foreground line-through">{title}</span>
-                  {objectives[id]?.status === "passed" && <ObjectiveNote>Still counts all-time</ObjectiveNote>}
+                  {objectives[id]?.status === ObjectiveStatus.ObjectivePassed && <ObjectiveNote>Still counts all-time</ObjectiveNote>}
                 </ObjectiveItem>
               ))}
             </ul>
@@ -145,7 +145,10 @@ export function ProposalView({ wsId, proposal, current, progress, mission }: Pro
   );
 }
 
-const SHAPES: Record<string, string> = { kata: "standalone exercises", project: "one program that grows task by task" };
+const SHAPES: Partial<Record<TaskShape, string>> = {
+  [TaskShape.ShapeKata]: "standalone exercises",
+  [TaskShape.ShapeProject]: "one program that grows task by task",
+} satisfies Record<Exclude<TaskShape, TaskShape.$zero>, string>;
 
 /** "new" or "renamed" beside an objective in a plan revision. */
 function Tag(props: { title?: string; children: string }) {

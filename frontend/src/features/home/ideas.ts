@@ -5,7 +5,7 @@
 export type Idea = {
   title: string;
   blurb: string;
-  /** One of workspace.Icons. */
+  /** One of workspace.Icons(). */
   icon: string;
   /** The language, or "Any language" when the tutor and learner pick one. */
   language: string;

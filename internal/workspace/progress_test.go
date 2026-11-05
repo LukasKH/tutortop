@@ -187,7 +187,7 @@ func TestCompletions(t *testing.T) {
 
 func TestSummarizeStreaks(t *testing.T) {
 	now := time.Date(2026, 3, 10, 15, 0, 0, 0, time.UTC)
-	on := func(month time.Month, day int, kind string) workspace.Completion {
+	on := func(month time.Month, day int, kind workspace.CompletionKind) workspace.Completion {
 		return workspace.Completion{Kind: kind, At: time.Date(2026, month, day, 10, 0, 0, 0, time.UTC)}
 	}
 	cases := []struct {

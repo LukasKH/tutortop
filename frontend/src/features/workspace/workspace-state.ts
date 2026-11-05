@@ -1,4 +1,4 @@
-import { CheckKind, type ChatItem, type Questions, type SandboxCheck, type WorkspaceSnapshot } from "@/lib/api";
+import { ChatStatus, CheckKind, type ChatItem, type Questions, type SandboxCheck, type WorkspaceSnapshot } from "@/lib/api";
 import { objectiveOfWriter } from "@/lib/workspace";
 
 /**
@@ -103,7 +103,7 @@ export function reduceWorkspace(s: LiveWorkspace, a: Action): LiveWorkspace {
     case "chat": {
       // Writers aren't chats; only their failures matter here.
       const writing = objectiveOfWriter(a.item.thread);
-      if (!writing || a.item.status !== "failed") return s;
+      if (!writing || a.item.status !== ChatStatus.ChatFailed) return s;
       return { ...s, writeFailed: { ...s.writeFailed, [writing]: a.item.text } };
     }
 

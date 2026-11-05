@@ -40,7 +40,7 @@ func TestValidateSpec(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			spec := taskSpec("a")
 			c.change(&spec)
-			tc, err := w.ValidateSpec(&spec)
+			spec, tc, err := w.ValidateSpec(spec)
 			wantProblems(t, err, c.want...)
 			if err == nil && (tc.Language != "go" || spec.Size != "medium") {
 				t.Errorf("toolchain %q, size %q; want go and the plan's default size", tc.Language, spec.Size)

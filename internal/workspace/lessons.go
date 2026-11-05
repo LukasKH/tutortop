@@ -7,6 +7,8 @@ import (
 	"strings"
 	"time"
 	"unicode/utf8"
+
+	"github.com/LukasKH/tutortop/internal/atomicfile"
 )
 
 // A lesson teaches the knowledge for one objective before its task gives the
@@ -25,6 +27,20 @@ type LessonSpec struct {
 	Body          string         `json:"body" jsonschema:"markdown: the theory, short enough to read in 5-10 minutes. Explain only the knowledge the objective's task needs, tied to the learner's mission, building from what they already know. Use small headings, worked examples in code blocks, a small picture for each idea (call tree, structure tree, diff or mermaid diagram), and cite sources with links for claims. Start at the first section: the app shows the title and summary above the body and primarySource below it, so don't repeat them. Don't solve the task."`
 	PrimarySource Source         `json:"primarySource" jsonschema:"the single best high-trust resource to read or watch next on this topic"`
 	Quiz          []QuizQuestion `json:"quiz" jsonschema:"3-5 questions that make the learner recall and apply the lesson (retrieval practice), not recognise wording"`
+}
+
+// markdown is the lesson as a readable file in the workspace, quiz without answers.
+func (s LessonSpec) markdown() string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "# %s\n\n%s\n\n%s\n\n", s.Title, strings.TrimSpace(s.Summary), strings.TrimSpace(s.Body))
+	fmt.Fprintf(&b, "## Read next\n\n[%s](%s)\n\n## Check yourself\n\n", s.PrimarySource.Title, s.PrimarySource.URL)
+	for i, q := range s.Quiz {
+		fmt.Fprintf(&b, "%d. %s\n", i+1, strings.TrimSpace(q.Question))
+		for _, o := range q.Options {
+			fmt.Fprintf(&b, "   - %s\n", strings.TrimSpace(o))
+		}
+	}
+	return b.String()
 }
 
 type QuizQuestion struct {
@@ -77,13 +93,6 @@ type QuizResult struct {
 	Explanation string `json:"explanation"`
 }
 
-type lessonFile struct {
-	Summary       string         `yaml:"summary"`
-	Body          string         `yaml:"body"`
-	PrimarySource Source         `yaml:"primary_source"`
-	Quiz          []QuizQuestion `yaml:"quiz"`
-}
-
 // ValidateLesson checks a lesson against the curriculum and the quiz rules.
 func (w *Workspace) ValidateLesson(spec LessonSpec) error {
 	cur, err := w.Curriculum()
@@ -129,6 +138,119 @@ func (w *Workspace) ValidateLesson(spec LessonSpec) error {
 	}
 	checkQuiz(spec.Quiz, &p)
 	return p.err("lesson")
+}
+
+// SaveLesson stores a validated lesson.
+func (w *Workspace) SaveLesson(spec LessonSpec) (LessonInfo, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	lessons, err := w.Lessons()
+	if err != nil {
+		return LessonInfo{}, err
+	}
+	info := LessonInfo{
+		ID:        fmt.Sprintf("%04d-%s", len(lessons)+1, slugify(spec.Title)),
+		Title:     spec.Title,
+		Objective: spec.ObjectiveID,
+		Questions: len(spec.Quiz),
+		CreatedAt: time.Now(),
+	}
+	if err := os.MkdirAll(w.path("lessons", info.ID), 0o755); err != nil {
+		return info, err
+	}
+	if err := os.MkdirAll(w.private("lessons", info.ID), 0o755); err != nil {
+		return info, err
+	}
+	file := lessonFile{Summary: spec.Summary, Body: spec.Body, PrimarySource: spec.PrimarySource, Quiz: spec.Quiz}
+	if err := writeYAML(w.private("lessons", info.ID, "lesson.yaml"), file); err != nil {
+		return info, err
+	}
+	if err := atomicfile.Write(w.path("lessons", info.ID, "README.md"), []byte(spec.markdown())); err != nil {
+		return info, err
+	}
+	if err := writeYAML(w.path("lessons", info.ID, "lesson.yaml"), info); err != nil {
+		return info, err
+	}
+	w.commit("Add lesson " + info.ID)
+	return info, nil
+}
+
+func (w *Workspace) Lessons() ([]LessonInfo, error) {
+	return readEach[LessonInfo](w.path("lessons"), "lesson.yaml")
+}
+
+// LessonStatuses lists lessons with the learner's quiz results.
+func (w *Workspace) LessonStatuses() ([]LessonStatus, error) {
+	lessons, err := w.Lessons()
+	if err != nil {
+		return nil, err
+	}
+	results := w.history().quiz
+	out := make([]LessonStatus, len(lessons))
+	for i, l := range lessons {
+		out[i] = LessonStatus{LessonInfo: l}
+		for _, r := range results[l.ID] {
+			out[i].Answered++
+			if r.Correct {
+				out[i].Correct++
+			}
+		}
+	}
+	return out, nil
+}
+
+func (w *Workspace) Lesson(id string) (LessonDetail, error) {
+	info, err := w.lessonInfo(id)
+	if err != nil {
+		return LessonDetail{}, err
+	}
+	f, err := w.lessonFile(id)
+	if err != nil {
+		return LessonDetail{}, err
+	}
+	d := LessonDetail{LessonStatus: LessonStatus{LessonInfo: info}, Summary: f.Summary, Body: f.Body, PrimarySource: f.PrimarySource, Results: map[int]QuizResult{}}
+	results := w.history().quiz[id]
+	for i, q := range f.Quiz {
+		d.Quiz = append(d.Quiz, QuizPrompt{Question: q.Question, Options: q.Options})
+		if r, ok := results[i]; ok {
+			r.Answer, r.Explanation = q.Answer, q.Explanation
+			d.Results[i] = r
+			d.Answered++
+			if r.Correct {
+				d.Correct++
+			}
+		}
+	}
+	return d, nil
+}
+
+// AnswerQuiz checks one answer and records it. Only the first answer to a
+// question counts; asking again returns that first result.
+func (w *Workspace) AnswerQuiz(id string, question, choice int) (QuizResult, error) {
+	if _, err := w.lessonInfo(id); err != nil {
+		return QuizResult{}, err
+	}
+	f, err := w.lessonFile(id)
+	if err != nil {
+		return QuizResult{}, err
+	}
+	if question < 0 || question >= len(f.Quiz) {
+		return QuizResult{}, fmt.Errorf("question %d isn't in the quiz", question)
+	}
+	q := f.Quiz[question]
+	if r, ok := w.history().quiz[id][question]; ok {
+		r.Answer, r.Explanation = q.Answer, q.Explanation
+		return r, nil
+	}
+	if choice < 0 || choice >= len(q.Options) {
+		return QuizResult{}, fmt.Errorf("choice %d isn't an option", choice)
+	}
+	r := QuizResult{Choice: choice, Correct: choice == q.Answer, Answer: q.Answer, Explanation: q.Explanation}
+	a := Attempt{Kind: AttemptQuiz, LessonID: id, Question: question, Choice: choice, Total: 1}
+	if r.Correct {
+		a.Passed = 1
+	}
+	return r, w.RecordAttempt(a)
 }
 
 // checkQuiz applies the teach skill's quiz rules: nothing about an option's
@@ -198,79 +320,6 @@ func headings(md string) []string {
 	return out
 }
 
-// SaveLesson stores a validated lesson.
-func (w *Workspace) SaveLesson(spec LessonSpec) (LessonInfo, error) {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	lessons, err := w.Lessons()
-	if err != nil {
-		return LessonInfo{}, err
-	}
-	info := LessonInfo{
-		ID:        fmt.Sprintf("%04d-%s", len(lessons)+1, slugify(spec.Title)),
-		Title:     spec.Title,
-		Objective: spec.ObjectiveID,
-		Questions: len(spec.Quiz),
-		CreatedAt: time.Now(),
-	}
-	if err := os.MkdirAll(w.path("lessons", info.ID), 0o755); err != nil {
-		return info, err
-	}
-	if err := os.MkdirAll(w.private("lessons", info.ID), 0o755); err != nil {
-		return info, err
-	}
-	file := lessonFile{Summary: spec.Summary, Body: spec.Body, PrimarySource: spec.PrimarySource, Quiz: spec.Quiz}
-	if err := writeYAML(w.private("lessons", info.ID, "lesson.yaml"), file); err != nil {
-		return info, err
-	}
-	if err := WriteFileAtomic(w.path("lessons", info.ID, "README.md"), []byte(spec.markdown())); err != nil {
-		return info, err
-	}
-	if err := writeYAML(w.path("lessons", info.ID, "lesson.yaml"), info); err != nil {
-		return info, err
-	}
-	w.commit("Add lesson " + info.ID)
-	return info, nil
-}
-
-// markdown is the lesson as a readable file in the workspace, quiz without answers.
-func (s LessonSpec) markdown() string {
-	var b strings.Builder
-	fmt.Fprintf(&b, "# %s\n\n%s\n\n%s\n\n", s.Title, strings.TrimSpace(s.Summary), strings.TrimSpace(s.Body))
-	fmt.Fprintf(&b, "## Read next\n\n[%s](%s)\n\n## Check yourself\n\n", s.PrimarySource.Title, s.PrimarySource.URL)
-	for i, q := range s.Quiz {
-		fmt.Fprintf(&b, "%d. %s\n", i+1, strings.TrimSpace(q.Question))
-		for _, o := range q.Options {
-			fmt.Fprintf(&b, "   - %s\n", strings.TrimSpace(o))
-		}
-	}
-	return b.String()
-}
-
-func (w *Workspace) Lessons() ([]LessonInfo, error) {
-	return readEach[LessonInfo](w.path("lessons"), "lesson.yaml")
-}
-
-// LessonStatuses lists lessons with the learner's quiz results.
-func (w *Workspace) LessonStatuses() ([]LessonStatus, error) {
-	lessons, err := w.Lessons()
-	if err != nil {
-		return nil, err
-	}
-	results := w.history().quiz
-	out := make([]LessonStatus, len(lessons))
-	for i, l := range lessons {
-		out[i] = LessonStatus{LessonInfo: l}
-		for _, r := range results[l.ID] {
-			out[i].Answered++
-			if r.Correct {
-				out[i].Correct++
-			}
-		}
-	}
-	return out, nil
-}
-
 func (w *Workspace) lessonInfo(id string) (LessonInfo, error) {
 	if !validName(id) {
 		return LessonInfo{}, fmt.Errorf("invalid lesson id %q", id)
@@ -290,56 +339,9 @@ func (w *Workspace) lessonFile(id string) (lessonFile, error) {
 	return f, err
 }
 
-func (w *Workspace) Lesson(id string) (LessonDetail, error) {
-	info, err := w.lessonInfo(id)
-	if err != nil {
-		return LessonDetail{}, err
-	}
-	f, err := w.lessonFile(id)
-	if err != nil {
-		return LessonDetail{}, err
-	}
-	d := LessonDetail{LessonStatus: LessonStatus{LessonInfo: info}, Summary: f.Summary, Body: f.Body, PrimarySource: f.PrimarySource, Results: map[int]QuizResult{}}
-	results := w.history().quiz[id]
-	for i, q := range f.Quiz {
-		d.Quiz = append(d.Quiz, QuizPrompt{Question: q.Question, Options: q.Options})
-		if r, ok := results[i]; ok {
-			r.Answer, r.Explanation = q.Answer, q.Explanation
-			d.Results[i] = r
-			d.Answered++
-			if r.Correct {
-				d.Correct++
-			}
-		}
-	}
-	return d, nil
-}
-
-// AnswerQuiz checks one answer and records it. Only the first answer to a
-// question counts; asking again returns that first result.
-func (w *Workspace) AnswerQuiz(id string, question, choice int) (QuizResult, error) {
-	if _, err := w.lessonInfo(id); err != nil {
-		return QuizResult{}, err
-	}
-	f, err := w.lessonFile(id)
-	if err != nil {
-		return QuizResult{}, err
-	}
-	if question < 0 || question >= len(f.Quiz) {
-		return QuizResult{}, fmt.Errorf("question %d isn't in the quiz", question)
-	}
-	q := f.Quiz[question]
-	if r, ok := w.history().quiz[id][question]; ok {
-		r.Answer, r.Explanation = q.Answer, q.Explanation
-		return r, nil
-	}
-	if choice < 0 || choice >= len(q.Options) {
-		return QuizResult{}, fmt.Errorf("choice %d isn't an option", choice)
-	}
-	r := QuizResult{Choice: choice, Correct: choice == q.Answer, Answer: q.Answer, Explanation: q.Explanation}
-	a := Attempt{Kind: AttemptQuiz, LessonID: id, Question: question, Choice: choice, Total: 1}
-	if r.Correct {
-		a.Passed = 1
-	}
-	return r, w.RecordAttempt(a)
+type lessonFile struct {
+	Summary       string         `yaml:"summary"`
+	Body          string         `yaml:"body"`
+	PrimarySource Source         `yaml:"primary_source"`
+	Quiz          []QuizQuestion `yaml:"quiz"`
 }

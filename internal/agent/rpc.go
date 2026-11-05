@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"sync"
 	"sync/atomic"
 
@@ -21,7 +20,7 @@ import (
 // JSON-RPC 2.0 libraries require, and because it's small. An ACP agent should
 // use github.com/coder/acp-go-sdk instead, which has its own connection.
 type rpcConn struct {
-	send   func(v any) error
+	proc   *process
 	nextID atomic.Int64
 
 	mu      sync.Mutex
@@ -32,14 +31,20 @@ type rpcConn struct {
 	onRequest func(method string, params json.RawMessage) (any, error)
 }
 
-// newRPCConn reads messages from r and writes them with send. The handlers
-// are set before the read loop starts.
-func newRPCConn(r io.Reader, send func(v any) error,
+// newRPCConn talks to proc over its stdin and stdout. The handlers are set
+// before the read loop starts.
+func newRPCConn(proc *process,
 	onNotify func(method string, params json.RawMessage),
 	onRequest func(method string, params json.RawMessage) (any, error),
 ) *rpcConn {
-	c := &rpcConn{send: send, onNotify: onNotify, onRequest: onRequest, pending: map[int64]chan rpcMessage{}, closed: make(chan struct{})}
-	go c.readLoop(r)
+	c := &rpcConn{
+		proc:      proc,
+		onNotify:  onNotify,
+		onRequest: onRequest,
+		pending:   map[int64]chan rpcMessage{},
+		closed:    make(chan struct{}),
+	}
+	go c.readLoop()
 	return c
 }
 
@@ -56,7 +61,7 @@ func (c *rpcConn) Call[T any](ctx context.Context, method string, params any) (T
 		delete(c.pending, id)
 		c.mu.Unlock()
 	}()
-	if err := c.send(map[string]any{"id": id, "method": method, "params": params}); err != nil {
+	if err := c.proc.send(map[string]any{"id": id, "method": method, "params": params}); err != nil {
 		return zero, err
 	}
 	select {
@@ -80,12 +85,12 @@ func (c *rpcConn) Notify(method string, params any) error {
 	if params != nil {
 		msg["params"] = params
 	}
-	return c.send(msg)
+	return c.proc.send(msg)
 }
 
-func (c *rpcConn) readLoop(r io.Reader) {
+func (c *rpcConn) readLoop() {
 	defer close(c.closed)
-	sc := bufio.NewScanner(r)
+	sc := bufio.NewScanner(c.proc.stdout)
 	sc.Buffer(make([]byte, 1024*1024), 64*1024*1024)
 	for sc.Scan() {
 		m, err := decode.JSON[rpcMessage](sc.Bytes())
@@ -121,7 +126,7 @@ func (c *rpcConn) answer(m rpcMessage) {
 	} else {
 		reply["result"] = result
 	}
-	_ = c.send(reply)
+	_ = c.proc.send(reply)
 }
 
 type rpcMessage struct {

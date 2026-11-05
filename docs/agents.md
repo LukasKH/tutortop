@@ -10,7 +10,7 @@ An adapter is one file, like `claude.go` or `codex.go`, and an entry in a list:
 
 1. `internal/agent/<x>.go`: `startX(ctx, opts, onEvent) (Session, error)`, which starts the CLI and returns a `Session` that keeps [the contract](#the-contract).
 2. The same file: `xModels(ctx) ([]Model, error)`, which lists the models it offers, the CLI's default first, each with the reasoning efforts it takes. Claude's list is fixed, because the CLI takes aliases that follow each release. Codex's is asked live from the CLI. The app caches the answer for a few minutes.
-3. `internal/agent/agent.go`: an entry in `Providers()` with an id, a display name, the binary to look up on `PATH`, and the two functions.
+3. `internal/agent/agent.go`: a `ProviderID` constant, an entry in `Providers()` with it, a display name and the binary to look up on `PATH`, and a case for it in `Start` and `Provider.Models` that calls the two functions. The `exhaustive` lint flags a switch that misses it.
 4. `internal/agent/<x>_test.go`: tests against a fake CLI, including the shared policy cases (`testPolicy`); see [Testing an adapter](#testing-an-adapter).
 5. `internal/agent/live_test.go`: add the id to the provider list in `TestLive`. `internal/app/live_test.go`'s `TestLiveInterview` runs a whole interview on any agent: `TUTORTOP_PROVIDER=<id> task test:live`.
 6. `Taskfile.yml`: the `test:live` summary, and `.github/workflows/ci.yml`: the comment above the `test` job. Both name the CLIs the live tests talk to.

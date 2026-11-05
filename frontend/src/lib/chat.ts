@@ -1,4 +1,4 @@
-import { ChatMark, ChatRole, type ChatItem } from "@/lib/api";
+import { ChatMark, ChatRole, ChatStatus, type ChatItem } from "@/lib/api";
 
 /** Inserts or replaces a chat item by id (streaming text and tool updates reuse the id). */
 export function upsertChat(items: ChatItem[], item: ChatItem): ChatItem[] {
@@ -40,9 +40,9 @@ export function mergeChat(saved: ChatItem[] | null, live: ChatItem[]): ChatItem[
  * end run together, so any of them still running counts.
  */
 export function showThinking(items: ChatItem[], busy: boolean): boolean {
-  if (!busy || items.at(-1)?.role === "assistant") return false;
-  for (let i = items.length - 1; i >= 0 && items[i].role === "tool"; i--) {
-    if (items[i].status === "running") return false;
+  if (!busy || items.at(-1)?.role === ChatRole.RoleAssistant) return false;
+  for (let i = items.length - 1; i >= 0 && items[i].role === ChatRole.RoleTool; i--) {
+    if (items[i].status === ChatStatus.ChatRunning) return false;
   }
   return true;
 }

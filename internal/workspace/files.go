@@ -7,30 +7,10 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/LukasKH/tutortop/internal/atomicfile"
 	"github.com/LukasKH/tutortop/internal/decode"
 	"gopkg.in/yaml.v3"
 )
-
-// WriteFileAtomic writes via a temporary file and a rename, so a crash never
-// leaves a half-written or empty file behind.
-func WriteFileAtomic(p string, data []byte) error {
-	f, err := os.CreateTemp(filepath.Dir(p), "."+filepath.Base(p)+".tmp-*")
-	if err != nil {
-		return err
-	}
-	defer os.Remove(f.Name()) // no-op after a successful rename
-	if _, err := f.Write(data); err != nil {
-		f.Close()
-		return err
-	}
-	if err := f.Close(); err != nil {
-		return err
-	}
-	if err := os.Chmod(f.Name(), 0o644); err != nil {
-		return err
-	}
-	return os.Rename(f.Name(), p)
-}
 
 func readJSON[T any](p string) (T, error) {
 	return readFile(p, decode.JSON[T])
@@ -78,7 +58,7 @@ func writeJSON(p string, v any) error {
 	if err != nil {
 		return err
 	}
-	return WriteFileAtomic(p, b)
+	return atomicfile.Write(p, b)
 }
 
 func writeYAML(p string, v any) error {
@@ -86,7 +66,7 @@ func writeYAML(p string, v any) error {
 	if err != nil {
 		return err
 	}
-	return WriteFileAtomic(p, b)
+	return atomicfile.Write(p, b)
 }
 
 func removeIfExists(p string) error {

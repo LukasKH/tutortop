@@ -22,7 +22,6 @@ export function ActivityPanel({ activity }: { activity: Activity }) {
       <div className="grid grid-cols-[repeat(3,auto)] content-start gap-x-8 gap-y-1.5">
         <div className="flex flex-col gap-0.5" title={today > 0 ? "Done for today" : "Not done today yet"}>
           <span className={cn(STAT_VALUE, "flex items-center gap-1.5")}>
-            {/* the flame is lit once something is finished today */}
             <FlameIcon size={22} className={today > 0 ? "fill-foreground text-foreground" : "text-faint"} />
             {streak}
           </span>
@@ -71,7 +70,7 @@ function Calendar({ counts, now }: { counts: Counts; now: Date }) {
         {weeks.map((days, w) => {
           // Label a column when a month starts in it.
           const first = days.find((d) => d.getDate() === 1);
-          return <span key={w}>{first && w < WEEKS - 1 ? MONTHS[first.getMonth()] : ""}</span>;
+          return <span key={w}>{first && w < WEEKS - 1 ? first.toLocaleDateString("en", { month: "short" }) : ""}</span>;
         })}
       </div>
       <div className="grid auto-cols-[14px] grid-flow-col gap-1">
@@ -162,8 +161,6 @@ const STAT_LABEL = "text-sm text-muted-foreground";
 
 const WEEKS = 26;
 
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-
 // One square per day; more finished, brighter.
 const CELL = "block size-[14px] rounded-[3px]";
 
@@ -176,7 +173,7 @@ const dateKey = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(
 const addDays = (d: Date, n: number) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
 
 function describe(date: Date, tasks: number, lessons: number) {
-  const day = `${MONTHS[date.getMonth()]} ${date.getDate()}`;
+  const day = date.toLocaleDateString("en", { month: "short", day: "numeric" });
   if (!tasks && !lessons) return `${day}: nothing finished`;
   return `${day}: ${[tasks && plural(tasks, "exercise"), lessons && plural(lessons, "lesson")].filter(Boolean).join(", ")}`;
 }

@@ -80,7 +80,6 @@ export function LessonPanel({ wsId, lessonId, moduleTitle, icon, lang, onOpenExe
           "[&_.prose_h2]:mt-7 [&_.prose_h2]:text-[17px] [&_.prose_h2]:font-bold [&_.prose_h3]:mt-7 [&_.prose_h3]:text-[17px] [&_.prose_h3]:font-bold",
         )}
       >
-        {/* A plain headline: the module above it, with the workspace's logo if it has one. */}
         <header className="flex flex-col gap-2.5 pt-2">
           <span className="inline-flex items-center gap-2 text-sm text-muted-foreground">
             <TopicIcon name={icon} size={16} />

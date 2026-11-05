@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { WorkspaceService, errorText, type SandboxCheck } from "@/lib/api";
+import { WorkspaceService, errorText, type Objective, type SandboxCheck } from "@/lib/api";
 import type { Part } from "@/features/workspace/open-item";
 import { Spinner } from "@/components/ui/spinner";
 import { ErrorText } from "@/components/error-text";
@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 
 type Props = {
   wsId: string;
-  objective: { id: string; name?: string; title: string };
+  objective: Pick<Objective, "id" | "name" | "title">;
   part: Part;
   moduleTitle: string;
   /** The objective's writer is at work on it (writingObjectives, workspace-state.ts). */

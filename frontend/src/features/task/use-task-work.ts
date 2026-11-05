@@ -1,5 +1,5 @@
 import { useEffect, useEffectEvent, useRef, useState } from "react";
-import { TaskService, errorText, type Result, type TaskDetail } from "@/lib/api";
+import { Status, TaskService, errorText, type Result, type TaskDetail } from "@/lib/api";
 
 /** A check of the learner's code: the visible tests (run), or all of them (submit). */
 export type Run = { result: Result; submit: boolean };
@@ -65,7 +65,7 @@ export function useTaskWork(wsId: string, taskId: string) {
       lastRuns.set(runKey, r);
       setRun(r);
       setDirty(false);
-      if (submit && result.status === "passed") setDetail((d) => d && { ...d, passed: true });
+      if (submit && result.status === Status.StatusPassed) setDetail((d) => d && { ...d, passed: true });
     } catch (e) {
       setError(errorText(e));
       unsaved.current = filesRef.current;

@@ -1,6 +1,6 @@
 // Package decode turns JSON, YAML and XML into typed values, so a caller
 // reads the result and its error on one line instead of passing a pointer to
-// fill (STYLEGUIDE.md, "Return values, not out-parameters").
+// fill (STYLEGUIDE.md, "Return values").
 //
 // Like the standard decoders, each keeps the fields that decoded when
 // another one doesn't, and returns them with the error. The agent relies on

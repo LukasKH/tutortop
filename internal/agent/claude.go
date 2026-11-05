@@ -38,18 +38,6 @@ type claudeSession struct {
 	pending map[string]chan claudeControlResponse // our control requests awaiting a reply
 }
 
-type claudeResult struct {
-	IsError bool   `json:"is_error"`
-	Subtype string `json:"subtype"`
-	Result  string `json:"result"`
-}
-
-type claudeControlResponse struct {
-	Subtype   string `json:"subtype"` // success | error
-	RequestID string `json:"request_id"`
-	Error     string `json:"error"`
-}
-
 func startClaude(ctx context.Context, opts Options, onEvent func(Event)) (Session, error) {
 	mcpConfig, _ := json.Marshal(map[string]any{
 		"mcpServers": map[string]any{opts.MCPName: map[string]any{"type": "http", "url": opts.MCPURL}},
@@ -95,7 +83,11 @@ func startClaude(ctx context.Context, opts Options, onEvent func(Event)) (Sessio
 		return nil, err
 	}
 	s := &claudeSession{
-		process: proc, id: sessionID, policy: newPolicy(opts), mcpName: opts.MCPName, onEvent: onEvent,
+		process: proc,
+		id:      sessionID,
+		policy:  newPolicy(opts),
+		mcpName: opts.MCPName,
+		onEvent: onEvent,
 		pending: map[string]chan claudeControlResponse{},
 	}
 	go s.readLoop()
@@ -107,55 +99,6 @@ func startClaude(ctx context.Context, opts Options, onEvent func(Event)) (Sessio
 		return nil, fmt.Errorf("starting Claude Code: %w", proc.abort(err))
 	}
 	return s, nil
-}
-
-// claudeSessionExists checks Claude Code's transcript store, so a deleted or
-// foreign session id starts a fresh session instead of failing. The folder
-// naming follows the CLI, as mirrored in the official Python SDK
-// (claude_agent_sdk/_internal/sessions.py).
-func claudeSessionExists(cwd, id string) bool {
-	base := os.Getenv("CLAUDE_CONFIG_DIR")
-	if base == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return false
-		}
-		base = filepath.Join(home, ".claude")
-	}
-	projects := filepath.Join(base, "projects")
-	if real, err := filepath.EvalSymlinks(cwd); err == nil {
-		cwd = real
-	}
-
-	name := claudeProjectName(cwd)
-	if len(name) <= claudeMaxNameLen {
-		_, err := os.Stat(filepath.Join(projects, name, id+".jsonl"))
-		return err == nil
-	}
-	// Long names end in a hash the SDKs can't reproduce exactly; match on the
-	// prefix, like the Python SDK does.
-	entries, _ := os.ReadDir(projects)
-	for _, e := range entries {
-		if e.IsDir() && strings.HasPrefix(e.Name(), name[:claudeMaxNameLen]+"-") {
-			if _, err := os.Stat(filepath.Join(projects, e.Name(), id+".jsonl")); err == nil {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-const claudeMaxNameLen = 200
-
-// claudeProjectName replaces every character except ASCII letters and digits
-// with "-", as the CLI does when naming a project's session folder.
-func claudeProjectName(path string) string {
-	return strings.Map(func(r rune) rune {
-		if r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' {
-			return r
-		}
-		return '-'
-	}, path)
 }
 
 func (s *claudeSession) ID() string { return s.id }
@@ -216,38 +159,10 @@ func (s *claudeSession) request(ctx context.Context, req map[string]any) error {
 	if err != nil {
 		return err
 	}
-	if r.Subtype == "error" {
+	if r.Subtype == claudeError {
 		return errors.New(cmp.Or(r.Error, "control request failed"))
 	}
 	return nil
-}
-
-type claudeLine struct {
-	Type  string          `json:"type"`
-	Event json.RawMessage `json:"event"`
-	// ParentToolUseID is set on a subagent's messages: the Agent call that
-	// started it.
-	ParentToolUseID string `json:"parent_tool_use_id"`
-	Message         struct {
-		Content json.RawMessage `json:"content"`
-	} `json:"message"`
-	RequestID  string                `json:"request_id"`
-	Request    json.RawMessage       `json:"request"`
-	Response   claudeControlResponse `json:"response"`
-	MCPServers []struct {
-		Name   string `json:"name"`
-		Status string `json:"status"`
-	} `json:"mcp_servers"`
-	claudeResult
-}
-
-type claudeBlock struct {
-	Type      string          `json:"type"`
-	ID        string          `json:"id"`
-	Name      string          `json:"name"`
-	Input     json.RawMessage `json:"input"`
-	ToolUseID string          `json:"tool_use_id"`
-	IsError   bool            `json:"is_error"`
 }
 
 func (s *claudeSession) readLoop() {
@@ -352,49 +267,47 @@ func (s *claudeSession) checkMCP(l claudeLine) {
 	if s.checkedMCP.Load() {
 		return
 	}
-	status := "missing"
+	status := claudeMCPMissing
 	for _, m := range l.MCPServers {
 		if m.Name == s.mcpName {
 			status = m.Status
 		}
 	}
 	switch status {
-	case "connected":
+	case claudeMCPConnected:
 		s.checkedMCP.Store(true)
-	case "pending":
-		// Still connecting; the next init message will tell.
-	default:
-		s.checkedMCP.Store(true)
-		s.onEvent(Event{Kind: EventWarning, Text: fmt.Sprintf(
-			"The tutor couldn't connect to Tutortop's tools (status: %s), so it can't create tasks or ask questions. Restart the app and try again.", status)})
+		return
+	case claudeMCPPending:
+		return // still connecting; the next init message will tell
+	case claudeMCPMissing:
 	}
-}
-
-func blocks(raw json.RawMessage) []claudeBlock {
-	bs, _ := decode.JSON[[]claudeBlock](raw) // content can also be a plain string; ignore that
-	return bs
+	// Missing, failed, or anything else.
+	s.checkedMCP.Store(true)
+	s.onEvent(Event{Kind: EventWarning, Text: fmt.Sprintf(
+		"The tutor couldn't connect to Tutortop's tools (status: %s), so it can't create tasks or ask questions. Restart the app and try again.", status)})
 }
 
 // answerControl handles Claude Code's requests to us. Permission requests
 // (can_use_tool) get our policy; anything else is unsupported.
 func (s *claudeSession) answerControl(id string, raw json.RawMessage) {
+	_ = s.send(map[string]any{"type": "control_response", "response": s.controlReply(id, raw)})
+}
+
+// controlReply is our answer to one of Claude Code's control requests.
+func (s *claudeSession) controlReply(id string, raw json.RawMessage) map[string]any {
 	req, _ := decode.JSON[struct {
 		Subtype  string          `json:"subtype"`
 		ToolName string          `json:"tool_name"`
 		Input    json.RawMessage `json:"input"`
 	}](raw)
-	reply := map[string]any{"subtype": "success", "request_id": id}
-	if req.Subtype == "can_use_tool" {
-		if err := s.canUseTool(req.ToolName, req.Input); err != nil {
-			reply["response"] = map[string]any{"behavior": "deny", "message": err.Error()}
-		} else {
-			reply["response"] = map[string]any{"behavior": "allow", "updatedInput": req.Input}
-		}
-	} else {
-		reply["subtype"] = "error"
-		reply["error"] = "Tutortop doesn't support " + req.Subtype
+	if req.Subtype != "can_use_tool" {
+		return map[string]any{"subtype": claudeError, "request_id": id, "error": "Tutortop doesn't support " + req.Subtype}
 	}
-	_ = s.send(map[string]any{"type": "control_response", "response": reply})
+	response := map[string]any{"behavior": "allow", "updatedInput": req.Input}
+	if err := s.canUseTool(req.ToolName, req.Input); err != nil {
+		response = map[string]any{"behavior": "deny", "message": err.Error()}
+	}
+	return map[string]any{"subtype": claudeSuccess, "request_id": id, "response": response}
 }
 
 // canUseTool decides tool uses Claude Code asks about: Claude's own tools
@@ -408,6 +321,117 @@ func (s *claudeSession) canUseTool(name string, input json.RawMessage) error {
 		return errUnavailable
 	}
 	return s.policy.allow(t)
+}
+
+type claudeLine struct {
+	Type  string          `json:"type"`
+	Event json.RawMessage `json:"event"`
+	// ParentToolUseID is set on a subagent's messages: the Agent call that
+	// started it.
+	ParentToolUseID string `json:"parent_tool_use_id"`
+	Message         struct {
+		Content json.RawMessage `json:"content"`
+	} `json:"message"`
+	RequestID  string                `json:"request_id"`
+	Request    json.RawMessage       `json:"request"`
+	Response   claudeControlResponse `json:"response"`
+	MCPServers []struct {
+		Name   string          `json:"name"`
+		Status claudeMCPStatus `json:"status"`
+	} `json:"mcp_servers"`
+	claudeResult
+}
+
+type claudeBlock struct {
+	Type      string          `json:"type"`
+	ID        string          `json:"id"`
+	Name      string          `json:"name"`
+	Input     json.RawMessage `json:"input"`
+	ToolUseID string          `json:"tool_use_id"`
+	IsError   bool            `json:"is_error"`
+}
+
+func blocks(raw json.RawMessage) []claudeBlock {
+	bs, _ := decode.JSON[[]claudeBlock](raw) // content can also be a plain string; ignore that
+	return bs
+}
+
+type claudeResult struct {
+	IsError bool   `json:"is_error"`
+	Subtype string `json:"subtype"`
+	Result  string `json:"result"`
+}
+
+type claudeControlResponse struct {
+	Subtype   claudeReply `json:"subtype"`
+	RequestID string      `json:"request_id"`
+	Error     string      `json:"error"`
+}
+
+// claudeReply is how a control request went, in either direction.
+type claudeReply string
+
+const (
+	claudeSuccess claudeReply = "success"
+	claudeError   claudeReply = "error"
+)
+
+// claudeMCPStatus is how an MCP server's connection is going.
+type claudeMCPStatus string
+
+const (
+	claudeMCPConnected claudeMCPStatus = "connected"
+	claudeMCPPending   claudeMCPStatus = "pending"
+	claudeMCPMissing   claudeMCPStatus = "missing" // not in the list at all
+)
+
+// claudeSessionExists checks Claude Code's transcript store, so a deleted or
+// foreign session id starts a fresh session instead of failing. The folder
+// naming follows the CLI, as mirrored in the official Python SDK
+// (claude_agent_sdk/_internal/sessions.py).
+func claudeSessionExists(cwd, id string) bool {
+	base := os.Getenv("CLAUDE_CONFIG_DIR")
+	if base == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return false
+		}
+		base = filepath.Join(home, ".claude")
+	}
+	projects := filepath.Join(base, "projects")
+	if real, err := filepath.EvalSymlinks(cwd); err == nil {
+		cwd = real
+	}
+
+	name := claudeProjectName(cwd)
+	if len(name) <= claudeMaxNameLen {
+		_, err := os.Stat(filepath.Join(projects, name, id+".jsonl"))
+		return err == nil
+	}
+	// Long names end in a hash the SDKs can't reproduce exactly; match on the
+	// prefix, like the Python SDK does.
+	entries, _ := os.ReadDir(projects)
+	for _, e := range entries {
+		if e.IsDir() && strings.HasPrefix(e.Name(), name[:claudeMaxNameLen]+"-") {
+			if _, err := os.Stat(filepath.Join(projects, e.Name(), id+".jsonl")); err == nil {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+const claudeMaxNameLen = 200
+
+// claudeProjectName replaces every character except ASCII letters and digits
+// with "-", as the CLI does when naming a project's session folder.
+func claudeProjectName(path string) string {
+	return strings.Map(func(r rune) rune {
+		if r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' {
+			return r
+		}
+		return '-'
+	}, path)
 }
 
 // claudeDisallowed are the tools Claude Code refuses by itself: the shell,
@@ -424,8 +448,15 @@ func claudeDisallowed(opts Options) []string {
 // Tools the tutor may use without asking. Everything else is denied: the tutor
 // works through the tutortop MCP tools, not the shell.
 var claudeAllowed = map[string]bool{
-	"Read": true, "Write": true, "Edit": true, "MultiEdit": true, "Glob": true, "Grep": true,
-	"WebSearch": true, "WebFetch": true, "TodoWrite": true,
+	"Read":      true,
+	"Write":     true,
+	"Edit":      true,
+	"MultiEdit": true,
+	"Glob":      true,
+	"Grep":      true,
+	"WebSearch": true,
+	"WebFetch":  true,
+	"TodoWrite": true,
 }
 
 // claudeTool describes a call to one of Claude Code's tools.
@@ -472,6 +503,8 @@ func claudeTool(name string, input json.RawMessage) Tool {
 
 func claudeModels(context.Context) ([]Model, error) { return claudeModelList, nil }
 
+// Claude Code takes model aliases that always point at the latest model of a
+// family, so this list doesn't go stale with each release.
 var claudeModelList = []Model{
 	{ID: "", Name: "Default", Description: "Whatever Claude Code is set to use", Efforts: claudeEfforts},
 	{ID: "fable", Name: "Fable", Description: "Most capable", Efforts: claudeEfforts, DefaultEffort: "medium"},
@@ -480,9 +513,8 @@ var claudeModelList = []Model{
 	{ID: "haiku", Name: "Haiku", Description: "Fastest and lightest", Efforts: claudeEfforts, DefaultEffort: "medium"},
 }
 
-// Claude Code takes model aliases that always point at the latest model of a
-// family, so this list doesn't go stale with each release. Every current model
-// takes the same efforts (as listed by `claude --help`), defaulting to medium.
+// Every current model takes the same efforts (as listed by `claude --help`),
+// defaulting to medium.
 var claudeEfforts = []Effort{
 	{"low", "Fastest, light reasoning"},
 	{"medium", "Balanced"},

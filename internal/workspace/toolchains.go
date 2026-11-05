@@ -63,17 +63,21 @@ func (w *Workspace) ToolchainSpecs() []sandbox.ToolchainSpec {
 	entries, _ := os.ReadDir(w.path(".tutortop", "toolchains"))
 	out := []sandbox.ToolchainSpec{}
 	for _, e := range entries {
-		if lang, ok := strings.CutSuffix(e.Name(), ".yaml"); ok {
-			if spec, err := w.toolchainSpec(lang); err == nil {
-				out = append(out, spec)
-			}
+		lang, ok := strings.CutSuffix(e.Name(), ".yaml")
+		if !ok {
+			continue
 		}
+		spec, err := w.toolchainSpec(lang)
+		if err != nil {
+			continue
+		}
+		out = append(out, spec)
 	}
 	return out
 }
 
-// languageCheck reports whether a language can be used in this workspace.
-func (w *Workspace) languageCheck(language string) error {
+// CheckLanguage reports whether a language can be used in this workspace.
+func (w *Workspace) CheckLanguage(language string) error {
 	_, err := w.Toolchain(language)
 	return err
 }

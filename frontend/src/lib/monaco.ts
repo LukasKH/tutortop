@@ -69,7 +69,7 @@ monaco.editor.defineTheme("ink", {
 
 loader.config({ monaco });
 // Set now, not only when an editor opens: code in lessons is coloured with
-// this theme's classes too (see Markdown.tsx).
+// this theme's classes too (components/markdown.tsx).
 monaco.editor.setTheme("ink");
 
 // Monaco measures glyph widths once; measure again when the bundled mono font

@@ -11,11 +11,10 @@ export const PLAN_THREAD = "plan";
 export const lessonThread = (lessonId: string) => `lesson-${lessonId}`;
 
 /**
- * The background conversation that writes an objective's lesson and exercise
- * (workspace.WriterThread). It isn't shown as a chat; while it's busy, the
- * objective shows as being written.
+ * The objective a writer's thread (workspace.WriterThread, `write-<objective>`)
+ * writes. It isn't shown as a chat; while it's busy, the objective shows as
+ * being written.
  */
-export const writerThread = (objective: string) => `write-${objective}`;
 export const objectiveOfWriter = (thread: string) => (thread.startsWith("write-") ? thread.slice("write-".length) : null);
 
 /** A lesson is finished once every quiz question has an answer (workspace.LessonStatus.Done). */

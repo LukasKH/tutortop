@@ -61,11 +61,16 @@ type threadTool struct {
 const hidden = ""
 
 func toolFor[In, Out any](tool *mcpsdk.Tool, handle func(*threadTools, context.Context, *mcpsdk.CallToolRequest, In) (*mcpsdk.CallToolResult, Out, error), line string, kinds ...workspace.ThreadKind) threadTool {
-	return threadTool{name: tool.Name, line: line, kinds: kinds, add: func(s *mcpsdk.Server, t *threadTools) {
-		mcpsdk.AddTool(s, tool, func(ctx context.Context, req *mcpsdk.CallToolRequest, in In) (*mcpsdk.CallToolResult, Out, error) {
-			return handle(t, ctx, req, in)
-		})
-	}}
+	return threadTool{
+		name:  tool.Name,
+		line:  line,
+		kinds: kinds,
+		add: func(s *mcpsdk.Server, t *threadTools) {
+			mcpsdk.AddTool(s, tool, func(ctx context.Context, req *mcpsdk.CallToolRequest, in In) (*mcpsdk.CallToolResult, Out, error) {
+				return handle(t, ctx, req, in)
+			})
+		},
+	}
 }
 
 // toolsFor returns the tools a kind of thread gets, in tools' order.

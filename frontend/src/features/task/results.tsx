@@ -1,6 +1,7 @@
+import type { ReactNode } from "react";
 import { ChevronDownIcon } from "lucide-react";
 import { cn } from "cn";
-import type { TaskDetail, TaskStatus, TestResult } from "@/lib/api";
+import { Status, type TaskStatus, type TestResult } from "@/lib/api";
 import { plural } from "@/lib/format";
 import type { Run } from "@/features/task/use-task-work";
 import { Button } from "@/components/ui/button";
@@ -9,13 +10,14 @@ import { IconButton } from "@/components/icon-button";
 import { useArmed } from "@/hooks/use-armed";
 
 export type ResultsProps = {
-  detail: TaskDetail;
+  /** Tests only a submit runs. */
+  hiddenCount: number;
   run: Run | null;
   running: "run" | "submit" | null;
   error: string;
   solved: boolean;
-  nextTask: TaskStatus | null;
-  moreComing: boolean;
+  /** Shown once solved, after Submit. */
+  next: ReactNode;
   open: boolean;
   /** Fixed height in px when the learner has sized the results; otherwise it fits its content. */
   height?: number;
@@ -23,19 +25,18 @@ export type ResultsProps = {
   onReset: () => void;
   /** Run (visible tests) or submit (all tests). */
   onCheck: (submit: boolean) => void;
-  onOpenNext: () => void;
 };
 
 /** Under the editor: the check buttons, the last result with each test, and the output. */
 export function Results(p: ResultsProps) {
-  const { detail, run, running, error, solved } = p;
+  const { hiddenCount, run, running, error, solved } = p;
   const [resetArmed, armReset] = useArmed();
   const r = run?.result;
   const tests = r?.tests ?? [];
   const passedCount = tests.filter((t) => t.passed).length;
   const notRun = tests.filter((t) => t.notRun).length;
   const firstFail = tests.findIndex((t) => !t.passed && !t.notRun);
-  const state = r ? (STATES[r.status] ?? STATES.error) : null;
+  const state = r ? (STATES[r.status] ?? STATES[Status.StatusError]) : null;
 
   return (
     // Under the y splitter the splitter is the top edge, so no border of its own.
@@ -53,7 +54,7 @@ export function Results(p: ResultsProps) {
           </>
         ) : (
           <span className="min-w-0 truncate text-muted-foreground" title="Run checks the visible tests. Submit runs all of them, including hidden ones.">
-            {detail.hiddenCount > 0 ? `Submit adds ${plural(detail.hiddenCount, "hidden test")}` : ""}
+            {hiddenCount > 0 ? `Submit adds ${plural(hiddenCount, "hidden test")}` : ""}
           </span>
         )}
         <span className="flex-1" />
@@ -73,16 +74,7 @@ export function Results(p: ResultsProps) {
         <Button variant={solved ? "outline" : "default"} onClick={() => p.onCheck(true)} disabled={!!running} title="Run all tests, including hidden ones">
           {running === "submit" ? "Submitting…" : "Submit"} <kbd>{KEY_SUBMIT}</kbd>
         </Button>
-        {solved &&
-          (p.nextTask ? (
-            <Button onClick={p.onOpenNext} title={p.nextTask.title}>
-              Next exercise →
-            </Button>
-          ) : p.moreComing ? (
-            <span className="flex-none whitespace-nowrap text-muted-foreground">Preparing next exercise…</span>
-          ) : (
-            <span className="flex-none whitespace-nowrap text-muted-foreground">Plan complete</span>
-          ))}
+        {solved && p.next}
         <IconButton label={p.open ? "Hide results" : "Show results"} onClick={p.onToggle} aria-expanded={p.open}>
           <ChevronDownIcon size={16} className={cn("transition-transform", !p.open && "rotate-180")} />
         </IconButton>
@@ -123,7 +115,7 @@ export function Results(p: ResultsProps) {
             </ul>
           )}
           {r.output && (
-            <details open={r.status === "error"}>
+            <details open={r.status === Status.StatusError}>
               <summary className="cursor-pointer pt-2.5 pb-1 text-xs text-muted-foreground hover:text-foreground">Output</summary>
               <pre className="mt-1 max-h-[280px] overflow-auto rounded-[8px] border bg-background px-3 py-2.5 text-xs leading-[1.55] whitespace-pre-wrap text-soft-foreground">
                 {r.output}
@@ -134,6 +126,28 @@ export function Results(p: ResultsProps) {
       )}
     </div>
   );
+}
+
+/** What follows a solved exercise: the next one, or why there isn't one yet. */
+export function NextExercise({
+  task,
+  moreComing,
+  onOpen,
+}: {
+  /** The first unsolved task after this one, if the tutor has written it yet. */
+  task: TaskStatus | null;
+  /** The plan has objectives left, so a next task is coming if there isn't one yet. */
+  moreComing: boolean;
+  /** Opens the next task (or first its lesson). */
+  onOpen: () => void;
+}) {
+  if (task)
+    return (
+      <Button onClick={onOpen} title={task.title}>
+        Next exercise →
+      </Button>
+    );
+  return <span className="flex-none whitespace-nowrap text-muted-foreground">{moreComing ? "Preparing next exercise…" : "Plan complete"}</span>;
 }
 
 const TEST_ROW = "flex items-baseline gap-2 border-b py-[5px] font-mono text-xs leading-[normal] text-soft-foreground";
@@ -154,11 +168,11 @@ function TestMark({ test }: { test: TestResult }) {
   );
 }
 
-const STATES: Record<string, { label: string; tone: string }> = {
-  passed: { label: "Passed", tone: "text-pass" },
-  failed: { label: "Failed", tone: "text-fail" },
-  error: { label: "Error", tone: "text-fail" },
-};
+const STATES: Partial<Record<Status, { label: string; tone: string }>> = {
+  [Status.StatusPassed]: { label: "Passed", tone: "text-pass" },
+  [Status.StatusFailed]: { label: "Failed", tone: "text-fail" },
+  [Status.StatusError]: { label: "Error", tone: "text-fail" },
+} satisfies Record<Exclude<Status, Status.$zero>, { label: string; tone: string }>;
 
 const MAC = /Mac/.test(navigator.platform);
 const KEY_RUN = MAC ? "⌘↵" : "Ctrl↵";

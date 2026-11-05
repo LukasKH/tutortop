@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { plural } from "@/lib/format";
-import { type ChatItem, type SandboxCheck } from "@/lib/api";
+import { ChatRole, ChatStatus, type ChatItem, type SandboxCheck } from "@/lib/api";
 import { ChevronDownIcon } from "lucide-react";
 import { Thinking } from "@/features/chat/thinking";
 import { Spinner } from "@/components/ui/spinner";
@@ -30,7 +30,7 @@ export function WorkLog({ items, busy, check, lang, onStop }: Props) {
   const end = busy ? now : items.length ? Date.parse(items.at(-1)!.at) : start;
   const elapsed = formatDuration(Math.max(0, end - start));
 
-  const shown = items.filter((i) => i.role !== "user" || !i.text.startsWith("My answers:"));
+  const shown = items.filter((i) => i.role !== ChatRole.RoleUser || !i.text.startsWith("My answers:"));
   const groups = groupTools(shown);
 
   return (
@@ -44,25 +44,7 @@ export function WorkLog({ items, busy, check, lang, onStop }: Props) {
           </Button>
         )}
       </div>
-      {groups.map((g) =>
-        Array.isArray(g) ? (
-          <ToolGroup key={g[0].id} tools={g} />
-        ) : g.role === "assistant" ? (
-          <Markdown key={g.id} text={g.text} className="prose" lang={lang} />
-        ) : g.role === "user" ? (
-          <p key={g.id} className="border-l-2 border-input pl-3 wrap-anywhere whitespace-pre-wrap text-soft-foreground">
-            {g.text}
-          </p>
-        ) : (
-          <p
-            key={g.id}
-            className={cn("text-sm text-muted-foreground", g.status === "failed" && "text-fail")}
-            role={g.status === "failed" ? "alert" : undefined}
-          >
-            {g.text.replace(/^\[app\]\s*/, "")}
-          </p>
-        ),
-      )}
+      {groups.map((g) => (Array.isArray(g) ? <ToolGroup key={g[0].id} tools={g} /> : <Entry key={g.id} item={g} lang={lang} />))}
       {busy && check?.running && (
         <div className="flex min-w-0 items-center gap-2 text-sm text-muted-foreground">
           <Spinner className="size-[12px]" aria-hidden />
@@ -74,9 +56,31 @@ export function WorkLog({ items, busy, check, lang, onStop }: Props) {
   );
 }
 
+/** One item of the log that isn't a tool call. */
+function Entry({ item, lang }: { item: ChatItem; lang?: string }) {
+  switch (item.role) {
+    case ChatRole.RoleAssistant:
+      return <Markdown text={item.text} className="prose" lang={lang} />;
+    case ChatRole.RoleUser:
+      return <p className="border-l-2 border-input pl-3 wrap-anywhere whitespace-pre-wrap text-soft-foreground">{item.text}</p>;
+    case ChatRole.RoleTool:
+      return <ToolGroup tools={[item]} />;
+    case ChatRole.RoleNotice:
+    case ChatRole.$zero:
+      return (
+        <p
+          className={cn("text-sm text-muted-foreground", item.status === ChatStatus.ChatFailed && "text-fail")}
+          role={item.status === ChatStatus.ChatFailed ? "alert" : undefined}
+        >
+          {item.text.replace(/^\[app\]\s*/, "")}
+        </p>
+      );
+  }
+}
+
 function ToolGroup({ tools }: { tools: ChatItem[] }) {
-  const running = tools.find((t) => t.status === "running");
-  const failed = tools.filter((t) => t.status === "failed").length;
+  const running = tools.find((t) => t.status === ChatStatus.ChatRunning);
+  const failed = tools.filter((t) => t.status === ChatStatus.ChatFailed).length;
   return (
     <details className="group">
       <summary className="flex w-fit max-w-full min-w-0 cursor-pointer list-none items-center gap-2 text-sm text-muted-foreground hover:text-soft-foreground [&::-webkit-details-marker]:hidden">
@@ -86,9 +90,13 @@ function ToolGroup({ tools }: { tools: ChatItem[] }) {
       </summary>
       <ul className="mt-2 flex flex-col gap-0.5 pl-5">
         {tools.map((t) => (
-          <li key={t.id} className={cn("flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground", t.status === "failed" && "text-fail")} title={t.text}>
+          <li
+            key={t.id}
+            className={cn("flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground", t.status === ChatStatus.ChatFailed && "text-fail")}
+            title={t.text}
+          >
             <span className="grid w-3 flex-none place-items-center">
-              {t.status === "running" ? <Spinner className="size-[10px]" /> : t.status === "failed" ? "✗" : "✓"}
+              {t.status === ChatStatus.ChatRunning ? <Spinner className="size-[10px]" /> : t.status === ChatStatus.ChatFailed ? "✗" : "✓"}
             </span>
             <span className="min-w-0 truncate">{t.text}</span>
           </li>
@@ -103,14 +111,14 @@ function groupTools(items: ChatItem[]): (ChatItem | ChatItem[])[] {
   const out: (ChatItem | ChatItem[])[] = [];
   for (const item of items) {
     const prev = out.at(-1);
-    if (item.role !== "tool") out.push(item);
+    if (item.role !== ChatRole.RoleTool) out.push(item);
     else if (Array.isArray(prev)) prev.push(item);
     else out.push([item]);
   }
   return out;
 }
 
-/** "Read 18 pages, updated your mission and noted your preferences". */
+/** "Read 18 pages, updated your mission, and noted your preferences". */
 function summarize(tools: ChatItem[]): string {
   let pages = 0;
   let searches = 0;
@@ -128,7 +136,7 @@ function summarize(tools: ChatItem[]): string {
     ...(pages ? [`read ${plural(pages, "page")}`] : []),
     ...other,
   ];
-  const text = parts.length > 1 ? `${parts.slice(0, -1).join(", ")} and ${parts.at(-1)}` : (parts[0] ?? "");
+  const text = new Intl.ListFormat("en-GB").format(parts);
   return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
