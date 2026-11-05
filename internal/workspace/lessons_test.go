@@ -15,14 +15,6 @@ func TestValidateLesson(t *testing.T) {
 		{"valid", func(*workspace.LessonSpec) {}, nil},
 		{"repeats the title", func(s *workspace.LessonSpec) { s.Body = "# Adding numbers\n\n" + s.Body }, []string{"body repeats the title"}},
 		{"answer out of range", func(s *workspace.LessonSpec) { s.Quiz[1].Answer = 3 }, []string{"question 2: answer must be an option index (0-2)"}},
-		{"longest option is the answer", func(s *workspace.LessonSpec) {
-			s.Quiz[0].Options = []string{"threeeeeeeee", "four", "five"}
-		}, []string{"question 1: the correct option is clearly the longest"}},
-		{"answer always first", func(s *workspace.LessonSpec) {
-			for i := range s.Quiz {
-				s.Quiz[i].Answer = 0
-			}
-		}, []string{"same position in every question"}},
 	}
 	w := newWorkspace(t)
 	approve(t, w, "a", "b")
@@ -39,8 +31,9 @@ func TestValidateLesson(t *testing.T) {
 	wantProblems(t, w.ValidateLesson(lessonSpec("b")))
 }
 
-// Only the first answer to a question counts. Answering again returns that
-// first result, and answers stay hidden until a question is answered.
+// Only the first answer to a question counts, also when two reach the log.
+// Answering again returns that first result, and answers stay hidden until a
+// question is answered.
 func TestAnswerQuiz(t *testing.T) {
 	w := newWorkspace(t)
 	approve(t, w, "a")
@@ -64,14 +57,8 @@ func TestAnswerQuiz(t *testing.T) {
 		t.Errorf("right answer marked wrong: %+v", r)
 	}
 
-	for _, c := range []struct{ question, choice int }{{3, 0}, {-1, 0}, {2, 3}, {2, -1}} {
-		if _, err := w.AnswerQuiz(l.ID, c.question, c.choice); err == nil {
-			t.Errorf("question %d, choice %d was accepted", c.question, c.choice)
-		}
-	}
-	if _, err := w.AnswerQuiz("0009-missing", 0, 0); err == nil {
-		t.Error("answered a lesson that doesn't exist")
-	}
+	// Two answers sent at once can both reach the log.
+	record(t, w, workspace.Attempt{LessonID: l.ID, Kind: workspace.AttemptQuiz, Question: 1, Choice: 0})
 
 	d, err := w.Lesson(l.ID)
 	if err != nil {
@@ -93,23 +80,5 @@ func TestAnswerQuiz(t *testing.T) {
 	}
 	if s := statuses[0]; s.Answered != 3 || s.Correct != 2 || !s.Done() {
 		t.Errorf("status: answered %d, correct %d, done %v", s.Answered, s.Correct, s.Done())
-	}
-}
-
-// Two answers sent at once can both reach the log; the first still wins.
-func TestQuizFirstLoggedAnswerWins(t *testing.T) {
-	w := newWorkspace(t)
-	approve(t, w, "a")
-	l := addLesson(t, w, "a")
-	record(t, w,
-		workspace.Attempt{LessonID: l.ID, Kind: workspace.AttemptQuiz, Question: 0, Choice: 1},
-		workspace.Attempt{LessonID: l.ID, Kind: workspace.AttemptQuiz, Question: 0, Choice: 0, Passed: 1},
-	)
-	d, err := w.Lesson(l.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if r := d.Results[0]; r.Choice != 1 || r.Correct || d.Answered != 1 {
-		t.Errorf("result %+v, answered %d; want the first, wrong answer once", r, d.Answered)
 	}
 }

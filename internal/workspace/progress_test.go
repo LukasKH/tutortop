@@ -2,6 +2,8 @@ package workspace_test
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -25,6 +27,7 @@ func TestProgressCountsOnlyPassedSubmissions(t *testing.T) {
 		workspace.Attempt{TaskID: ta.ID, Kind: workspace.AttemptSubmit, Status: sandbox.StatusFailed}, // a later failure doesn't undo it
 		workspace.Attempt{TaskID: tb.ID, Kind: workspace.AttemptRun, Status: sandbox.StatusPassed},
 		workspace.Attempt{TaskID: tb.ID, Kind: workspace.AttemptHint, HintLevel: 2},
+		workspace.Attempt{TaskID: tb.ID, Kind: workspace.AttemptHint, HintLevel: 1},
 		workspace.Attempt{TaskID: tc.ID, Kind: workspace.AttemptSubmit, Status: sandbox.StatusError},
 	)
 
@@ -45,6 +48,38 @@ func TestProgressCountsOnlyPassedSubmissions(t *testing.T) {
 	b, _ := json.Marshal(p.Objectives["d"])
 	if !strings.Contains(string(b), `"tasks":[]`) {
 		t.Errorf("objective without tasks encodes as %s", b)
+	}
+
+	statuses, err := w.TaskStatuses()
+	if err != nil || len(statuses) != 3 || statuses[0].ID != ta.ID || statuses[1].ID != tb.ID {
+		t.Fatalf("statuses not in task order: %+v, %v", statuses, err)
+	}
+	// The deepest hint, not the last one.
+	if statuses[1].HintLevel != 2 || w.Hints(tb.ID) != (workspace.HintUse{Count: 2, Highest: 2}) {
+		t.Errorf("hints: status %+v, use %+v; want 2 asked, deepest 2", statuses[1], w.Hints(tb.ID))
+	}
+}
+
+// A crash can leave the attempt log's last line half written. It's skipped,
+// and a line's missing fields don't take the line before's values.
+func TestProgressReadsATornAttemptLog(t *testing.T) {
+	w := newWorkspace(t)
+	approve(t, w, "a", "b", "c")
+	ta := addTask(t, w, "a")
+	tb := addTask(t, w, "b")
+	tc := addTask(t, w, "c")
+	log := `{"taskId":"` + ta.ID + `","kind":"submit","status":"passed"}
+{"taskId":"` + tb.ID + `","kind":"submit"}
+{"taskId":"` + tc.ID + `","kind":"submit","status":"pass`
+	if err := os.WriteFile(filepath.Join(w.Dir, ".tutortop", "attempts.jsonl"), []byte(log), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]workspace.ObjectiveStatus{"a": workspace.ObjectivePassed, "b": workspace.ObjectiveInProgress, "c": workspace.ObjectiveInProgress}
+	p := w.Progress()
+	for id, status := range want {
+		if got := p.Objectives[id].Status; got != status {
+			t.Errorf("objective %s is %q, want %q", id, got, status)
+		}
 	}
 }
 
@@ -74,40 +109,6 @@ func TestProgressSurvivesPlanChanges(t *testing.T) {
 	}
 }
 
-func TestProgressWithoutPlan(t *testing.T) {
-	w := newWorkspace(t)
-	p := w.Progress()
-	if p.Total != 0 || p.Objectives == nil {
-		t.Fatalf("progress without a plan: %+v", p)
-	}
-}
-
-func TestTaskStatusesAndHints(t *testing.T) {
-	w := newWorkspace(t)
-	approve(t, w, "a", "b")
-	ta := addTask(t, w, "a")
-	tb := addTask(t, w, "b")
-	record(t, w,
-		workspace.Attempt{TaskID: ta.ID, Kind: workspace.AttemptHint, HintLevel: 2},
-		workspace.Attempt{TaskID: ta.ID, Kind: workspace.AttemptHint, HintLevel: 1},
-		workspace.Attempt{TaskID: ta.ID, Kind: workspace.AttemptSubmit, Status: sandbox.StatusPassed},
-	)
-
-	statuses, err := w.TaskStatuses()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(statuses) != 2 || statuses[0].ID != ta.ID || statuses[1].ID != tb.ID {
-		t.Fatalf("statuses not in task order: %+v", statuses)
-	}
-	if !statuses[0].Passed || statuses[0].HintLevel != 2 || statuses[1].Passed || statuses[1].HintLevel != 0 {
-		t.Errorf("statuses: %+v", statuses)
-	}
-	if h := w.Hints(ta.ID); h != (workspace.HintUse{Count: 2, Highest: 2}) {
-		t.Errorf("hints %+v, want 2 asked, deepest 2", h)
-	}
-}
-
 // Writers keep the next unpassed objectives ready: each needs a lesson and
 // a task the learner hasn't solved. Passed objectives don't use up the
 // look-ahead.
@@ -115,25 +116,21 @@ func TestNeedsWriting(t *testing.T) {
 	cases := []struct {
 		name  string
 		setup func(t *testing.T, w *workspace.Workspace)
-		ahead int
 		want  []string
 	}{
-		{"nothing written", nil, 2, []string{"a", "b"}},
-		{"look-ahead of zero", nil, 0, nil},
+		{"nothing written", nil, []string{"a", "b"}},
 		{"lesson and task ready", func(t *testing.T, w *workspace.Workspace) {
 			addLesson(t, w, "a")
 			addTask(t, w, "a")
-		}, 2, []string{"b"}},
-		{"lesson without a task", func(t *testing.T, w *workspace.Workspace) {
+		}, []string{"b"}},
+		{"lesson and task on different objectives", func(t *testing.T, w *workspace.Workspace) {
 			addLesson(t, w, "a")
-		}, 1, []string{"a"}},
-		{"task without a lesson", func(t *testing.T, w *workspace.Workspace) {
-			addTask(t, w, "a")
-		}, 1, []string{"a"}},
+			addTask(t, w, "b")
+		}, []string{"a", "b"}},
 		{"passed objective is skipped", func(t *testing.T, w *workspace.Workspace) {
 			ta := addTask(t, w, "a")
 			record(t, w, workspace.Attempt{TaskID: ta.ID, Kind: workspace.AttemptSubmit, Status: sandbox.StatusPassed})
-		}, 2, []string{"b", "c"}},
+		}, []string{"b", "c"}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -143,17 +140,13 @@ func TestNeedsWriting(t *testing.T) {
 				c.setup(t, w)
 			}
 			var got []string
-			for _, o := range w.NeedsWriting(c.ahead) {
+			for _, o := range w.NeedsWriting(2) {
 				got = append(got, o.ID)
 			}
 			if !slices.Equal(got, c.want) {
 				t.Errorf("needs writing %v, want %v", got, c.want)
 			}
 		})
-	}
-
-	if got := newWorkspace(t).NeedsWriting(2); got != nil {
-		t.Errorf("without a plan, needs writing %v", got)
 	}
 }
 

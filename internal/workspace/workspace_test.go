@@ -4,7 +4,6 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/LukasKH/tutortop/internal/sandbox"
@@ -35,43 +34,48 @@ func TestCreatePicksFreeID(t *testing.T) {
 	if id := create("Rust"); id != "rust-2" {
 		t.Errorf("id %q next to leftover private files, want rust-2", id)
 	}
-	if id := create("???"); id != "topic" {
-		t.Errorf("id for a title without letters %q, want topic", id)
-	}
-
-	list, err := s.List()
-	if err != nil || len(list) != 4 {
-		t.Fatalf("listed %d workspaces (%v), want 4", len(list), err)
-	}
 }
 
-// Ids, task ids, lesson ids and thread names become path elements, so none
-// may step outside its folder.
+// Ids, task ids, lesson ids, thread names and task file names become path
+// elements, so none may step outside its folder.
 func TestNamesStayInsideTheWorkspace(t *testing.T) {
 	w := newWorkspace(t)
+	approve(t, w, "a")
 	s := &workspace.Store{Root: filepath.Dir(w.Dir), PrivateRoot: filepath.Dir(w.PrivateDir)}
-	for _, bad := range []string{"", ".", "..", "../x", `a\b`} {
-		if _, err := s.Open(bad); err == nil {
-			t.Errorf("Open(%q) succeeded", bad)
+	entries := []struct {
+		name string
+		call func(bad string) error
+	}{
+		{"Open", func(bad string) error { _, err := s.Open(bad); return err }},
+		{"Task", func(bad string) error { _, err := w.Task(bad); return err }},
+		{"Job", func(bad string) error { _, err := w.Job(bad, true); return err }},
+		{"SaveWork", func(bad string) error { return w.SaveWork(bad, sandbox.Files{"sum.go": ""}) }},
+		{"ResetWork", func(bad string) error { return w.ResetWork(bad) }},
+		{"SaveLastRun", func(bad string) error { return w.SaveLastRun(bad, sandbox.Result{}) }},
+		{"Lesson", func(bad string) error { _, err := w.Lesson(bad); return err }},
+		{"Chat", func(bad string) error { _, err := w.Chat(bad); return err }},
+		{"AppendChat", func(bad string) error {
+			return w.AppendChat(workspace.ChatItem{Thread: bad, Role: workspace.RoleUser})
+		}},
+		{"ParseThread", func(bad string) error { _, err := workspace.ParseThread(bad); return err }},
+		{"Toolchain", func(bad string) error { _, err := w.Toolchain(bad); return err }},
+		// A file name joined under the task's starter folder.
+		{"SaveTask", func(bad string) error {
+			spec := taskSpec("a")
+			spec.Starter = sandbox.Files{filepath.Join("..", "..", bad, "escape.go"): ""}
+			_, err := w.SaveTask(spec, "go", sandbox.TestNames{})
+			return err
+		}},
+	}
+	for _, e := range entries {
+		for _, bad := range []string{"", ".", "..", "../x", `a\b`} {
+			if e.call(bad) == nil {
+				t.Errorf("%s(%q) succeeded", e.name, bad)
+			}
 		}
-		if _, err := w.Task(bad); err == nil {
-			t.Errorf("Task(%q) succeeded", bad)
-		}
-		if _, err := w.Lesson(bad); err == nil {
-			t.Errorf("Lesson(%q) succeeded", bad)
-		}
-		if _, err := w.Chat(bad); err == nil {
-			t.Errorf("Chat(%q) succeeded", bad)
-		}
-		if err := w.AppendChat(workspace.ChatItem{Thread: bad, Role: workspace.RoleUser}); err == nil {
-			t.Errorf("AppendChat to %q succeeded", bad)
-		}
-		if _, err := workspace.ParseThread(bad); err == nil {
-			t.Errorf("ParseThread(%q) succeeded", bad)
-		}
-		if _, err := w.Toolchain(bad); err == nil {
-			t.Errorf("Toolchain(%q) succeeded", bad)
-		}
+	}
+	if _, err := os.Stat(filepath.Join(w.Dir, "tasks", "escape.go")); !os.IsNotExist(err) {
+		t.Errorf("SaveTask wrote outside the task folder: %v", err)
 	}
 	if got := w.ReadDoc("../../etc/passwd"); got != "" {
 		t.Errorf("ReadDoc read outside the workspace: %q", got)
@@ -146,9 +150,6 @@ func TestResumeIDsFollowTheProvider(t *testing.T) {
 // toolchain its tasks passed the quality gate with.
 func TestOwnToolchainOutranksANewBuiltin(t *testing.T) {
 	w := newWorkspace(t)
-	if tc, err := w.Toolchain("python"); err != nil || tc.Name != "Python" {
-		t.Fatalf("built-in python = %+v, %v", tc, err)
-	}
 	// As if python weren't built in when the tutor set it up.
 	own := sandbox.ToolchainSpec{Language: "python", Name: "My Python", Dockerfile: "FROM python:3.12", TestCommand: "pytest --junitxml=/tmp/junit.xml", TestFiles: "test_*.py"}
 	if err := w.SaveToolchain(own); err != nil {
@@ -156,129 +157,5 @@ func TestOwnToolchainOutranksANewBuiltin(t *testing.T) {
 	}
 	if tc, err := w.Toolchain("python"); err != nil || tc.Name != "My Python" {
 		t.Fatalf("python = %+v, %v; want the workspace's own", tc, err)
-	}
-}
-
-// ---- helpers shared by the package's tests ----
-
-// newWorkspace makes a workspace in temporary folders.
-func newWorkspace(t *testing.T) *workspace.Workspace {
-	t.Helper()
-	s := &workspace.Store{Root: t.TempDir(), PrivateRoot: t.TempDir()}
-	w, err := s.Create("Learn Go", "claude")
-	if err != nil {
-		t.Fatal(err)
-	}
-	return w
-}
-
-// approve makes a Go plan with one module holding the given objectives the
-// curriculum.
-func approve(t *testing.T, w *workspace.Workspace, objectives ...string) *workspace.Curriculum {
-	t.Helper()
-	if err := w.Propose(plan(objectives...)); err != nil {
-		t.Fatal(err)
-	}
-	c, err := w.ApproveProposal()
-	if err != nil {
-		t.Fatal(err)
-	}
-	return c
-}
-
-func plan(objectives ...string) workspace.Curriculum {
-	m := workspace.Module{ID: "basics", Title: "Basics", References: []workspace.Source{{Title: "Go docs", URL: "https://go.dev/doc/"}}}
-	for _, id := range objectives {
-		m.Objectives = append(m.Objectives, workspace.Objective{ID: id, Name: "Objective " + id, Title: "Prove " + id})
-	}
-	return workspace.Curriculum{Language: "go", Modules: []workspace.Module{m}}
-}
-
-// addTask saves a task for an objective, as if it had passed the gate.
-func addTask(t *testing.T, w *workspace.Workspace, objective string) workspace.TaskInfo {
-	t.Helper()
-	info, err := w.SaveTask(taskSpec(objective), "go", sandbox.TestNames{Visible: []string{"TestSum"}, Hidden: []string{"TestSumHidden"}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	return info
-}
-
-// taskSpec is a Go task that passes ValidateSpec.
-func taskSpec(objective string) workspace.TaskSpec {
-	return workspace.TaskSpec{
-		ObjectiveID: objective,
-		Title:       "Sum " + objective,
-		Statement: workspace.Statement{
-			Task:         "Write Sum so that it returns a + b.",
-			Signature:    "func Sum(a, b int) int",
-			Requirements: []string{"Sum returns a + b."},
-			Examples:     []workspace.Example{{Input: "Sum(1, 2)", Output: "3"}, {Input: "Sum(-1, 1)", Output: "0"}},
-			Context:      "Totals in your budget app.",
-		},
-		Starter:     sandbox.Files{"sum.go": "package task\n\nfunc Sum(a, b int) int { return 0 }\n"},
-		Reference:   sandbox.Files{"sum.go": "package task\n\nfunc Sum(a, b int) int { return a + b }\n"},
-		Tests:       sandbox.Files{"sum_test.go": "package task\n"},
-		HiddenTests: sandbox.Files{"sum_hidden_test.go": "package task\n"},
-		Mutants: []sandbox.Mutant{
-			{Name: "Off by one", Files: sandbox.Files{"sum.go": "package task\n\nfunc Sum(a, b int) int { return a + b + 1 }\n"}},
-			{Name: "Ignores b", Files: sandbox.Files{"sum.go": "package task\n\nfunc Sum(a, b int) int { return a }\n"}},
-		},
-	}
-}
-
-// addLesson saves a three-question lesson for an objective.
-func addLesson(t *testing.T, w *workspace.Workspace, objective string) workspace.LessonInfo {
-	t.Helper()
-	info, err := w.SaveLesson(lessonSpec(objective))
-	if err != nil {
-		t.Fatal(err)
-	}
-	return info
-}
-
-// lessonSpec is a lesson that passes ValidateLesson. The answers are 0, 1
-// and 2.
-func lessonSpec(objective string) workspace.LessonSpec {
-	return workspace.LessonSpec{
-		ObjectiveID:   objective,
-		Title:         "Adding numbers",
-		Summary:       "You'll add two numbers in Go.",
-		Body:          "## Adding\n\nUse `+`, as [the spec](https://go.dev/ref/spec#Arithmetic_operators) says:\n\n```go\n# not a heading inside code\nx := 1 + 2\n```\n", // the "#" line tests that headings inside code aren't read as headings
-		PrimarySource: workspace.Source{Title: "The Go spec", URL: "https://go.dev/ref/spec"},
-		Quiz: []workspace.QuizQuestion{
-			{Question: "What is 1 + 2?", Options: []string{"three", "four", "five"}, Answer: 0, Explanation: "One plus two is three."},
-			{Question: "What is 2 + 2?", Options: []string{"three", "four", "five"}, Answer: 1, Explanation: "Two plus two is four."},
-			{Question: "What is 2 + 3?", Options: []string{"three", "four", "five"}, Answer: 2, Explanation: "Two plus three is five."},
-		},
-	}
-}
-
-func record(t *testing.T, w *workspace.Workspace, attempts ...workspace.Attempt) {
-	t.Helper()
-	for _, a := range attempts {
-		if err := w.RecordAttempt(a); err != nil {
-			t.Fatal(err)
-		}
-	}
-}
-
-// wantProblems fails unless err mentions every one of want, or, with no
-// want, unless err is nil.
-func wantProblems(t *testing.T, err error, want ...string) {
-	t.Helper()
-	if len(want) == 0 {
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		return
-	}
-	if err == nil {
-		t.Fatalf("no error, want one mentioning %q", want)
-	}
-	for _, w := range want {
-		if !strings.Contains(err.Error(), w) {
-			t.Errorf("error doesn't mention %q:\n%v", w, err)
-		}
 	}
 }

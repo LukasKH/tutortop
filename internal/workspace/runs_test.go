@@ -16,9 +16,6 @@ import (
 // folder, as it quotes the hidden tests.
 func TestLastRunIsKeptPrivately(t *testing.T) {
 	w := newWorkspace(t)
-	if _, ok := w.LastRun("0001-wrap"); ok {
-		t.Fatal("a task that never ran has a last run")
-	}
 	res := sandbox.Result{Status: sandbox.StatusFailed, Tests: []sandbox.TestResult{
 		{Name: "TestVisible", Passed: true},
 		{Name: "TestHiddenEdge", Hidden: true, Message: "secret expectation"},

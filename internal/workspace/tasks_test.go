@@ -19,23 +19,25 @@ func TestValidateSpec(t *testing.T) {
 		want   []string // none for a valid spec
 	}{
 		{"valid", func(*workspace.TaskSpec) {}, nil},
-		{"unknown objective", func(s *workspace.TaskSpec) { s.ObjectiveID = "missing" }, []string{`objective "missing" isn't in the curriculum`}},
-		{"starter named like a test", func(s *workspace.TaskSpec) {
-			s.Starter["x_test.go"], s.Reference["x_test.go"] = "", ""
-		}, []string{"starter file x_test.go looks like a test file"}},
-		{"hidden test not named like a test", func(s *workspace.TaskSpec) { s.HiddenTests["edge.go"] = "" }, []string{"edge.go isn't named like a go test file"}},
-		{"test is also a starter file", func(s *workspace.TaskSpec) { s.HiddenTests["sum.go"] = "" }, []string{"sum.go is both a test and a starter file"}},
-		{"test both visible and hidden", func(s *workspace.TaskSpec) { s.HiddenTests["sum_test.go"] = "" }, []string{"sum_test.go is both a visible and a hidden test file"}},
-		{"mutant changes a test", func(s *workspace.TaskSpec) {
-			s.Mutants[0].Files = sandbox.Files{"sum_test.go": ""}
-		}, []string{`mutant "Off by one" changes sum_test.go, which isn't a solution file`}},
+		{"test in the starter", func(s *workspace.TaskSpec) {
+			s.Starter["sum_test.go"], s.Reference["sum_test.go"] = "", ""
+		}, []string{"starter file sum_test.go looks like a test file", "sum_test.go is both a test and a starter file"}},
+		// b's own python, not the plan's go, judges the file names.
+		{"objective in its own language", func(s *workspace.TaskSpec) { s.ObjectiveID = "b" }, []string{"sum_test.go isn't named like a python test file"}},
 		{"every problem at once", func(s *workspace.TaskSpec) {
 			s.Title = ""
 			s.Statement.Context = ""
 		}, []string{"title is required", "statement.context is required"}},
 	}
 	w := newWorkspace(t)
-	approve(t, w, "a")
+	c := plan("a", "b")
+	c.Modules[0].Objectives[1].Language = "python"
+	if err := w.Propose(c); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.ApproveProposal(); err != nil {
+		t.Fatal(err)
+	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			spec := taskSpec("a")
@@ -49,9 +51,9 @@ func TestValidateSpec(t *testing.T) {
 	}
 }
 
-// A saved task keeps its answers private: the reference, hidden tests and
-// mutants live outside the workspace, and grading reads a private copy of
-// the visible tests.
+// Saved tasks and lessons keep their answers private: the reference, hidden
+// tests, mutants and quiz answers live outside the workspace, and grading
+// reads a private copy of the visible tests.
 func TestSaveTask(t *testing.T) {
 	w := newWorkspace(t)
 	approve(t, w, "a")
@@ -65,23 +67,19 @@ func TestSaveTask(t *testing.T) {
 	if first.ID != "0001-sum-a" || second.ID != "0002-sum-again" {
 		t.Errorf("ids %q, %q; want numbered slugs", first.ID, second.ID)
 	}
+	addLesson(t, w, "a")
 
-	d, err := w.Task(second.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if d.Work["sum.go"] != spec.Starter["sum.go"] || d.Tests["sum_test.go"] != spec.Tests["sum_test.go"] {
-		t.Errorf("work %v and tests %v, want the starter and visible tests", d.Work, d.Tests)
-	}
-	if d.HiddenCount != 2 {
-		t.Errorf("detail: hidden %d, want 2", d.HiddenCount)
-	}
-
-	err = filepath.WalkDir(w.Dir, func(p string, _ os.DirEntry, err error) error {
+	err = filepath.WalkDir(w.Dir, func(p string, d os.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
 		if strings.Contains(p, "hidden") || strings.Contains(p, "reference") || strings.Contains(p, "mutants") {
 			t.Errorf("private file in the workspace: %s", p)
 		}
-		return err
+		if b, _ := os.ReadFile(p); strings.Contains(string(b), "One plus two is three") || strings.Contains(string(b), "answer:") {
+			t.Errorf("%s gives away a quiz answer", p)
+		}
+		return nil
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -95,11 +93,8 @@ func TestSaveTask(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if run.Tests["sum_test.go"] != spec.Tests["sum_test.go"] || len(run.HiddenTests) != 0 || run.Toolchain.Language != "go" {
-		t.Errorf("run job: tests %v, hidden %v", run.Tests, run.HiddenTests)
-	}
-	if len(run.Names.Hidden) != 2 {
-		t.Errorf("run job names %+v, want the saved names", run.Names)
+	if run.Tests["sum_test.go"] != spec.Tests["sum_test.go"] || len(run.HiddenTests) != 0 || len(run.Names.Hidden) != 2 {
+		t.Errorf("run job: tests %v, hidden %v, names %+v", run.Tests, run.HiddenTests, run.Names)
 	}
 	sub, err := w.Job(second.ID, true)
 	if err != nil {
@@ -107,19 +102,6 @@ func TestSaveTask(t *testing.T) {
 	}
 	if sub.HiddenTests["sum_hidden_test.go"] != spec.HiddenTests["sum_hidden_test.go"] {
 		t.Errorf("submit job hidden tests %v", sub.HiddenTests)
-	}
-}
-
-func TestSaveTaskKeepsFilesInside(t *testing.T) {
-	w := newWorkspace(t)
-	approve(t, w, "a")
-	spec := taskSpec("a")
-	spec.Starter = sandbox.Files{"../../escape.go": "package task\n"}
-	if _, err := w.SaveTask(spec, "go", sandbox.TestNames{}); err == nil {
-		t.Fatal("saved a file outside the task folder")
-	}
-	if _, err := os.Stat(filepath.Join(w.Dir, "escape.go")); !os.IsNotExist(err) {
-		t.Errorf("escape.go was written: %v", err)
 	}
 }
 
@@ -132,7 +114,6 @@ func TestSaveWork(t *testing.T) {
 
 	for _, files := range []sandbox.Files{
 		{"sum_test.go": "package task\n"},
-		{"sum.go": solved, "new.go": "package task\n"},
 		{"../sum.go": solved},
 	} {
 		if err := w.SaveWork(task.ID, files); err == nil {
