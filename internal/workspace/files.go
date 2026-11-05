@@ -76,18 +76,35 @@ func removeIfExists(p string) error {
 	return nil
 }
 
+// appendJSONL adds v as a line to the file at p. A crash can leave the last
+// line half written; v then starts a new line, so readJSONL skips only the
+// broken one.
 func appendJSONL(p string, v any) error {
-	f, err := os.OpenFile(p, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
 	b, err := json.Marshal(v)
 	if err != nil {
 		return err
 	}
+	f, err := os.OpenFile(p, os.O_CREATE|os.O_APPEND|os.O_RDWR, 0o644)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	if endsMidLine(f) {
+		b = append([]byte{'\n'}, b...)
+	}
 	_, err = f.Write(append(b, '\n'))
 	return err
+}
+
+// endsMidLine reports whether f's last byte isn't a newline.
+func endsMidLine(f *os.File) bool {
+	info, err := f.Stat()
+	if err != nil || info.Size() == 0 {
+		return false
+	}
+	last := make([]byte, 1)
+	_, err = f.ReadAt(last, info.Size()-1)
+	return err == nil && last[0] != '\n'
 }
 
 func readJSONL[T any](p string) ([]T, error) {

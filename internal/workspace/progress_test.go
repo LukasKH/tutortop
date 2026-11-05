@@ -61,7 +61,8 @@ func TestProgressCountsOnlyPassedSubmissions(t *testing.T) {
 }
 
 // A crash can leave the attempt log's last line half written. It's skipped,
-// and a line's missing fields don't take the line before's values.
+// a line's missing fields don't take the line before's values, and the next
+// attempt still lands on a line of its own.
 func TestProgressReadsATornAttemptLog(t *testing.T) {
 	w := newWorkspace(t)
 	approve(t, w, "a", "b", "c")
@@ -74,7 +75,8 @@ func TestProgressReadsATornAttemptLog(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(w.Dir, ".tutortop", "attempts.jsonl"), []byte(log), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	want := map[string]workspace.ObjectiveStatus{"a": workspace.ObjectivePassed, "b": workspace.ObjectiveInProgress, "c": workspace.ObjectiveInProgress}
+	record(t, w, workspace.Attempt{TaskID: tc.ID, Kind: workspace.AttemptSubmit, Status: sandbox.StatusPassed})
+	want := map[string]workspace.ObjectiveStatus{"a": workspace.ObjectivePassed, "b": workspace.ObjectiveInProgress, "c": workspace.ObjectivePassed}
 	p := w.Progress()
 	for id, status := range want {
 		if got := p.Objectives[id].Status; got != status {
