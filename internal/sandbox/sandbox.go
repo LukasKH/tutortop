@@ -1,19 +1,20 @@
-// Package sandbox runs task checks in a Docker or Podman container and
-// reports per-test results. It also runs the quality gate for new tasks and
-// the editor's language servers.
+// Package sandbox runs code in a Docker or Podman container: a task's tests
+// ([Runner.Run]), the quality gate for new tasks ([Runner.Gate]) and the
+// editor's language servers ([Runner.StartLanguageServer]). A [Toolchain]
+// says how one language's image is built and its tests are read.
 package sandbox
 
 import (
 	"archive/tar"
 	"bytes"
-	"cmp"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"maps"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"runtime"
 	"slices"
 	"strings"
@@ -94,129 +95,27 @@ func (r *Runner) Prepare(ctx context.Context, tc Toolchain) error {
 	}
 }
 
-// Run executes the job and returns per-test results. An error is returned only
-// for infrastructure problems; code that fails to build, hangs or floods the
-// output is a Result with StatusError.
-func (r *Runner) Run(ctx context.Context, job Job) (Result, error) {
-	tc := job.Toolchain
-	if err := r.Prepare(ctx, tc); err != nil {
-		return Result{}, err
+// RemoveCache deletes the volumes that keep the toolchain caches of runs
+// that share cache (Job.Cache), as when its workspace is deleted.
+func (r *Runner) RemoveCache(ctx context.Context, cache string) error {
+	if r.Engine == Local {
+		return nil
 	}
-	timeout := cmp.Or(job.Timeout, 45*time.Second) // the test command itself stops after 20s
-
-	files := Files{}
-	maps.Copy(files, tc.ExtraFiles)
-	for _, set := range []Files{job.Solution, job.Tests, job.HiddenTests} {
-		for name, content := range set {
-			if !filepath.IsLocal(name) {
-				return Result{}, fmt.Errorf("file path %q must be relative and stay inside the task", name)
-			}
-			files[name] = content
+	out, err := exec.CommandContext(ctx, string(r.Engine), "volume", "ls", "-q").Output()
+	if err != nil {
+		return err
+	}
+	prefix := cacheVolumePrefix(cache)
+	var names []string
+	for _, name := range strings.Fields(string(out)) {
+		if strings.HasPrefix(name, prefix) {
+			names = append(names, name)
 		}
 	}
-	hidden := map[string]bool{}
-	for _, n := range job.Names.Hidden {
-		hidden[n] = true
+	if len(names) == 0 {
+		return nil
 	}
-
-	runCtx, stop := context.WithCancelCause(ctx)
-	defer stop(nil)
-	runCtx, stopTimer := context.WithTimeoutCause(runCtx, timeout, errTimeout)
-	defer stopTimer()
-	out := &cappedBuffer{max: maxOutput, stop: func() { stop(errTooMuchOutput) }}
-
-	start := time.Now()
-	runErr := r.exec(runCtx, tc, tc.script(max(job.Repeat, 1)), files, out)
-	res := Result{DurationMs: time.Since(start).Milliseconds()}
-	stdout := out.String()
-
-	switch context.Cause(runCtx) {
-	case errTimeout:
-		res.Status = StatusError
-		res.Output = fmt.Sprintf("Timed out after %s. Look for an infinite loop or a blocked channel.", timeout)
-		return res, nil
-	case errTooMuchOutput:
-		res.Status = StatusError
-		res.Output = "Your code printed more than 4 MB, so the run was stopped. Look for printing inside a loop."
-		return res, nil
-	}
-	if runErr != nil && stdout == "" {
-		return Result{}, runErr
-	}
-
-	tests, ok := tc.parse(stdout, hidden)
-	res.Output = text.Tail(tc.readable(stdout), 8000)
-	if !ok || len(tests) == 0 {
-		res.Status = StatusError
-		return res, nil
-	}
-	res.Tests = append(tests, notRun(job, tests)...)
-	res.Status = StatusPassed
-	for _, t := range res.Tests {
-		if !t.Passed {
-			res.Status = StatusFailed
-			break
-		}
-	}
-	return res, nil
-}
-
-// Status is how a check run ended.
-type Status string
-
-const (
-	StatusPassed Status = "passed" // compiled and every test passed
-	StatusFailed Status = "failed" // compiled, at least one test failed
-	StatusError  Status = "error"  // didn't compile, timed out, or the sandbox broke
-)
-
-type TestResult struct {
-	Name    string `json:"name"`
-	Hidden  bool   `json:"hidden"`
-	Passed  bool   `json:"passed"`
-	NotRun  bool   `json:"notRun,omitempty"` // the run stopped before reaching it
-	Message string `json:"message,omitempty"`
-}
-
-type Result struct {
-	Status     Status       `json:"status"`
-	Tests      []TestResult `json:"tests"`
-	Output     string       `json:"output"`
-	DurationMs int64        `json:"durationMs"`
-}
-
-func (r Result) Counts() (passed, total int) {
-	for _, t := range r.Tests {
-		if t.Passed {
-			passed++
-		}
-	}
-	return passed, len(r.Tests)
-}
-
-// Files maps relative paths to file contents.
-type Files map[string]string
-
-// Job is one check run: the learner's (or reference/mutant) solution plus tests.
-type Job struct {
-	Toolchain   Toolchain
-	Solution    Files
-	Tests       Files // visible tests
-	HiddenTests Files // only included when running a full submission
-	// Repeat runs every test this many times (shuffled where the language
-	// supports it); a test passes only if every repetition passes.
-	Repeat  int
-	Timeout time.Duration
-	// Names are the task's tests as the quality gate saw them run. They label
-	// results hidden, and a test missing from a run shows as not run. Empty
-	// while the gate itself runs.
-	Names TestNames
-}
-
-// TestNames are a task's tests, named as its test framework reports them.
-type TestNames struct {
-	Visible []string `yaml:"visible" json:"visible"`
-	Hidden  []string `yaml:"hidden" json:"hidden"`
+	return exec.CommandContext(ctx, string(r.Engine), append([]string{"volume", "rm", "-f"}, names...)...).Run()
 }
 
 func detectEngine() Engine {
@@ -251,16 +150,10 @@ func (r *Runner) build(ctx context.Context, tc Toolchain) error {
 	return nil
 }
 
-const maxOutput = 4 << 20 // bytes of test output kept before the run is stopped
-
-var (
-	errTimeout       = errors.New("timed out")
-	errTooMuchOutput = errors.New("too much output")
-)
-
 // exec unpacks the files into a fresh directory and runs the script there:
-// in a throwaway container, or in a temp dir on the host in local mode.
-func (r *Runner) exec(ctx context.Context, tc Toolchain, script string, files Files, out *cappedBuffer) error {
+// in a throwaway container, or in a temp dir on the host in local mode. Runs
+// that share cache keep the toolchain's cache folder in a volume.
+func (r *Runner) exec(ctx context.Context, tc Toolchain, script string, files Files, cache string, out *cappedBuffer) error {
 	archive, err := tarFiles(files)
 	if err != nil {
 		return err
@@ -277,9 +170,14 @@ func (r *Runner) exec(ctx context.Context, tc Toolchain, script string, files Fi
 		cmd.Dir = dir
 	} else {
 		// The images run as an unprivileged user with a build cache baked in,
-		// so nothing is shared between runs.
+		// so nothing is shared between runs but the cache volume, if any.
 		name := "tutortop-" + uuid.New().String()
 		args := append([]string{"run", "--rm", "-i", "--name", name}, lockdownFlags("512m")...)
+		if volume := cacheVolume(cache, tc); volume != "" {
+			// A new volume starts as a copy of the image's folder, so it
+			// keeps the image's warm cache and its owner.
+			args = append(args, "-v", volume+":"+tc.cache)
+		}
 		cmd = exec.CommandContext(ctx, string(r.Engine), append(args, tc.Image, "sh", "-c", shell)...)
 		// Killing the docker client doesn't stop the container, so remove it too.
 		cmd.Cancel = func() error {
@@ -291,6 +189,22 @@ func (r *Runner) exec(ctx context.Context, tc Toolchain, script string, files Fi
 	cmd.Stdin = bytes.NewReader(archive)
 	cmd.Stdout, cmd.Stderr = out, out
 	return cmd.Run()
+}
+
+// cacheVolume names the volume that keeps tc's cache folder for the runs
+// that share cache, or returns "" when there's nothing to keep.
+func cacheVolume(cache string, tc Toolchain) string {
+	if cache == "" || tc.cache == "" {
+		return ""
+	}
+	return cacheVolumePrefix(cache) + nameSafe(tc.Language)
+}
+
+// cacheVolumePrefix starts the names of cache's volumes, one per language.
+// The hash has a fixed length, so no other cache's names start the same way.
+func cacheVolumePrefix(cache string) string {
+	sum := sha256.Sum256([]byte(cache))
+	return "tutortop-cache-" + hex.EncodeToString(sum[:6]) + "-"
 }
 
 // engineHint turns a failed `<engine> version` into a fix the learner can act on.
@@ -312,30 +226,6 @@ func engineHint(engine Engine, output string, notFound bool) error {
 	default:
 		return fmt.Errorf("can't reach %s: %s", engine, output)
 	}
-}
-
-// notRun lists the task's tests that never reported a result. A crash can
-// end a run early: a panic stops `go test` at the crashing test, so later
-// tests (often the visible ones) would silently vanish from the results.
-func notRun(job Job, got []TestResult) []TestResult {
-	seen := map[string]bool{}
-	for _, t := range got {
-		seen[t.Name] = true
-	}
-	var missing []TestResult
-	add := func(names []string, hidden bool) {
-		for _, name := range names {
-			if !seen[name] {
-				seen[name] = true
-				missing = append(missing, TestResult{Name: name, Hidden: hidden, NotRun: true, Message: "Didn't run: the tests stopped early, most likely because another test crashed. See the output."})
-			}
-		}
-	}
-	add(job.Names.Visible, false)
-	if len(job.HiddenTests) > 0 {
-		add(job.Names.Hidden, true)
-	}
-	return missing
 }
 
 // lockdownFlags lock a container down: no network, no capabilities, and
@@ -367,31 +257,4 @@ func tarFiles(files Files) ([]byte, error) {
 		return nil, err
 	}
 	return buf.Bytes(), nil
-}
-
-// cappedBuffer collects output up to max bytes and calls stop when more
-// arrives, so a print loop can't exhaust the app's memory. The mutex matters:
-// with WaitDelay set, cmd.Wait can return before the copying goroutine ends.
-type cappedBuffer struct {
-	max  int
-	stop func()
-
-	mu  sync.Mutex
-	buf bytes.Buffer
-}
-
-func (c *cappedBuffer) Write(p []byte) (int, error) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.buf.Len()+len(p) > c.max {
-		c.stop() // the output is discarded once this happens
-		return len(p), nil
-	}
-	return c.buf.Write(p)
-}
-
-func (c *cappedBuffer) String() string {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return c.buf.String()
 }

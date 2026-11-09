@@ -8,8 +8,8 @@ import (
 	"time"
 )
 
-// These run real `go test -json` on the host (the local engine), so they
-// pin how its output is read as the Go release changes.
+// These run the Go toolchain's real `go test -json` on the host (the local
+// engine), so they pin how its output is read as the Go release changes.
 func TestRunGo(t *testing.T) {
 	const sum = "package task\n\nfunc Sum(a, b int) int { return a + b }\n"
 	cases := []struct {
@@ -83,7 +83,7 @@ func TestSum(t *testing.T) {}`, "os"),
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
-			job := Job{Toolchain: goToolchain, Solution: Files{"sum.go": c.solution}, Tests: Files{"sum_test.go": c.tests}, Names: c.names, Repeat: c.repeat}
+			job := Job{Toolchain: builtins["go"], Solution: Files{"sum.go": c.solution}, Tests: Files{"sum_test.go": c.tests}, Names: c.names, Repeat: c.repeat}
 			if c.hiddenTests != "" {
 				job.HiddenTests = Files{"edge_test.go": c.hiddenTests}
 			}
@@ -124,7 +124,7 @@ func TestRunStopsRunawayCode(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
-			job := Job{Toolchain: goToolchain, Solution: Files{"sum.go": "package task\n"}, Tests: Files{"sum_test.go": c.test}, Timeout: c.timeout}
+			job := Job{Toolchain: builtins["go"], Solution: Files{"sum.go": "package task\n"}, Tests: Files{"sum_test.go": c.test}, Timeout: c.timeout}
 			if res := runLocal(t, job); res.Status != StatusError || len(res.Tests) != 0 {
 				t.Errorf("status %q with tests %+v, want an error and no tests", res.Status, res.Tests)
 			}
@@ -133,7 +133,7 @@ func TestRunStopsRunawayCode(t *testing.T) {
 }
 
 func TestRunRejectsPathsOutsideTheTask(t *testing.T) {
-	job := Job{Toolchain: goToolchain, Solution: Files{"../sum.go": ""}}
+	job := Job{Toolchain: builtins["go"], Solution: Files{"../sum.go": ""}}
 	if _, err := (&Runner{Engine: "local"}).Run(t.Context(), job); err == nil {
 		t.Fatal("ran a job with a file outside the task folder")
 	}

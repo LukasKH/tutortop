@@ -89,6 +89,8 @@ func TestToolchainSpec(t *testing.T) {
 		{"language escaping its folder", func(s *ToolchainSpec) { s.Language = "../r" }, []string{"language must be a short lowercase id"}},
 		{"test files as a path", func(s *ToolchainSpec) { s.TestFiles = "tests/test-*.R" }, []string{"test_files must be a glob"}},
 		{"extra file outside the task", func(s *ToolchainSpec) { s.ExtraFiles = Files{"../DESCRIPTION": ""} }, []string{`extra file "../DESCRIPTION" must be a relative path`}},
+		// A volume there would hide the task's files from the run.
+		{"cache over the task files", func(s *ToolchainSpec) { s.Cache = "/work/.cache" }, []string{"cache must be an absolute folder outside /work"}},
 		{"every problem at once", func(s *ToolchainSpec) { s.Name, s.TestCommand = "", "" }, []string{"name is required", "test_command is required"}},
 	}
 	for _, c := range cases {

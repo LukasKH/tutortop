@@ -204,7 +204,7 @@ func (r *Servers) relay(ls *languageServer) {
 type languageServer struct {
 	id      string
 	key     taskKey // the task whose code it serves
-	srv     *sandbox.Server
+	srv     *sandbox.LanguageServer
 	started time.Time
 
 	writeMu sync.Mutex

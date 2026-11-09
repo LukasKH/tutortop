@@ -28,6 +28,8 @@ func TestToolsEndToEnd(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// The learner's runs below leave a cache volume in Docker.
+	t.Cleanup(func() { _ = a.runner.RemoveCache(context.Background(), w.ID) })
 
 	callTool := a.caller(t, w, workspace.PlanThread)
 	call := func(name string, args any) string {

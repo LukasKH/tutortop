@@ -43,7 +43,7 @@ export function CreateWorkspace(title: string, icon: string): $CancellablePromis
 
 /**
  * DeleteWorkspace stops the workspace's agents and language servers, then
- * deletes its files for good.
+ * deletes its files and its runs' cache for good.
  */
 export function DeleteWorkspace(id: string): $CancellablePromise<void> {
     return $Call.ByID(1728258493, id);

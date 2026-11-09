@@ -2,11 +2,17 @@ package sandbox
 
 import (
 	"bytes"
+	"cmp"
+	"crypto/sha256"
+	"embed"
+	"encoding/hex"
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
+	"io/fs"
 	"maps"
 	"path"
+	"regexp"
 	"slices"
 	"strings"
 
@@ -14,16 +20,17 @@ import (
 	"github.com/LukasKH/tutortop/internal/text"
 )
 
-// Toolchain knows how to run one language's tests and read the results.
-// The built-in ones are below; ToolchainSpec makes the others.
+// Toolchain knows how to run one language's tests and read the results. Only
+// ToolchainSpec.Toolchain makes one, so every toolchain has been validated:
+// the built-in ones from builtins/*.yaml, the others from the tutor's specs.
 type Toolchain struct {
 	Language string // id used in the curriculum, e.g. "go"
 	Name     string // shown to people, e.g. "Go"
 	// EditorLanguage is the Monaco language id for syntax highlighting.
 	EditorLanguage string
 	// Image is the container image checks run in, built locally from
-	// Dockerfile the first time it is needed. Bump the tag when the
-	// Dockerfile changes.
+	// Dockerfile the first time it is needed. Its tag is a hash of the
+	// Dockerfile, so a changed Dockerfile builds a fresh image.
 	Image      string
 	Dockerfile string
 	// ExtraFiles are written next to the task files before running.
@@ -34,14 +41,27 @@ type Toolchain struct {
 	LanguageServer []string
 
 	report reportFormat
-	// testCommand runs a junitXML toolchain's tests once, writing the
+	// testCommand runs the tests once in /work. A junitXML one writes its
 	// report to /tmp/junit.xml.
 	testCommand string
 	// repeatFlag, if set, makes testCommand repeat each test itself, with %d
 	// for the count. Without it the command is run again for each repeat.
 	repeatFlag string
 	testFiles  string // glob matching a test file's base name
+	// cache is a folder in the image that runs sharing a Job.Cache keep in a
+	// volume, such as Go's build cache. Empty for none.
+	cache string
 }
+
+// Builtin returns a toolchain the app ships with. Other languages are set up
+// per workspace with a ToolchainSpec.
+func Builtin(language string) (Toolchain, bool) {
+	tc, ok := builtins[language]
+	return tc, ok
+}
+
+// BuiltinLanguages lists the ids of the languages the app ships with, sorted.
+func BuiltinLanguages() []string { return slices.Sorted(maps.Keys(builtins)) }
 
 // IsTestFile reports whether a file name is one of this language's test files.
 func (tc Toolchain) IsTestFile(name string) bool {
@@ -53,14 +73,15 @@ func (tc Toolchain) IsTestFile(name string) bool {
 // directory, repeating each test `repeat` times, and prints everything parse
 // needs.
 func (tc Toolchain) script(repeat int) string {
+	command, runs := tc.testCommand, max(repeat, 1)
+	if tc.repeatFlag != "" && runs > 1 {
+		command, runs = command+" "+fmt.Sprintf(tc.repeatFlag, runs), 1
+	}
 	switch tc.report {
 	case goJSON:
-		return goScript(repeat)
+		return repeatCommand(command, runs)
 	case junitXML:
-		if tc.repeatFlag == "" || repeat <= 1 {
-			return junitScript(tc.testCommand, repeat)
-		}
-		return junitScript(tc.testCommand+" "+fmt.Sprintf(tc.repeatFlag, repeat), 1)
+		return repeatCommand(junitRun(command), runs)
 	}
 	return ""
 }
@@ -89,25 +110,140 @@ func (tc Toolchain) readable(stdout string) string {
 	return stdout
 }
 
-// builtins are the languages the app ships with. The app's descriptions and
-// prompts for the agent name them through BuiltinLanguages. Struct tags name
-// them by hand, and the shared prompt has each one's conventions, so a new
-// one is added to both by hand. docs/architecture.md has the steps for adding
-// one.
-var builtins = map[string]Toolchain{
-	"go":     goToolchain,
-	"python": pythonToolchain,
+// ToolchainSpec describes a language environment as data: the built-in ones
+// in builtins/*.yaml, and the ones the tutor sets up for a workspace with
+// set_toolchain. The tutor's test command must write a JUnit XML report,
+// which nearly every test framework can do, so one parser covers them all.
+type ToolchainSpec struct {
+	Language       string   `yaml:"language" json:"language" jsonschema:"short lowercase id used in the curriculum, e.g. r; not a language the app ships"`
+	Name           string   `yaml:"name" json:"name" jsonschema:"shown to the learner, e.g. R"`
+	EditorLanguage string   `yaml:"editor_language" json:"editorLanguage" jsonschema:"Monaco editor language id for syntax highlighting, e.g. r, rust, javascript, typescript, java, cpp, csharp, ruby, sql; plaintext if none fits"`
+	Dockerfile     string   `yaml:"dockerfile" json:"dockerfile" jsonschema:"Dockerfile for the sandbox image, FROM an official image by its full name, e.g. docker.io/library/node:24-alpine (Podman refuses short names). Install the language, the test framework, any libraries tasks need and the language server, system-wide. The app appends lines that create /work and switch to user 1000 with HOME=/home/runner. Tests run there with no network."`
+	TestCommand    string   `yaml:"test_command" json:"testCommand" jsonschema:"shell command run in /work (the task files) that runs every test file and writes a JUnit XML report to /tmp/junit.xml. It must write the report even when tests fail. Build errors may leave it out. The app stops it after 20 seconds."`
+	TestFiles      string   `yaml:"test_files" json:"testFiles" jsonschema:"glob matching the base name of test files, e.g. test-*.R or *.test.js; the test framework must find files named this way"`
+	LanguageServer []string `yaml:"language_server,omitempty" json:"languageServer,omitempty" jsonschema:"optional command (argv) that runs a language server over stdio in /work, installed in the image, for completions and errors in the editor, e.g. [\"R\", \"--slave\", \"-e\", \"languageserver::run()\"]. If it doesn't answer, the language is saved without it."`
+	ExtraFiles     Files    `yaml:"extra_files,omitempty" json:"extraFiles,omitempty" jsonschema:"optional files written next to every task's files, e.g. a package.json or Cargo.toml"`
+
+	// The fields below tune the built-in languages. set_toolchain's schema
+	// leaves them out, so the tutor's languages report JUnit, run the test
+	// command once per repetition and keep no cache.
+
+	// Report is how the test command reports results: junit (the default)
+	// or go-json (`go test -json`).
+	Report string `yaml:"report,omitempty" json:"-"`
+	// RepeatFlag makes the test command repeat each test itself, with %d for
+	// the count, so the report is written once.
+	RepeatFlag string `yaml:"repeat_flag,omitempty" json:"-"`
+	// Cache is a folder in the image that a workspace's runs keep between
+	// them, such as a compiler's cache (Job.Cache).
+	Cache string `yaml:"cache,omitempty" json:"-"`
 }
 
-// Builtin returns a toolchain the app ships with. Other languages are set up
-// per workspace with a ToolchainSpec.
-func Builtin(language string) (Toolchain, bool) {
-	tc, ok := builtins[language]
-	return tc, ok
+// Toolchain validates the spec and turns it into a toolchain. Every problem is
+// reported at once so the tutor can fix them in one go.
+func (s ToolchainSpec) Toolchain() (Toolchain, error) {
+	var problems []string
+	add := func(format string, args ...any) { problems = append(problems, fmt.Sprintf(format, args...)) }
+
+	if !languageID.MatchString(s.Language) {
+		add("language must be a short lowercase id like r or rust")
+	}
+	if strings.TrimSpace(s.Name) == "" {
+		add("name is required")
+	}
+	if !strings.HasPrefix(strings.ToUpper(strings.TrimSpace(s.Dockerfile)), "FROM ") {
+		add("dockerfile must start with FROM")
+	}
+	if strings.TrimSpace(s.TestCommand) == "" {
+		add("test_command is required")
+	}
+	if _, err := path.Match(s.TestFiles, ""); err != nil || s.TestFiles == "" || strings.ContainsAny(s.TestFiles, "^$/") {
+		add("test_files must be a glob matching a file's base name, like test_*.py, not a regexp or a path")
+	}
+	for name := range s.ExtraFiles {
+		if !fs.ValidPath(path.Clean(name)) {
+			add("extra file %q must be a relative path", name)
+		}
+	}
+	report, ok := reportFormats[cmp.Or(s.Report, "junit")]
+	if !ok {
+		add("report must be junit or go-json")
+	}
+	if s.RepeatFlag != "" && strings.Count(s.RepeatFlag, "%d") != 1 {
+		add("repeat_flag must hold one %%d for the count")
+	}
+	// The volume would hide the task files, or the whole image, from the run.
+	if s.Cache != "" && (!path.IsAbs(s.Cache) || path.Clean(s.Cache) == "/" || isUnder(path.Clean(s.Cache), "/work")) {
+		add("cache must be an absolute folder outside /work")
+	}
+	if len(problems) > 0 {
+		return Toolchain{}, fmt.Errorf("toolchain problems:\n- %s", strings.Join(problems, "\n- "))
+	}
+
+	dockerfile := strings.TrimSpace(s.Dockerfile) + "\n" + dockerfileTail
+	sum := sha256.Sum256([]byte(dockerfile))
+	return Toolchain{
+		Language:       s.Language,
+		Name:           s.Name,
+		EditorLanguage: s.EditorLanguage,
+		// Tagged by content, so editing the spec builds a fresh image.
+		Image:          "tutortop-" + nameSafe(s.Language) + ":" + hex.EncodeToString(sum[:6]),
+		Dockerfile:     dockerfile,
+		ExtraFiles:     maps.Clone(s.ExtraFiles),
+		LanguageServer: slices.Clone(s.LanguageServer),
+		report:         report,
+		testCommand:    s.TestCommand,
+		repeatFlag:     s.RepeatFlag,
+		testFiles:      s.TestFiles,
+		cache:          s.Cache,
+	}, nil
 }
 
-// BuiltinLanguages lists the ids of the languages the app ships with, sorted.
-func BuiltinLanguages() []string { return slices.Sorted(maps.Keys(builtins)) }
+// ---- built-in languages ----
+
+//go:embed builtins/*.yaml
+var builtinSpecs embed.FS
+
+// builtins are the languages the app ships with, by id. The app's
+// descriptions and prompts for the agent name them through BuiltinLanguages.
+// Struct tags name them by hand, and the shared prompt has each one's
+// conventions, so a new one is added to both by hand. docs/architecture.md
+// has the steps for adding one.
+var builtins = loadBuiltins()
+
+// loadBuiltins turns builtins/<language>.yaml into toolchains. They ship
+// with the app, so a broken one is a bug: it panics as the app starts, and
+// fails every test in this package.
+func loadBuiltins() map[string]Toolchain {
+	paths, err := fs.Glob(builtinSpecs, "builtins/*.yaml")
+	if err != nil {
+		panic(err)
+	}
+	out := map[string]Toolchain{}
+	for _, p := range paths {
+		tc, err := loadBuiltin(p)
+		if err != nil {
+			panic(fmt.Sprintf("%s: %v", p, err))
+		}
+		out[tc.Language] = tc
+	}
+	return out
+}
+
+func loadBuiltin(p string) (Toolchain, error) {
+	b, err := builtinSpecs.ReadFile(p)
+	if err != nil {
+		return Toolchain{}, err
+	}
+	spec, err := decode.YAML[ToolchainSpec](b)
+	if err != nil {
+		return Toolchain{}, err
+	}
+	if want := strings.TrimSuffix(path.Base(p), ".yaml"); spec.Language != want {
+		return Toolchain{}, fmt.Errorf("language %q, want %q as in the file name", spec.Language, want)
+	}
+	return spec.Toolchain()
+}
 
 // reportFormat is how a toolchain's test command reports results.
 type reportFormat int
@@ -116,43 +252,43 @@ const (
 	// The zero value is no format, so a toolchain that forgets one parses
 	// nothing instead of guessing.
 	goJSON   reportFormat = iota + 1 // `go test -json`
-	junitXML                         // a JUnit XML report per run (junitScript)
+	junitXML                         // a JUnit XML report per run (junitRun)
 )
 
-// ---- Go ----
+// reportFormats are the formats by their names in a ToolchainSpec.
+var reportFormats = map[string]reportFormat{
+	"go-json": goJSON,
+	"junit":   junitXML,
+}
 
-var goToolchain = Toolchain{
-	Language:       "go",
-	Name:           "Go",
-	EditorLanguage: "go",
-	Image:          "tutortop-go:2",
-	// Runs as an unprivileged user, with the standard library, vet and
-	// test2json already compiled so a check only builds the task's package.
-	// (Pattern from Exercism's go-test-runner image.) gopls powers the editor.
-	Dockerfile: `FROM docker.io/library/golang:1.27-alpine
-RUN adduser -D -u 1000 runner && mkdir /work && chown runner /work
-USER runner
-ENV CGO_ENABLED=0 GOFLAGS=-mod=mod GOTOOLCHAIN=local GOPATH=/home/runner/go
-RUN GOFLAGS= go install golang.org/x/tools/gopls@latest
-RUN mkdir /tmp/warm && cd /tmp/warm \
- && printf 'module warm\n\ngo 1.27\n' > go.mod \
- && printf 'package warm\n\nimport "testing"\n\nfunc TestWarm(t *testing.T) {}\n' > warm_test.go \
- && go test -json ./... > /dev/null && go build std && rm -rf /tmp/warm
+var languageID = regexp.MustCompile(`^[a-z][a-z0-9+#-]{0,19}$`)
+
+// dockerfileTail is appended to every toolchain's Dockerfile, so checks run
+// the same way in every image: unprivileged, in /work.
+const dockerfileTail = `USER root
+RUN mkdir -p /work /home/runner && chown 1000:1000 /work /home/runner
+ENV HOME=/home/runner
 WORKDIR /work
-`,
-	ExtraFiles:     map[string]string{"go.mod": "module task\n\ngo 1.27\n"},
-	report:         goJSON,
-	LanguageServer: []string{"/home/runner/go/bin/gopls"},
-	testFiles:      "*_test.go",
+USER 1000:1000
+`
+
+// nameSafe turns a language id into a part of an image or volume name, which
+// can't hold + or #.
+func nameSafe(language string) string {
+	return strings.NewReplacer("+", "p", "#", "s").Replace(language)
 }
 
-func goScript(repeat int) string {
-	flags := "-count=1"
-	if repeat > 1 {
-		flags = fmt.Sprintf("-count=%d -shuffle=on", repeat)
-	}
-	return "CGO_ENABLED=0 GOFLAGS=-mod=mod GOTOOLCHAIN=local go test -json " + flags + " -timeout=20s ./... 2>&1"
+// isUnder reports whether clean path p is dir or inside it.
+func isUnder(p, dir string) bool {
+	return p == dir || strings.HasPrefix(p, dir+"/")
 }
+
+// repeatCommand runs command `runs` times in a row.
+func repeatCommand(command string, runs int) string {
+	return strings.Repeat(command+"; ", runs-1) + command
+}
+
+// ---- go test -json ----
 
 type goTestEvent struct {
 	Action goAction
@@ -252,29 +388,6 @@ func humanGoOutput(s string) string {
 	return b.String()
 }
 
-// ---- Python ----
-
-var pythonToolchain = Toolchain{
-	Language:       "python",
-	Name:           "Python",
-	EditorLanguage: "python",
-	Image:          "tutortop-python:4",
-	// basedpyright powers the editor (it ships its own Node.js).
-	Dockerfile: `FROM docker.io/library/python:3.14-slim
-RUN pip install --no-cache-dir 'pytest==8.*' 'pytest-timeout==2.*' 'pytest-repeat==0.9.*' 'basedpyright==1.*' \
- && useradd -m -u 1000 runner && mkdir /work && chown runner /work
-USER runner
-ENV PYTHONDONTWRITEBYTECODE=1
-WORKDIR /work
-`,
-	report:      junitXML,
-	testCommand: "python -m pytest -q -p no:cacheprovider --timeout=20 --junitxml=/tmp/junit.xml",
-	// pytest repeats tests itself (pytest-repeat), so the report is written once.
-	repeatFlag:     "--count=%d",
-	LanguageServer: []string{"basedpyright-langserver", "--stdio"},
-	testFiles:      "test_*.py",
-}
-
 // ---- JUnit ----
 
 const (
@@ -282,12 +395,12 @@ const (
 	junitEnd   = "===TUTORTOP-JUNIT-END==="
 )
 
-// junitScript runs the test command `repeat` times (frameworks have no common
-// way to repeat or shuffle tests) and prints each report between markers.
-func junitScript(command string, repeat int) string {
-	run := "rm -f /tmp/junit.xml; ( " + command + " ) 2>&1; " +
+// junitRun runs the test command once and prints its report between
+// markers. Frameworks have no common way to repeat or shuffle tests, so
+// script runs it again for each repetition.
+func junitRun(command string) string {
+	return "rm -f /tmp/junit.xml; ( " + command + " ) 2>&1; " +
 		"echo; echo '" + junitBegin + "'; cat /tmp/junit.xml 2>/dev/null; echo; echo '" + junitEnd + "'"
-	return strings.Repeat(run+"; ", max(repeat, 1)-1) + run
 }
 
 // junitNode reads both <testsuites> and a lone <testsuite> root, with
@@ -387,8 +500,6 @@ func stripJUnit(s string) string {
 	}
 	return strings.TrimSpace(b.String())
 }
-
-// ---- helpers ----
 
 func trimMessage(s string) string {
 	return text.Truncate(strings.TrimSpace(s), 2000)

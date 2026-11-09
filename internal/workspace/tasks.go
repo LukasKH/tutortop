@@ -271,7 +271,9 @@ func (w *Workspace) Job(id string, submit bool) (sandbox.Job, error) {
 	if err != nil {
 		return sandbox.Job{}, err
 	}
-	job := sandbox.Job{Names: w.testNames(id)}
+	// The workspace's runs share their toolchain's cache, so a run doesn't
+	// recompile what the last one did.
+	job := sandbox.Job{Names: w.testNames(id), Cache: w.ID}
 	if job.Toolchain, err = w.Toolchain(info.Language); err != nil {
 		return job, err
 	}

@@ -109,11 +109,21 @@ func (s *WorkspaceService) CreateWorkspace(title, icon string) (string, error) {
 }
 
 // DeleteWorkspace stops the workspace's agents and language servers, then
-// deletes its files for good.
+// deletes its files and its runs' cache for good.
 func (s *WorkspaceService) DeleteWorkspace(id string) error {
 	s.agents.EndWorkspace(id)
 	s.servers.StopWorkspace(id)
+	go s.removeCache(id)
 	return s.store.Delete(id)
+}
+
+// removeCache deletes the workspace's cache volumes in the background, so a
+// slow or stopped Docker doesn't hold up the delete. A cache left behind only
+// takes disk space, so a failure is dropped.
+func (s *WorkspaceService) removeCache(id string) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	_ = s.runner.RemoveCache(ctx, id)
 }
 
 // WorkspaceSnapshot is everything the workspace screen shows, read at one

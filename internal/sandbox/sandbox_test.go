@@ -56,3 +56,40 @@ func TestPrepareSharesBuild(t *testing.T) {
 		t.Fatalf("a prepared image was checked again:\n%s", calls())
 	}
 }
+
+// A workspace's runs keep the toolchain's cache in a volume of their own, the
+// quality gate's runs start clean, and deleting a workspace's cache leaves
+// other workspaces' volumes alone.
+func TestCacheVolumes(t *testing.T) {
+	dir := t.TempDir()
+	log := filepath.Join(dir, "calls")
+	engine := filepath.Join(dir, "engine")
+	mine, other := cacheVolumePrefix("ws-a")+"go", cacheVolumePrefix("ws-b")+"go"
+	script := "#!/bin/sh\necho \"$@\" >> " + log + "\n" +
+		"case \"$1 $2\" in \"volume ls\") printf '%s\\n' " + mine + " " + other + " ;; run*) cat >/dev/null ;; esac\n"
+	if err := os.WriteFile(engine, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	r := &Runner{Engine: Engine(engine), prepared: map[string]bool{}}
+	calls := func() string { b, _ := os.ReadFile(log); return string(b) }
+	run := func(cache string) string {
+		before := calls()
+		if _, err := r.Run(t.Context(), Job{Toolchain: builtins["go"], Cache: cache}); err != nil {
+			t.Fatal(err)
+		}
+		return strings.TrimPrefix(calls(), before)
+	}
+
+	if got := run("ws-a"); !strings.Contains(got, " -v "+mine+":/home/runner/.cache/go-build ") {
+		t.Errorf("a workspace's run doesn't mount its cache:\n%s", got)
+	}
+	if got := run(""); strings.Contains(got, " -v ") {
+		t.Errorf("a run without a cache, as the quality gate's, mounts a volume:\n%s", got)
+	}
+	if err := r.RemoveCache(t.Context(), "ws-a"); err != nil {
+		t.Fatal(err)
+	}
+	if got := calls(); !strings.Contains(got, "volume rm -f "+mine+"\n") || strings.Contains(got, "rm -f "+other) {
+		t.Errorf("removing ws-a's cache, want only %s removed:\n%s", mine, got)
+	}
+}

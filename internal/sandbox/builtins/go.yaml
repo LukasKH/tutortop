@@ -1,0 +1,31 @@
+# Go, read through `go test -json`. The image has the standard library, vet
+# and test2json already compiled, so a check only builds the task's package
+# (pattern from Exercism's go-test-runner image). gopls powers the editor.
+language: go
+name: Go
+editor_language: go
+dockerfile: |
+  FROM docker.io/library/golang:1.27-alpine
+  RUN adduser -D -u 1000 runner
+  USER runner
+  ENV CGO_ENABLED=0 GOFLAGS=-mod=mod GOTOOLCHAIN=local GOPATH=/home/runner/go
+  RUN GOFLAGS= go install golang.org/x/tools/gopls@latest
+  RUN mkdir /tmp/warm && cd /tmp/warm \
+   && printf 'module warm\n\ngo 1.27\n' > go.mod \
+   && printf 'package warm\n\nimport "testing"\n\nfunc TestWarm(t *testing.T) {}\n' > warm_test.go \
+   && go test -json ./... > /dev/null && go build std && rm -rf /tmp/warm
+# The variables repeat the image's, for the local engine. -count=1 turns off
+# Go's test result cache, which the build cache below would otherwise keep.
+test_command: CGO_ENABLED=0 GOFLAGS=-mod=mod GOTOOLCHAIN=local go test -json -timeout=20s -count=1 ./...
+# A later -count overrides the one above.
+repeat_flag: -count=%d -shuffle=on
+test_files: "*_test.go"
+report: go-json
+# A workspace's runs keep the build cache, so a run only compiles what changed.
+cache: /home/runner/.cache/go-build
+language_server: [/home/runner/go/bin/gopls]
+extra_files:
+  go.mod: |
+    module task
+
+    go 1.27

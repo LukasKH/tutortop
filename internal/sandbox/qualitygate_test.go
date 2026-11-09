@@ -13,7 +13,7 @@ func TestGate(t *testing.T) {
 	)
 	good := func() GateInput {
 		return GateInput{
-			Toolchain:   goToolchain,
+			Toolchain:   builtins["go"],
 			Starter:     Files{"sum.go": starter},
 			Reference:   Files{"sum.go": reference},
 			Tests:       Files{"sum_test.go": test(`func TestSum(t *testing.T) { if Sum(1, 2) != 3 { t.Fatal("Sum(1, 2) != 3") } }`)},
