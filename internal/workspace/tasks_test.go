@@ -52,7 +52,7 @@ func TestValidateSpec(t *testing.T) {
 }
 
 // Saved tasks and lessons keep their answers private: the reference, hidden
-// tests, mutants and quiz answers live outside the workspace, and grading
+// tests and quiz answers live outside the workspace, and grading
 // reads a private copy of the visible tests.
 func TestSaveTask(t *testing.T) {
 	w := newWorkspace(t)
@@ -73,7 +73,7 @@ func TestSaveTask(t *testing.T) {
 		if err != nil || d.IsDir() {
 			return err
 		}
-		if strings.Contains(p, "hidden") || strings.Contains(p, "reference") || strings.Contains(p, "mutants") {
+		if strings.Contains(p, "hidden") || strings.Contains(p, "reference") {
 			t.Errorf("private file in the workspace: %s", p)
 		}
 		if b, _ := os.ReadFile(p); strings.Contains(string(b), "One plus two is three") || strings.Contains(string(b), "answer:") {

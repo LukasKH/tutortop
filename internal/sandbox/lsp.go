@@ -11,9 +11,7 @@ import (
 	"io"
 	"maps"
 	"net/textproto"
-	"os"
 	"os/exec"
-	"path/filepath"
 	"strconv"
 	"sync"
 	"time"
@@ -45,34 +43,12 @@ func (r *Runner) StartLanguageServer(ctx context.Context, tc Toolchain, files Fi
 	if len(tc.LanguageServer) == 0 {
 		return nil, errors.New("this language has no language server")
 	}
-	all := Files{}
-	maps.Copy(all, tc.ExtraFiles)
-	maps.Copy(all, files)
-
-	if r.Engine == Local {
-		dir, err := os.MkdirTemp("", "tutortop-lsp-")
-		if err != nil {
-			return nil, err
-		}
-		for name, content := range all {
-			p := filepath.Join(dir, filepath.FromSlash(name))
-			err := os.MkdirAll(filepath.Dir(p), 0o755)
-			if err == nil {
-				err = os.WriteFile(p, []byte(content), 0o644)
-			}
-			if err != nil {
-				os.RemoveAll(dir)
-				return nil, err
-			}
-		}
-		cmd := exec.Command(tc.LanguageServer[0], tc.LanguageServer[1:]...)
-		cmd.Dir = dir
-		return startLanguageServer(cmd, dir, func() { os.RemoveAll(dir) })
-	}
-
 	if err := r.Prepare(ctx, tc); err != nil {
 		return nil, err
 	}
+	all := Files{}
+	maps.Copy(all, tc.ExtraFiles)
+	maps.Copy(all, files)
 	archive, err := tarFiles(all)
 	if err != nil {
 		return nil, err
@@ -90,10 +66,40 @@ func (r *Runner) StartLanguageServer(ctx context.Context, tc Toolchain, files Fi
 		remove()
 		return nil, errors.New("copying files to the language server: " + string(bytes.TrimSpace(out)))
 	}
-	return startLanguageServer(exec.Command(string(r.Engine), "start", "-a", "-i", name), "/work", remove)
+
+	cmd := exec.Command(string(r.Engine), "start", "-a", "-i", name)
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		remove()
+		return nil, err
+	}
+	// An io.Pipe rather than StdoutPipe, so Wait can run while we still read.
+	stdout, w := io.Pipe()
+	cmd.Stdout = w
+	if err := cmd.Start(); err != nil {
+		remove()
+		return nil, err
+	}
+	s := &LanguageServer{
+		Stdin:  stdin,
+		Stdout: stdout,
+		Root:   "/work",
+		cmd:    cmd,
+		cleanup: func() {
+			remove()
+			_ = stdout.Close()
+		},
+	}
+	// Reap the process when it exits on its own; the reader then sees EOF.
+	go func() {
+		err := cmd.Wait()
+		_ = w.CloseWithError(cmp.Or(err, io.EOF))
+		s.Close()
+	}()
+	return s, nil
 }
 
-// Close stops the server and removes its container or temp directory.
+// Close stops the server and removes its container.
 func (s *LanguageServer) Close() {
 	s.closeOnce.Do(func() {
 		_ = s.Stdin.Close()
@@ -178,38 +184,6 @@ func WriteMessage(w io.Writer, body []byte) error {
 }
 
 const maxMessage = 64 << 20
-
-func startLanguageServer(cmd *exec.Cmd, root string, cleanup func()) (*LanguageServer, error) {
-	stdin, err := cmd.StdinPipe()
-	if err != nil {
-		cleanup()
-		return nil, err
-	}
-	// An io.Pipe rather than StdoutPipe, so Wait can run while we still read.
-	stdout, w := io.Pipe()
-	cmd.Stdout = w
-	if err := cmd.Start(); err != nil {
-		cleanup()
-		return nil, err
-	}
-	s := &LanguageServer{
-		Stdin:  stdin,
-		Stdout: stdout,
-		Root:   root,
-		cmd:    cmd,
-		cleanup: func() {
-			cleanup()
-			_ = stdout.Close()
-		},
-	}
-	// Reap the process when it exits on its own; the reader then sees EOF.
-	go func() {
-		err := cmd.Wait()
-		_ = w.CloseWithError(cmp.Or(err, io.EOF))
-		s.Close()
-	}()
-	return s, nil
-}
 
 // lspResponse is the part of a JSON-RPC response ProbeLanguageServer reads.
 type lspResponse struct {

@@ -14,11 +14,9 @@ dockerfile: |
    && printf 'module warm\n\ngo 1.27\n' > go.mod \
    && printf 'package warm\n\nimport "testing"\n\nfunc TestWarm(t *testing.T) {}\n' > warm_test.go \
    && go test -json ./... > /dev/null && go build std && rm -rf /tmp/warm
-# The variables repeat the image's, for the local engine. -count=1 turns off
-# Go's test result cache, which the build cache below would otherwise keep.
-test_command: CGO_ENABLED=0 GOFLAGS=-mod=mod GOTOOLCHAIN=local go test -json -timeout=20s -count=1 ./...
-# A later -count overrides the one above.
-repeat_flag: -count=%d -shuffle=on
+# -count=1 turns off Go's test result cache, which the build cache below
+# would otherwise keep.
+test_command: go test -json -timeout=20s -count=1 ./...
 test_files: "*_test.go"
 report: go-json
 # A workspace's runs keep the build cache, so a run only compiles what changed.

@@ -2,14 +2,13 @@ package sandbox
 
 import (
 	"fmt"
-	"os/exec"
 	"strings"
 	"testing"
 	"time"
 )
 
-// These run the Go toolchain's real `go test -json` on the host (the local
-// engine), so they pin how its output is read as the Go release changes.
+// These run the Go toolchain's real `go test -json` in the sandbox, so they
+// pin how its output is read as the Go release changes.
 func TestRunGo(t *testing.T) {
 	const sum = "package task\n\nfunc Sum(a, b int) int { return a + b }\n"
 	cases := []struct {
@@ -18,7 +17,6 @@ func TestRunGo(t *testing.T) {
 		tests       string
 		hiddenTests string // added as a hidden test file when set
 		names       TestNames
-		repeat      int
 		status      Status
 		want        []TestResult // Message is matched as a substring
 	}{
@@ -61,17 +59,6 @@ func TestLater(t *testing.T) {}`),
 			status:   StatusError,
 		},
 		{
-			// The test fails on its second run only: one bad repetition fails it.
-			name:     "a failed repetition fails the test",
-			solution: sum,
-			// One test only: repetitions run shuffled.
-			tests: test(`var runs int
-func TestFlaky(t *testing.T) { runs++; if runs == 2 { t.Fatal("second run") } }`),
-			repeat: 3,
-			status: StatusFailed,
-			want:   []TestResult{{Name: "TestFlaky", Message: "second run"}},
-		},
-		{
 			name:     "a test program that fails outside any test",
 			solution: sum,
 			tests: test(`func TestMain(m *testing.M) { m.Run(); os.Exit(3) }
@@ -83,11 +70,11 @@ func TestSum(t *testing.T) {}`, "os"),
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
-			job := Job{Toolchain: builtins["go"], Solution: Files{"sum.go": c.solution}, Tests: Files{"sum_test.go": c.tests}, Names: c.names, Repeat: c.repeat}
+			job := Job{Toolchain: builtins["go"], Solution: Files{"sum.go": c.solution}, Tests: Files{"sum_test.go": c.tests}, Names: c.names}
 			if c.hiddenTests != "" {
 				job.HiddenTests = Files{"edge_test.go": c.hiddenTests}
 			}
-			res := runLocal(t, job)
+			res := runJob(t, job)
 			if res.Status != c.status {
 				t.Fatalf("status %q, want %q; output:\n%s", res.Status, c.status, res.Output)
 			}
@@ -118,14 +105,14 @@ func TestRunStopsRunawayCode(t *testing.T) {
 		test    string
 		timeout time.Duration
 	}{
-		{"a run past its timeout", test(`func TestSum(t *testing.T) { time.Sleep(time.Second) }`, "time"), 200 * time.Millisecond},
+		{"a run past its timeout", test(`func TestSum(t *testing.T) { time.Sleep(15 * time.Second) }`, "time"), 5 * time.Second},
 		{"output past the cap", test(`func TestSum(t *testing.T) { fmt.Print(strings.Repeat("x", 5<<20)) }`, "fmt", "strings"), 0},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
 			job := Job{Toolchain: builtins["go"], Solution: Files{"sum.go": "package task\n"}, Tests: Files{"sum_test.go": c.test}, Timeout: c.timeout}
-			if res := runLocal(t, job); res.Status != StatusError || len(res.Tests) != 0 {
+			if res := runJob(t, job); res.Status != StatusError || len(res.Tests) != 0 {
 				t.Errorf("status %q with tests %+v, want an error and no tests", res.Status, res.Tests)
 			}
 		})
@@ -134,28 +121,32 @@ func TestRunStopsRunawayCode(t *testing.T) {
 
 func TestRunRejectsPathsOutsideTheTask(t *testing.T) {
 	job := Job{Toolchain: builtins["go"], Solution: Files{"../sum.go": ""}}
-	if _, err := (&Runner{Engine: "local"}).Run(t.Context(), job); err == nil {
+	if _, err := testRunner(t).Run(t.Context(), job); err == nil {
 		t.Fatal("ran a job with a file outside the task folder")
 	}
 }
 
-// runLocal runs a job on the host.
-func runLocal(t *testing.T, job Job) Result {
+// runJob runs a job in the sandbox.
+func runJob(t *testing.T, job Job) Result {
 	t.Helper()
-	needGo(t)
-	res, err := (&Runner{Engine: "local"}).Run(t.Context(), job)
+	res, err := testRunner(t).Run(t.Context(), job)
 	if err != nil {
 		t.Fatal(err)
 	}
 	return res
 }
 
-// needGo skips tests that run Go tests on the host when there's no go command.
-func needGo(t *testing.T) {
+// sharedRunner is the tests' runner, so they build each image once.
+var sharedRunner = New()
+
+// testRunner returns the tests' runner. The sandbox tests need Docker or
+// Podman, so they fail rather than skip without one.
+func testRunner(t *testing.T) *Runner {
 	t.Helper()
-	if _, err := exec.LookPath("go"); err != nil {
-		t.Skip("needs the go command")
+	if err := sharedRunner.Available(t.Context()); err != nil {
+		t.Fatalf("the sandbox tests need Docker or Podman: %v", err)
 	}
+	return sharedRunner
 }
 
 // test is a Go test file in package task with the given body.

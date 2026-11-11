@@ -55,7 +55,7 @@ func TestWriterKeepsToItsObjective(t *testing.T) {
 			{Question: "C?", Options: []string{"a", "b", "c"}, Answer: 2, Explanation: "C."},
 		},
 	}
-	for tool, spec := range map[string]any{"create_lesson": lesson, "create_task": oneMutantTask("go.strings")} {
+	for tool, spec := range map[string]any{"create_lesson": lesson, "create_task": noHiddenTestsTask("go.strings")} {
 		if out, isErr := write(tool, spec); !isErr {
 			t.Errorf("%s for another objective: %s", tool, out)
 		}
@@ -72,7 +72,7 @@ func TestWriterKeepsToItsObjective(t *testing.T) {
 func TestCreateTaskWithholdsATaskThatFailsTheGate(t *testing.T) {
 	tt := newTools(t)
 	w := tt.goWorkspace(t)
-	out, isErr := tt.caller(t, w, workspace.WriterThread("go.strings"))("create_task", oneMutantTask("go.strings"))
+	out, isErr := tt.caller(t, w, workspace.WriterThread("go.strings"))("create_task", noHiddenTestsTask("go.strings"))
 	res, err := decode.JSON[createTaskOutput]([]byte(out))
 	if err != nil {
 		t.Fatalf("%v: %s", err, out)
@@ -89,10 +89,7 @@ func TestCreateTaskWithholdsATaskThatFailsTheGate(t *testing.T) {
 func TestSetToolchainEnablesALanguage(t *testing.T) {
 	tt := newTools(t)
 	if err := tt.runner.Available(context.Background()); err != nil {
-		t.Skip(err)
-	}
-	if tt.runner.Engine == "local" {
-		t.Skip("needs a container engine")
+		t.Fatalf("this test needs Docker or Podman: %v", err)
 	}
 	w := tt.create(t, "Learn JavaScript")
 	call := tt.caller(t, w, workspace.PlanThread)
@@ -132,9 +129,9 @@ func TestSetToolchainEnablesALanguage(t *testing.T) {
 	}
 }
 
-// oneMutantTask is a well-formed Go task for objective whose quality gate
-// fails before running anything: it has one mutant, not two.
-func oneMutantTask(objective string) workspace.TaskSpec {
+// noHiddenTestsTask is a well-formed Go task for objective whose quality
+// gate fails before running anything: it has no hidden tests.
+func noHiddenTestsTask(objective string) workspace.TaskSpec {
 	return workspace.TaskSpec{
 		ObjectiveID: objective,
 		Title:       "Add",
@@ -146,8 +143,7 @@ func oneMutantTask(objective string) workspace.TaskSpec {
 		Starter:     sandbox.Files{"add.go": "package add\n"},
 		Reference:   sandbox.Files{"add.go": "package add\n"},
 		Tests:       sandbox.Files{"add_test.go": "package add\n"},
-		HiddenTests: sandbox.Files{"hidden_test.go": "package add\n"},
-		Mutants:     []sandbox.Mutant{{Name: "m", Description: "m", Files: sandbox.Files{"add.go": "package add\n"}}},
+		HiddenTests: sandbox.Files{},
 	}
 }
 

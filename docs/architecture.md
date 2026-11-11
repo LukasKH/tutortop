@@ -251,7 +251,7 @@ Each tool is a `*mcpsdk.Tool` with its name and description, a handler method on
 4. A test in `internal/mcp/tools_test.go` through `mcptest.Caller`, for what the handler checks beyond the schema.
 5. If a handler changes what the workspace screen shows, emit `workspace:changed` or its own event.
 
-`create_task` publishes a task only after it passes the quality gate in the sandbox. The reference solution has to pass three times in shuffled order, the starter code has to fail, and the tests have to catch at least two wrong solutions.
+`create_task` publishes a task only after it passes the quality gate in the sandbox. The reference solution has to pass every test, and the visible tests on their own, and the starter code has to compile and fail. The reference's two runs go at once, and the starter runs once they pass.
 
 ## Checks and the editor
 
@@ -263,12 +263,12 @@ The editor's completions and errors come from a language server running in the t
 
 ### Languages
 
-A toolchain says how one language's tests run in the sandbox and how their results are read (`sandbox.Toolchain`). Every toolchain is made from a spec (`sandbox.ToolchainSpec`), which validates it, appends the lines that make the image run as user 1000 in `/work`, and tags the image with a hash of its Dockerfile, so a changed Dockerfile builds a fresh image. The built-in specs ship in `internal/sandbox/builtins/<language>.yaml`. Any other language is set up by the tutor with `set_toolchain` and saved in the workspace as `.tutortop/toolchains/<language>.yaml` (`internal/workspace/toolchains.go`); its tests must write a JUnit report. A spec's last three fields (`report`, `repeat_flag` and `cache`) are only for the built-ins: `set_toolchain`'s schema leaves them out.
+A toolchain says how one language's tests run in the sandbox and how their results are read (`sandbox.Toolchain`). Every toolchain is made from a spec (`sandbox.ToolchainSpec`), which validates it, appends the lines that make the image run as user 1000 in `/work`, and tags the image with a hash of its Dockerfile, so a changed Dockerfile builds a fresh image. The built-in specs ship in `internal/sandbox/builtins/<language>.yaml`. Any other language is set up by the tutor with `set_toolchain` and saved in the workspace as `.tutortop/toolchains/<language>.yaml` (`internal/workspace/toolchains.go`); its tests must write a JUnit report. A spec's last two fields (`report` and `cache`) are only for the built-ins: `set_toolchain`'s schema leaves them out.
 
 To add a built-in language:
 
-1. `internal/sandbox/builtins/<language>.yaml`, named after its `language`. Its Dockerfile installs the language, the test framework and a language server, like the others. Set `report` to how its test command reports results: `junit`, with the report in `/tmp/junit.xml`, or `go-json`. Set `repeat_flag` if the framework repeats tests itself, and `cache` to a folder worth keeping between a workspace's runs, such as a compiler's cache.
-2. A framework that writes JUnit needs nothing more, as Python shows. One with its own format needs a `reportFormat` constant and its name in `reportFormats`, and a case for it in `Toolchain.script` (runs the tests `repeat` times, shuffled if the framework can), `parse` (reads the results) and `readable` (turns the output into text for the learner), tested on recorded output in `internal/sandbox` (see `TestRunGo` and `TestParseJUnit`).
+1. `internal/sandbox/builtins/<language>.yaml`, named after its `language`. Its Dockerfile installs the language, the test framework and a language server, like the others. Set `report` to how its test command reports results: `junit`, with the report in `/tmp/junit.xml`, or `go-json`. Set `cache` to a folder worth keeping between a workspace's runs, such as a compiler's cache.
+2. A framework that writes JUnit needs nothing more, as Python shows. One with its own format needs a `reportFormat` constant and its name in `reportFormats`, and a case for it in `Toolchain.script` (runs the tests), `parse` (reads the results) and `readable` (turns the output into text for the learner), tested on recorded output in `internal/sandbox` (see `TestRunGo` and `TestParseJUnit`).
 3. `internal/agent/threads/prompts/shared.md`, under "Language conventions": a line `- **<Name> <version>**: …` saying how its tasks are laid out. The prompts' lists of built-in languages (`{{builtins}}`) and `set_toolchain`'s description fill themselves in from `sandbox.BuiltinLanguages`.
 4. The `jsonschema` struct tags in `internal/mcp`, `internal/workspace` and `internal/sandbox` that list the other built-ins (such as `stateOutput.Toolchains` in `internal/mcp/state.go`): tags can't be filled in, so add the name by hand.
 5. Search the prompts for its name: `set_toolchain`'s line in `shared.md` gives R, Rust and JavaScript as examples of languages the app doesn't ship.

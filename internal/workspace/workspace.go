@@ -11,7 +11,7 @@
 //	.tutortop/chat/<thread>.jsonl                                           one chat per thread, by its name (Thread)
 //
 // Private files the learner and tutor shouldn't see (reference solutions,
-// hidden tests, mutants, quiz answers) live outside the workspace in the app
+// hidden tests, quiz answers) live outside the workspace in the app
 // data dir.
 //
 // Progress is never stored. The app alone appends to attempts.jsonl

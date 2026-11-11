@@ -16,15 +16,14 @@ import (
 
 // TaskSpec is what the authoring agent submits through the create_task tool.
 type TaskSpec struct {
-	ObjectiveID string           `json:"objectiveId" jsonschema:"id of the curriculum objective this task proves"`
-	Title       string           `json:"title"`
-	Size        TaskSize         `json:"size,omitempty" jsonschema:"small, medium or large; defaults to the curriculum's task_defaults.size"`
-	Statement   Statement        `json:"statement" jsonschema:"the problem statement, in parts; the app renders it. It stands on its own: no feedback on earlier tasks or chat remarks."`
-	Starter     sandbox.Files    `json:"starter" jsonschema:"filename -> content. The files the learner edits. Must compile and fail some tests (e.g. return zero values)."`
-	Reference   sandbox.Files    `json:"reference" jsonschema:"filename -> content. A correct solution with the same filenames as starter. Never shown to the learner."`
-	Tests       sandbox.Files    `json:"tests" jsonschema:"filename -> content. Visible test files the learner can read (Go: *_test.go, Python: test_*.py, other languages: the toolchain's test_files glob). Every test, visible or hidden, needs its own name."`
-	HiddenTests sandbox.Files    `json:"hiddenTests" jsonschema:"filename -> content. Hidden test files with edge cases. Learner sees only names and failure messages."`
-	Mutants     []sandbox.Mutant `json:"mutants" jsonschema:"at least 2 plausible wrong solutions (same filenames as reference). Each must compile and be caught by the tests."`
+	ObjectiveID string        `json:"objectiveId" jsonschema:"id of the curriculum objective this task proves"`
+	Title       string        `json:"title"`
+	Size        TaskSize      `json:"size,omitempty" jsonschema:"small, medium or large; defaults to the curriculum's task_defaults.size"`
+	Statement   Statement     `json:"statement" jsonschema:"the problem statement, in parts; the app renders it. It stands on its own: no feedback on earlier tasks or chat remarks."`
+	Starter     sandbox.Files `json:"starter" jsonschema:"filename -> content. The files the learner edits. Must compile and fail some tests (e.g. return zero values)."`
+	Reference   sandbox.Files `json:"reference" jsonschema:"filename -> content. A correct solution with the same filenames as starter. Never shown to the learner."`
+	Tests       sandbox.Files `json:"tests" jsonschema:"filename -> content. Visible test files the learner can read (Go: *_test.go, Python: test_*.py, other languages: the toolchain's test_files glob). Every test, visible or hidden, needs its own name."`
+	HiddenTests sandbox.Files `json:"hiddenTests" jsonschema:"filename -> content. Hidden test files with edge cases. Learner sees only names and failure messages."`
 }
 
 // check reports every problem with the spec's shape at once, for a task in
@@ -40,7 +39,6 @@ func (spec *TaskSpec) check(tc sandbox.Toolchain, lang string) error {
 	spec.Statement.check(&p)
 	spec.checkStarter(&p, tc)
 	spec.checkTests(&p, tc, lang)
-	spec.checkMutants(&p)
 	return p.err("task")
 }
 
@@ -76,17 +74,6 @@ func (spec *TaskSpec) checkTests(p *problems, tc sandbox.Toolchain, lang string)
 	for name := range spec.HiddenTests {
 		if _, clash := spec.Tests[name]; clash {
 			p.addf("%s is both a visible and a hidden test file", name)
-		}
-	}
-}
-
-// checkMutants checks the mutants change only solution files.
-func (spec *TaskSpec) checkMutants(p *problems) {
-	for _, m := range spec.Mutants {
-		for name := range m.Files {
-			if _, ok := spec.Starter[name]; !ok {
-				p.addf("mutant %q changes %s, which isn't a solution file", m.Name, name)
-			}
 		}
 	}
 }
@@ -173,9 +160,6 @@ func (w *Workspace) SaveTask(spec TaskSpec, lang string, names sandbox.TestNames
 		{filepath.Join(priv, "tests"), spec.Tests},
 		{filepath.Join(priv, "reference"), spec.Reference},
 		{filepath.Join(priv, "hidden"), spec.HiddenTests},
-	}
-	for _, m := range spec.Mutants {
-		writes = append(writes, write{filepath.Join(priv, "mutants", slugify(m.Name)), m.Files})
 	}
 	for _, wr := range writes {
 		if err := writeFiles(wr.dir, wr.files); err != nil {

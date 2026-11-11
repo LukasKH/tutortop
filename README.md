@@ -10,9 +10,8 @@ Tutortop runs on the coding agent you already have: your own signed-in **Claude 
 2. **Approve a curriculum.** The tutor proposes modules of objectives. Every objective must be provable by unit tests.
 3. **Learn, then practise.** Each objective starts with a short lesson: the theory with worked examples and sources, then a quick quiz with instant feedback. Quiz results help the tutor plan but never count as progress. You can skip a lesson if you know the topic.
 4. **Solve tasks.** The tutor writes each task just in time. Before you see it, the app runs a **quality gate** in a sandbox:
-   - the hidden reference solution passes every test three times, in shuffled order;
-   - the starter code compiles and fails;
-   - at least two plausible wrong solutions ("mutants") are caught by the tests.
+   - the hidden reference solution passes every test, and the visible tests on their own;
+   - the starter code compiles and fails.
 5. **Run** checks the visible tests. **Submit** also runs hidden edge-case tests. Progress counts only submissions that passed.
 6. **Ask for help** in the chat, or use the hint ladder (nudge → pointer → snippet → reveal). Hints are recorded.
 7. **Change the plan any time** ("make tasks longer", "focus on web dev"). The tutor asks a few questions and proposes a revised curriculum. Objectives you've passed keep their progress.
@@ -29,7 +28,7 @@ tasks/0001-reverse-words/{README.md,task.yaml,starter/,tests/,work/} work/ is yo
 .tutortop/                                                           app state (attempts, chat)
 ```
 
-Reference solutions, hidden tests and mutants live outside the workspace (`~/.local/share/tutortop/private/`), so neither you nor the tutor sees them by accident.
+Reference solutions and hidden tests live outside the workspace (`~/.local/share/tutortop/private/`), so neither you nor the tutor sees them by accident.
 
 ## Install
 
@@ -46,7 +45,7 @@ Download the installer for your system from [Releases](https://github.com/LukasK
 
 Tutortop also needs two things it doesn't install for you. It shows what's missing on the home screen.
 
-- **A sandbox:** Docker or Podman. Tutortop uses whichever is installed (Docker first), or the one in `TUTORTOP_RUNNER`. On Windows and macOS that's Docker Desktop or Podman Desktop. On Linux, Docker must work without sudo: `sudo usermod -aG docker $USER`, then log out and in. The first check for each language builds a sandbox image, which takes a few minutes.
+- **A sandbox:** Docker or Podman. Tutortop uses whichever is installed, Docker first. On Windows and macOS that's Docker Desktop or Podman Desktop. On Linux, Docker must work without sudo: `sudo usermod -aG docker $USER`, then log out and in. The first check for each language builds a sandbox image, which takes a few minutes.
 - **A coding agent:** [Claude Code](https://docs.claude.com/en/docs/claude-code/setup) (`claude`) or [Codex](https://github.com/openai/codex) (`codex`), signed in.
 
 Git is optional. With it, every workspace keeps a history of its changes.
@@ -62,7 +61,7 @@ Git is optional. With it, every workspace keeps a history of its changes.
 mise install                 # Go, Node, golangci-lint and pre-commit, pinned in mise.toml
 pre-commit install           # git hooks: lint + tests before commit, Conventional Commits on the message
 wails3 dev                   # run the app with hot reload
-task test                    # Go tests with the race detector (sandbox tests use Docker, skip without it)
+task test                    # Go tests with the race detector (needs Docker or Podman)
 task lint                    # go vet, Staticcheck and format checks
 task format                  # format Go code and imports
 npm --prefix frontend run format  # format the frontend (Prettier, sorts Tailwind classes)
@@ -70,8 +69,6 @@ npm --prefix frontend run lint    # lint the frontend (Oxlint, React hooks rules
 npm --prefix frontend test        # frontend tests (Vitest)
 task test:live               # talks to the real Claude Code and Codex CLIs; uses a little quota
 ```
-
-`TUTORTOP_RUNNER=local` runs learner code directly on your machine with no sandbox. Use it for development only.
 
 [docs/architecture.md](docs/architecture.md) explains how the Go backend, the frontend and Wails fit together, and [docs/GLOSSARY.md](docs/GLOSSARY.md) says what the code's words mean (thread, writer, sandbox check, …).
 

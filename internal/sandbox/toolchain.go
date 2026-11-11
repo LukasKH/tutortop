@@ -1,13 +1,10 @@
 package sandbox
 
 import (
-	"bytes"
 	"cmp"
 	"crypto/sha256"
 	"embed"
 	"encoding/hex"
-	"encoding/json"
-	"encoding/xml"
 	"fmt"
 	"io/fs"
 	"maps"
@@ -17,7 +14,6 @@ import (
 	"strings"
 
 	"github.com/LukasKH/tutortop/internal/decode"
-	"github.com/LukasKH/tutortop/internal/text"
 )
 
 // Toolchain knows how to run one language's tests and read the results. Only
@@ -41,13 +37,10 @@ type Toolchain struct {
 	LanguageServer []string
 
 	report reportFormat
-	// testCommand runs the tests once in /work. A junitXML one writes its
-	// report to /tmp/junit.xml.
+	// testCommand runs the tests in /work. A junitXML one writes its report
+	// to /tmp/junit.xml.
 	testCommand string
-	// repeatFlag, if set, makes testCommand repeat each test itself, with %d
-	// for the count. Without it the command is run again for each repeat.
-	repeatFlag string
-	testFiles  string // glob matching a test file's base name
+	testFiles   string // glob matching a test file's base name
 	// cache is a folder in the image that runs sharing a Job.Cache keep in a
 	// volume, such as Go's build cache. Empty for none.
 	cache string
@@ -69,47 +62,6 @@ func (tc Toolchain) IsTestFile(name string) bool {
 	return ok
 }
 
-// script returns the shell command that runs the tests in the task
-// directory, repeating each test `repeat` times, and prints everything parse
-// needs.
-func (tc Toolchain) script(repeat int) string {
-	command, runs := tc.testCommand, max(repeat, 1)
-	if tc.repeatFlag != "" && runs > 1 {
-		command, runs = command+" "+fmt.Sprintf(tc.repeatFlag, runs), 1
-	}
-	switch tc.report {
-	case goJSON:
-		return repeatCommand(command, runs)
-	case junitXML:
-		return repeatCommand(junitRun(command), runs)
-	}
-	return ""
-}
-
-// parse turns the script's output into per-test results, labelling those in
-// hidden as hidden. ok is false when the code didn't build.
-func (tc Toolchain) parse(stdout string, hidden map[string]bool) (tests []TestResult, ok bool) {
-	switch tc.report {
-	case goJSON:
-		return parseGoTestJSON(stdout, hidden)
-	case junitXML:
-		return parseJUnitRuns(stdout, hidden)
-	}
-	return nil, false
-}
-
-// readable turns the script's output into text for the learner, without
-// what only parse needs.
-func (tc Toolchain) readable(stdout string) string {
-	switch tc.report {
-	case goJSON:
-		return humanGoOutput(stdout)
-	case junitXML:
-		return stripJUnit(stdout)
-	}
-	return stdout
-}
-
 // ToolchainSpec describes a language environment as data: the built-in ones
 // in builtins/*.yaml, and the ones the tutor sets up for a workspace with
 // set_toolchain. The tutor's test command must write a JUnit XML report,
@@ -125,15 +77,12 @@ type ToolchainSpec struct {
 	ExtraFiles     Files    `yaml:"extra_files,omitempty" json:"extraFiles,omitempty" jsonschema:"optional files written next to every task's files, e.g. a package.json or Cargo.toml"`
 
 	// The fields below tune the built-in languages. set_toolchain's schema
-	// leaves them out, so the tutor's languages report JUnit, run the test
-	// command once per repetition and keep no cache.
+	// leaves them out, so the tutor's languages report JUnit and keep no
+	// cache.
 
 	// Report is how the test command reports results: junit (the default)
 	// or go-json (`go test -json`).
 	Report string `yaml:"report,omitempty" json:"-"`
-	// RepeatFlag makes the test command repeat each test itself, with %d for
-	// the count, so the report is written once.
-	RepeatFlag string `yaml:"repeat_flag,omitempty" json:"-"`
 	// Cache is a folder in the image that a workspace's runs keep between
 	// them, such as a compiler's cache (Job.Cache).
 	Cache string `yaml:"cache,omitempty" json:"-"`
@@ -169,9 +118,6 @@ func (s ToolchainSpec) Toolchain() (Toolchain, error) {
 	if !ok {
 		add("report must be junit or go-json")
 	}
-	if s.RepeatFlag != "" && strings.Count(s.RepeatFlag, "%d") != 1 {
-		add("repeat_flag must hold one %%d for the count")
-	}
 	// The volume would hide the task files, or the whole image, from the run.
 	if s.Cache != "" && (!path.IsAbs(s.Cache) || path.Clean(s.Cache) == "/" || isUnder(path.Clean(s.Cache), "/work")) {
 		add("cache must be an absolute folder outside /work")
@@ -193,7 +139,6 @@ func (s ToolchainSpec) Toolchain() (Toolchain, error) {
 		LanguageServer: slices.Clone(s.LanguageServer),
 		report:         report,
 		testCommand:    s.TestCommand,
-		repeatFlag:     s.RepeatFlag,
 		testFiles:      s.TestFiles,
 		cache:          s.Cache,
 	}, nil
@@ -245,22 +190,6 @@ func loadBuiltin(p string) (Toolchain, error) {
 	return spec.Toolchain()
 }
 
-// reportFormat is how a toolchain's test command reports results.
-type reportFormat int
-
-const (
-	// The zero value is no format, so a toolchain that forgets one parses
-	// nothing instead of guessing.
-	goJSON   reportFormat = iota + 1 // `go test -json`
-	junitXML                         // a JUnit XML report per run (junitRun)
-)
-
-// reportFormats are the formats by their names in a ToolchainSpec.
-var reportFormats = map[string]reportFormat{
-	"go-json": goJSON,
-	"junit":   junitXML,
-}
-
 var languageID = regexp.MustCompile(`^[a-z][a-z0-9+#-]{0,19}$`)
 
 // dockerfileTail is appended to every toolchain's Dockerfile, so checks run
@@ -281,226 +210,4 @@ func nameSafe(language string) string {
 // isUnder reports whether clean path p is dir or inside it.
 func isUnder(p, dir string) bool {
 	return p == dir || strings.HasPrefix(p, dir+"/")
-}
-
-// repeatCommand runs command `runs` times in a row.
-func repeatCommand(command string, runs int) string {
-	return strings.Repeat(command+"; ", runs-1) + command
-}
-
-// ---- go test -json ----
-
-type goTestEvent struct {
-	Action goAction
-	Test   string
-	Output string
-}
-
-// goAction is a `go test -json` event's action, those the app reads.
-type goAction string
-
-const (
-	goOutput      goAction = "output"
-	goBuildOutput goAction = "build-output"
-	goPass        goAction = "pass"
-	goFail        goAction = "fail"
-)
-
-// parseGoTestJSON reads `go test -json` output. Build failures produce no test
-// events, so ok=false tells the caller the code didn't compile.
-func parseGoTestJSON(stdout string, hidden map[string]bool) ([]TestResult, bool) {
-	var order []string
-	results := map[string]*TestResult{}
-	output := map[string]*strings.Builder{}
-	failed := map[string]bool{}
-	sawEvents, packageFailed := false, false
-
-	var ev goTestEvent
-	for line := range strings.Lines(stdout) {
-		ev = goTestEvent{} // or the previous line's fields leak into this one
-		if json.Unmarshal([]byte(line), &ev) != nil {
-			continue
-		}
-		if ev.Test == "" {
-			packageFailed = packageFailed || ev.Action == goFail
-			continue
-		}
-		sawEvents = true
-		// Subtests ("TestX/case") are reported under their parent's output.
-		top, _, _ := strings.Cut(ev.Test, "/")
-		if _, ok := results[top]; !ok {
-			results[top] = &TestResult{Name: top, Hidden: hidden[top]}
-			output[top] = &strings.Builder{}
-			order = append(order, top)
-		}
-		switch ev.Action {
-		case goOutput:
-			if !strings.HasPrefix(strings.TrimSpace(ev.Output), "=== ") {
-				output[top].WriteString(ev.Output)
-			}
-		case goPass:
-			// With -count>1 a test reports once per repetition; one failed
-			// repetition fails the test.
-			if ev.Test == top && !failed[top] {
-				results[top].Passed = true
-			}
-		case goFail:
-			if ev.Test == top {
-				results[top].Passed = false
-				failed[top] = true
-			}
-		case goBuildOutput:
-			// Build output has no test; it's shown with the whole output.
-		}
-	}
-	out := make([]TestResult, 0, len(order))
-	allPassed := true
-	for _, name := range order {
-		r := results[name]
-		if !r.Passed {
-			r.Message = trimMessage(output[name].String())
-			allPassed = false
-		}
-		out = append(out, *r)
-	}
-	// Every test passed but the test program still failed, e.g. a failing
-	// TestMain or an os.Exit after the tests. That isn't a pass.
-	if sawEvents && allPassed && packageFailed {
-		out = append(out, TestResult{Name: "(test program)", Message: "The test program failed outside any single test. See the output."})
-	}
-	return out, sawEvents
-}
-
-// humanGoOutput turns `go test -json` lines back into readable text.
-func humanGoOutput(s string) string {
-	var b bytes.Buffer
-	var ev goTestEvent
-	for line := range strings.Lines(s) {
-		ev = goTestEvent{} // or the previous line's fields leak into this one
-		if json.Unmarshal([]byte(line), &ev) == nil && ev.Action != "" {
-			if ev.Action == goOutput || ev.Action == goBuildOutput {
-				b.WriteString(ev.Output)
-			}
-			continue
-		}
-		b.WriteString(line)
-	}
-	return b.String()
-}
-
-// ---- JUnit ----
-
-const (
-	junitBegin = "===TUTORTOP-JUNIT-BEGIN==="
-	junitEnd   = "===TUTORTOP-JUNIT-END==="
-)
-
-// junitRun runs the test command once and prints its report between
-// markers. Frameworks have no common way to repeat or shuffle tests, so
-// script runs it again for each repetition.
-func junitRun(command string) string {
-	return "rm -f /tmp/junit.xml; ( " + command + " ) 2>&1; " +
-		"echo; echo '" + junitBegin + "'; cat /tmp/junit.xml 2>/dev/null; echo; echo '" + junitEnd + "'"
-}
-
-// junitNode reads both <testsuites> and a lone <testsuite> root, with
-// suites nested to any depth.
-type junitNode struct {
-	XMLName xml.Name
-	Suites  []junitNode `xml:"testsuite"`
-	Cases   []junitCase `xml:"testcase"`
-}
-
-func (n junitNode) cases() []junitCase {
-	out := slices.Clone(n.Cases)
-	for _, s := range n.Suites {
-		out = append(out, s.cases()...)
-	}
-	return out
-}
-
-type junitCase struct {
-	Name      string        `xml:"name,attr"`
-	Classname string        `xml:"classname,attr"`
-	Failure   *junitProblem `xml:"failure"`
-	Error     *junitProblem `xml:"error"`
-	Skipped   *junitProblem `xml:"skipped"`
-}
-type junitProblem struct {
-	Message string `xml:"message,attr"`
-	Body    string `xml:",chardata"`
-}
-
-// parseJUnitRuns merges the reports of every repetition: a test passes only
-// if it passed in every run. A run without a readable report, or with no
-// tests, means the code didn't build.
-func parseJUnitRuns(stdout string, hidden map[string]bool) ([]TestResult, bool) {
-	var order []string
-	results := map[string]*TestResult{}
-	runs := 0
-	for rest := stdout; ; {
-		i := strings.Index(rest, junitBegin)
-		if i < 0 {
-			break
-		}
-		rest = rest[i+len(junitBegin):]
-		report, after, _ := strings.Cut(rest, junitEnd)
-		rest = after
-		runs++
-
-		doc, err := decode.XML[junitNode]([]byte(strings.TrimSpace(report)))
-		if err != nil {
-			return nil, false
-		}
-		cases := doc.cases()
-		if len(cases) == 0 {
-			return nil, false
-		}
-		for _, c := range cases {
-			// A collection error (e.g. a syntax error) shows up as an errored
-			// case with no name: the code didn't build.
-			if c.Name == "" && c.Error != nil {
-				return nil, false
-			}
-			key := c.Classname + "\x00" + c.Name
-			r, ok := results[key]
-			if !ok {
-				r = &TestResult{Name: c.Name, Hidden: hidden[c.Name], Passed: true}
-				results[key] = r
-				order = append(order, key)
-			}
-			for _, p := range []*junitProblem{c.Failure, c.Error, c.Skipped} {
-				if p != nil && r.Passed {
-					r.Passed = false
-					r.Message = trimMessage(p.Message + "\n" + p.Body)
-				}
-			}
-		}
-	}
-	if runs == 0 {
-		return nil, false
-	}
-	out := make([]TestResult, 0, len(order))
-	for _, k := range order {
-		out = append(out, *results[k])
-	}
-	return out, true
-}
-
-// stripJUnit removes the machine-readable reports from output shown to people.
-func stripJUnit(s string) string {
-	var b strings.Builder
-	for {
-		before, rest, found := strings.Cut(s, junitBegin)
-		b.WriteString(before)
-		if !found {
-			break
-		}
-		_, s, _ = strings.Cut(rest, junitEnd)
-	}
-	return strings.TrimSpace(b.String())
-}
-
-func trimMessage(s string) string {
-	return text.Truncate(strings.TrimSpace(s), 2000)
 }

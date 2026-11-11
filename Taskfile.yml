@@ -30,7 +30,7 @@ tasks:
       - golangci-lint run ./internal/...
 
   test:
-    summary: Runs the Go tests with the race detector (sandbox tests need Docker)
+    summary: Runs the Go tests with the race detector (needs Docker or Podman)
     cmds:
       - go test -race -short -count=1 ./internal/...
 

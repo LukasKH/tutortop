@@ -67,10 +67,6 @@ func taskSpec(objective string) workspace.TaskSpec {
 		Reference:   sandbox.Files{"sum.go": "package task\n\nfunc Sum(a, b int) int { return a + b }\n"},
 		Tests:       sandbox.Files{"sum_test.go": "package task\n"},
 		HiddenTests: sandbox.Files{"sum_hidden_test.go": "package task\n"},
-		Mutants: []sandbox.Mutant{
-			{Name: "Off by one", Files: sandbox.Files{"sum.go": "package task\n\nfunc Sum(a, b int) int { return a + b + 1 }\n"}},
-			{Name: "Ignores b", Files: sandbox.Files{"sum.go": "package task\n\nfunc Sum(a, b int) int { return a }\n"}},
-		},
 	}
 }
 

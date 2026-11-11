@@ -13,7 +13,6 @@ import (
 	"errors"
 	"fmt"
 	"maps"
-	"os"
 	"os/exec"
 	"runtime"
 	"slices"
@@ -27,8 +26,7 @@ import (
 	"github.com/LukasKH/tutortop/internal/text"
 )
 
-// Runner runs jobs either in containers (default) or directly on the host
-// (TUTORTOP_RUNNER=local, meant for development only).
+// Runner runs jobs in containers.
 type Runner struct {
 	Engine Engine
 
@@ -37,18 +35,15 @@ type Runner struct {
 	prepared map[string]bool
 }
 
-// Engine is the container CLI that runs the checks: Docker, Podman, another
-// CLI that takes Docker's arguments, or Local.
+// Engine is the container CLI that runs the checks: Docker or Podman.
 type Engine string
 
 const (
 	Docker Engine = "docker"
 	Podman Engine = "podman"
-	Local  Engine = "local" // straight on the host, for development only
 )
 
-// New uses the engine in TUTORTOP_RUNNER, or else Docker if it's installed,
-// or else Podman. With neither installed it keeps "docker", and Available says
+// New uses Docker if it's installed, or else Podman. With neither installed it keeps "docker", and Available says
 // how to get one.
 func New() *Runner {
 	return &Runner{Engine: detectEngine(), prepared: map[string]bool{}}
@@ -57,9 +52,6 @@ func New() *Runner {
 // Available reports whether the sandbox's engine is usable, with a fix-it
 // hint if not.
 func (r *Runner) Available(ctx context.Context) error {
-	if r.Engine == Local {
-		return nil
-	}
 	// Works for both engines, and for Podman's `docker` shim: it fails when
 	// Docker's daemon or the Podman machine can't be reached.
 	out, err := exec.CommandContext(ctx, string(r.Engine), "version", "--format", "{{.Server.Version}}").CombinedOutput()
@@ -72,9 +64,6 @@ func (r *Runner) Available(ctx context.Context) error {
 // Prepare builds the language image. The first call can take a few minutes.
 // A caller can give up waiting; the build carries on for the others.
 func (r *Runner) Prepare(ctx context.Context, tc Toolchain) error {
-	if r.Engine == Local {
-		return nil
-	}
 	r.mu.Lock()
 	done := r.prepared[tc.Image]
 	r.mu.Unlock()
@@ -98,9 +87,6 @@ func (r *Runner) Prepare(ctx context.Context, tc Toolchain) error {
 // RemoveCache deletes the volumes that keep the toolchain caches of runs
 // that share cache (Job.Cache), as when its workspace is deleted.
 func (r *Runner) RemoveCache(ctx context.Context, cache string) error {
-	if r.Engine == Local {
-		return nil
-	}
 	out, err := exec.CommandContext(ctx, string(r.Engine), "volume", "ls", "-q").Output()
 	if err != nil {
 		return err
@@ -119,9 +105,6 @@ func (r *Runner) RemoveCache(ctx context.Context, cache string) error {
 }
 
 func detectEngine() Engine {
-	if e := os.Getenv("TUTORTOP_RUNNER"); e != "" {
-		return Engine(e)
-	}
 	if _, err := exec.LookPath(string(Docker)); err == nil {
 		return Docker
 	}
@@ -150,40 +133,27 @@ func (r *Runner) build(ctx context.Context, tc Toolchain) error {
 	return nil
 }
 
-// exec unpacks the files into a fresh directory and runs the script there:
-// in a throwaway container, or in a temp dir on the host in local mode. Runs
-// that share cache keep the toolchain's cache folder in a volume.
+// exec unpacks the files into a throwaway container and runs the script
+// there. Runs that share cache keep the toolchain's cache folder in a volume.
 func (r *Runner) exec(ctx context.Context, tc Toolchain, script string, files Files, cache string, out *cappedBuffer) error {
 	archive, err := tarFiles(files)
 	if err != nil {
 		return err
 	}
-	shell := "tar -xf - && " + script
-	var cmd *exec.Cmd
-	if r.Engine == Local {
-		dir, err := os.MkdirTemp("", "tutortop-run-")
-		if err != nil {
-			return err
-		}
-		defer os.RemoveAll(dir)
-		cmd = exec.CommandContext(ctx, "sh", "-c", shell)
-		cmd.Dir = dir
-	} else {
-		// The images run as an unprivileged user with a build cache baked in,
-		// so nothing is shared between runs but the cache volume, if any.
-		name := "tutortop-" + uuid.New().String()
-		args := append([]string{"run", "--rm", "-i", "--name", name}, lockdownFlags("512m")...)
-		if volume := cacheVolume(cache, tc); volume != "" {
-			// A new volume starts as a copy of the image's folder, so it
-			// keeps the image's warm cache and its owner.
-			args = append(args, "-v", volume+":"+tc.cache)
-		}
-		cmd = exec.CommandContext(ctx, string(r.Engine), append(args, tc.Image, "sh", "-c", shell)...)
-		// Killing the docker client doesn't stop the container, so remove it too.
-		cmd.Cancel = func() error {
-			_ = exec.Command(string(r.Engine), "rm", "-f", name).Run()
-			return cmd.Process.Kill()
-		}
+	// The images run as an unprivileged user with a build cache baked in,
+	// so nothing is shared between runs but the cache volume, if any.
+	name := "tutortop-" + uuid.New().String()
+	args := append([]string{"run", "--rm", "-i", "--name", name}, lockdownFlags("512m")...)
+	if volume := cacheVolume(cache, tc); volume != "" {
+		// A new volume starts as a copy of the image's folder, so it
+		// keeps the image's warm cache and its owner.
+		args = append(args, "-v", volume+":"+tc.cache)
+	}
+	cmd := exec.CommandContext(ctx, string(r.Engine), append(args, tc.Image, "sh", "-c", "tar -xf - && "+script)...)
+	// Killing the docker client doesn't stop the container, so remove it too.
+	cmd.Cancel = func() error {
+		_ = exec.Command(string(r.Engine), "rm", "-f", name).Run()
+		return cmd.Process.Kill()
 	}
 	cmd.WaitDelay = 5 * time.Second
 	cmd.Stdin = bytes.NewReader(archive)

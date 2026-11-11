@@ -18,10 +18,6 @@ func TestGate(t *testing.T) {
 			Reference:   Files{"sum.go": reference},
 			Tests:       Files{"sum_test.go": test(`func TestSum(t *testing.T) { if Sum(1, 2) != 3 { t.Fatal("Sum(1, 2) != 3") } }`)},
 			HiddenTests: Files{"sum_hidden_test.go": test(`func TestNegative(t *testing.T) { if Sum(-1, -2) != -3 { t.Fatal("Sum(-1, -2) != -3") } }`)},
-			Mutants: []Mutant{
-				{Name: "ignores b", Files: Files{"sum.go": "package task\n\nfunc Sum(a, b int) int { return a }\n"}},
-				{Name: "off by one", Files: Files{"sum.go": "package task\n\nfunc Sum(a, b int) int { return a + b + 1 }\n"}},
-			},
 		}
 	}
 	cases := []struct {
@@ -39,22 +35,20 @@ func TestGate(t *testing.T) {
 				"reference solution passes all tests",
 				"visible tests pass on their own (1 visible, 1 hidden)",
 				"starter code fails at least one test",
-				`mutant "ignores b" is caught`,
-				`mutant "off by one" is caught`,
 			},
 			names: &TestNames{Visible: []string{"TestSum"}, Hidden: []string{"TestNegative"}},
 		},
 		{
 			name: "missing parts are reported before anything runs",
 			change: func(in *GateInput) {
-				in.Tests, in.HiddenTests, in.Mutants = nil, nil, in.Mutants[:1]
+				in.Tests, in.HiddenTests = nil, nil
 			},
-			steps: []string{"✗has visible tests", "✗has hidden tests", "✗has mutants"},
+			steps: []string{"✗has visible tests", "✗has hidden tests"},
 		},
 		{
-			name: "a flaky reference",
+			name: "a wrong reference",
 			change: func(in *GateInput) {
-				in.Reference = Files{"sum.go": "package task\n\nvar calls int\n\nfunc Sum(a, b int) int { calls++; if calls == 2 { return 0 }; return a + b }\n"}
+				in.Reference = Files{"sum.go": "package task\n\nfunc Sum(a, b int) int { return a - b }\n"}
 			},
 			steps: []string{"✗reference solution passes all tests"},
 		},
@@ -73,23 +67,12 @@ func TestNegative(t *testing.T) { check(t, -1, -2, -3) }`)}
 			steps:  []string{"reference solution passes all tests", "✗visible and hidden tests have their own names"},
 		},
 		{
-			// The gate goes on after a bad starter, so every mutant is checked too.
-			name: "a solved starter and weak mutants",
-			change: func(in *GateInput) {
-				in.Starter = in.Reference
-				in.Mutants = []Mutant{
-					{Name: "same as the reference", Files: Files{"sum.go": "package task\n\nfunc Sum(x, y int) int { return y + x }\n"}},
-					{Name: "doesn't compile", Files: Files{"sum.go": "package task\n\nfunc Sum(a, b int) int { return a + }\n"}},
-					{Name: "ignores b", Files: Files{"sum.go": "package task\n\nfunc Sum(a, b int) int { return a }\n"}},
-				}
-			},
+			name:   "a solved starter",
+			change: func(in *GateInput) { in.Starter = in.Reference },
 			steps: []string{
 				"reference solution passes all tests",
 				"visible tests pass on their own",
 				"✗starter code fails at least one test",
-				`✗mutant "same as the reference" is caught`,
-				`✗mutant "doesn't compile" is caught`,
-				`mutant "ignores b" is caught`,
 			},
 		},
 		{
@@ -99,8 +82,6 @@ func TestNegative(t *testing.T) { check(t, -1, -2, -3) }`)}
 				"reference solution passes all tests",
 				"visible tests pass on their own",
 				"✗starter code compiles",
-				`mutant "ignores b" is caught`,
-				`mutant "off by one" is caught`,
 			},
 		},
 	}
@@ -109,7 +90,7 @@ func TestNegative(t *testing.T) { check(t, -1, -2, -3) }`)}
 			t.Parallel()
 			in := good()
 			c.change(&in)
-			rep := gateLocal(t, in)
+			rep := runGate(t, in)
 			if rep.Passed != c.passed {
 				t.Errorf("passed %v, want %v:\n%s", rep.Passed, c.passed, rep)
 			}
@@ -138,11 +119,10 @@ func TestSplitNamesRejectsDuplicates(t *testing.T) {
 	}
 }
 
-// gateLocal runs the gate on the host.
-func gateLocal(t *testing.T, in GateInput) GateReport {
+// runGate runs the quality gate in the sandbox.
+func runGate(t *testing.T, in GateInput) GateReport {
 	t.Helper()
-	needGo(t)
-	rep, err := (&Runner{Engine: "local"}).Gate(t.Context(), in)
+	rep, err := testRunner(t).Gate(t.Context(), in)
 	if err != nil {
 		t.Fatal(err)
 	}

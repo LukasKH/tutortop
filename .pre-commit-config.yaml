@@ -13,7 +13,7 @@ repos:
         always_run: true
         stages: [pre-commit]
 
-      # Runner tests use Docker when it's reachable and skip otherwise.
+      # The sandbox tests need Docker or Podman, and fail without one.
       # Tests that talk to the real Claude Code and Codex CLIs need -tags live
       # and run by hand.
       - id: go-test

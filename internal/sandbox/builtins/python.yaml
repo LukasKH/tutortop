@@ -4,13 +4,11 @@ name: Python
 editor_language: python
 dockerfile: |
   FROM docker.io/library/python:3.14-slim
-  RUN pip install --no-cache-dir 'pytest==8.*' 'pytest-timeout==2.*' 'pytest-repeat==0.9.*' 'basedpyright==1.*' \
+  RUN pip install --no-cache-dir 'pytest==8.*' 'pytest-timeout==2.*' 'basedpyright==1.*' \
    && useradd -m -u 1000 runner
   USER runner
   ENV PYTHONDONTWRITEBYTECODE=1
 test_command: python -m pytest -q -p no:cacheprovider --timeout=20 --junitxml=/tmp/junit.xml
-# pytest repeats tests itself (pytest-repeat), so the report is written once.
-repeat_flag: --count=%d
 test_files: test_*.py
 report: junit
 language_server: [basedpyright-langserver, --stdio]

@@ -18,11 +18,10 @@ import (
 
 // TestToolsEndToEnd drives the MCP tools the way the tutor would, without an
 // AI: propose → approve → create_task (quality gate) → learner submits.
-// Set TUTORTOP_RUNNER=local to run without Docker.
 func TestToolsEndToEnd(t *testing.T) {
 	a := newTestApp(t, mcptest.Links("https://go.dev/made-up"))
 	if err := a.runner.Available(context.Background()); err != nil {
-		t.Skip(err)
+		t.Fatalf("this test needs Docker or Podman: %v", err)
 	}
 	w, err := a.store.Create("Learn Go", "claude")
 	if err != nil {
@@ -146,10 +145,6 @@ func reverseWordsTask(objective string) map[string]any {
 		"reference":   map[string]string{"solution.go": goReference},
 		"tests":       map[string]string{"visible_test.go": goVisible},
 		"hiddenTests": map[string]string{"hidden_test.go": goHidden},
-		"mutants": []any{
-			map[string]any{"name": "split", "description": "keeps empty words", "files": map[string]string{"solution.go": strings.Replace(goReference, "strings.Fields(s)", `strings.Split(s, " ")`, 1)}},
-			map[string]any{"name": "no-reverse", "description": "forgets to reverse", "files": map[string]string{"solution.go": "package solution\n\nimport \"strings\"\n\nfunc ReverseWords(s string) string { return strings.Join(strings.Fields(s), \" \") }\n"}},
-		},
 	}
 }
 

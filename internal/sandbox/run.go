@@ -14,16 +14,13 @@ import (
 	"github.com/LukasKH/tutortop/internal/text"
 )
 
-// Job is one check run: the learner's (or reference/mutant) solution plus tests.
+// Job is one check run: the learner's (or the reference or starter) solution plus tests.
 type Job struct {
 	Toolchain   Toolchain
 	Solution    Files
 	Tests       Files // visible tests
 	HiddenTests Files // only included when running a full submission
-	// Repeat runs every test this many times (shuffled where the language
-	// supports it); a test passes only if every repetition passes.
-	Repeat  int
-	Timeout time.Duration
+	Timeout     time.Duration
 	// Names are the task's tests as the quality gate saw them run. They label
 	// results hidden, and a test missing from a run shows as not run. Empty
 	// while the gate itself runs.
@@ -109,7 +106,7 @@ func (r *Runner) Run(ctx context.Context, job Job) (Result, error) {
 	out := &cappedBuffer{max: maxOutput, stop: func() { stop(errTooMuchOutput) }}
 
 	start := time.Now()
-	runErr := r.exec(runCtx, tc, tc.script(max(job.Repeat, 1)), files, job.Cache, out)
+	runErr := r.exec(runCtx, tc, tc.script(), files, job.Cache, out)
 	res := Result{DurationMs: time.Since(start).Milliseconds()}
 	stdout := out.String()
 

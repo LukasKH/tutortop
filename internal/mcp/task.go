@@ -14,8 +14,8 @@ import (
 
 var createTaskTool = &mcpsdk.Tool{
 	Name: "create_task",
-	Description: "Submit a task for a curriculum objective. The app runs a quality gate in a sandbox: the reference must pass all tests 3 times, " +
-		"the starter must compile and fail, and every mutant must compile and fail. Only then is the task shown to the learner. The statement must stand on its own: no feedback on earlier tasks or chat remarks. " +
+	Description: "Submit a task for a curriculum objective. The app runs a quality gate in a sandbox: the reference must pass every test, " +
+		"and the visible tests on their own, and the starter must compile and fail. Only then is the task shown to the learner. The statement must stand on its own: no feedback on earlier tasks or chat remarks. " +
 		"If the gate fails, fix the task using the report and call create_task again.",
 }
 
@@ -66,7 +66,6 @@ func (t *threadTools) qualityGate(ctx context.Context, spec workspace.TaskSpec, 
 		Reference:   spec.Reference,
 		Tests:       spec.Tests,
 		HiddenTests: spec.HiddenTests,
-		Mutants:     spec.Mutants,
 	})
 	status.Running, status.Passed = false, rep.Passed
 	t.checks.Show(t.w.ID, status)
