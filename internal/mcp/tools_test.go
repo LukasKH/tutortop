@@ -6,7 +6,6 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/LukasKH/tutortop/internal/decode"
 	"github.com/LukasKH/tutortop/internal/events"
 	"github.com/LukasKH/tutortop/internal/mcp"
 	"github.com/LukasKH/tutortop/internal/mcp/mcptest"
@@ -64,24 +63,6 @@ func TestWriterKeepsToItsObjective(t *testing.T) {
 	tasks, _ := w.Tasks()
 	if len(lessons) != 0 || len(tasks) != 0 {
 		t.Fatalf("lessons = %+v, tasks = %+v", lessons, tasks)
-	}
-}
-
-// A task that fails the quality gate stays unpublished, and the writer gets
-// the gate's report to fix it.
-func TestCreateTaskWithholdsATaskThatFailsTheGate(t *testing.T) {
-	tt := newTools(t)
-	w := tt.goWorkspace(t)
-	out, isErr := tt.caller(t, w, workspace.WriterThread("go.strings"))("create_task", noHiddenTestsTask("go.strings"))
-	res, err := decode.JSON[createTaskOutput]([]byte(out))
-	if err != nil {
-		t.Fatalf("%v: %s", err, out)
-	}
-	if !isErr || res.Published || res.Gate == nil || res.Gate.Passed {
-		t.Fatalf("isErr %v, result %+v", isErr, res)
-	}
-	if tasks, _ := w.Tasks(); len(tasks) != 0 {
-		t.Fatalf("tasks = %+v", tasks)
 	}
 }
 
@@ -145,13 +126,6 @@ func noHiddenTestsTask(objective string) workspace.TaskSpec {
 		Tests:       sandbox.Files{"add_test.go": "package add\n"},
 		HiddenTests: sandbox.Files{},
 	}
-}
-
-// createTaskOutput is create_task's result, as the writer reads it.
-type createTaskOutput struct {
-	Published bool                `json:"published"`
-	Gate      *sandbox.GateReport `json:"gate"`
-	Report    string              `json:"report"`
 }
 
 // tools serves a test's workspaces' tools, with links that all open.

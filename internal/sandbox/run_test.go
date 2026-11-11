@@ -1,8 +1,10 @@
 package sandbox
 
 import (
+	"context"
 	"fmt"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -139,11 +141,14 @@ func runJob(t *testing.T, job Job) Result {
 // sharedRunner is the tests' runner, so they build each image once.
 var sharedRunner = New()
 
+// sandboxAvailable asks Docker or Podman once for all the tests.
+var sandboxAvailable = sync.OnceValue(func() error { return sharedRunner.Available(context.Background()) })
+
 // testRunner returns the tests' runner. The sandbox tests need Docker or
 // Podman, so they fail rather than skip without one.
 func testRunner(t *testing.T) *Runner {
 	t.Helper()
-	if err := sharedRunner.Available(t.Context()); err != nil {
+	if err := sandboxAvailable(); err != nil {
 		t.Fatalf("the sandbox tests need Docker or Podman: %v", err)
 	}
 	return sharedRunner

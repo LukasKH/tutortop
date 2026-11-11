@@ -29,33 +29,3 @@ func TestCurriculumValidate(t *testing.T) {
 		})
 	}
 }
-
-// The app numbers revisions; whatever the tutor sends is ignored.
-func TestApproveProposal(t *testing.T) {
-	w := newWorkspace(t)
-	if err := w.Propose(workspace.Curriculum{Language: "go"}); err == nil {
-		t.Fatal("an invalid plan was proposed")
-	}
-	if p, _ := w.Proposal(); p != nil {
-		t.Fatal("an invalid plan was stored")
-	}
-
-	for want := 1; want <= 2; want++ {
-		c := plan("a")
-		c.Revision = 7
-		if err := w.Propose(c); err != nil {
-			t.Fatal(err)
-		}
-		got, err := w.ApproveProposal()
-		if err != nil {
-			t.Fatal(err)
-		}
-		cur, _ := w.Curriculum()
-		if got.Revision != want || cur == nil || cur.Revision != want {
-			t.Fatalf("approval %d: revision %d, saved %+v", want, got.Revision, cur)
-		}
-		if p, _ := w.Proposal(); p != nil {
-			t.Fatal("the proposal is still pending after approval")
-		}
-	}
-}

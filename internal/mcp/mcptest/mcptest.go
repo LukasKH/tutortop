@@ -34,7 +34,7 @@ func (f roundTripper) RoundTrip(r *http.Request) (*http.Response, error) { retur
 // Caller connects to one thread's MCP tools at url, the way that thread's
 // agent would, and returns a function that calls a tool and reports its text
 // and whether it was an error.
-func Caller(t *testing.T, url string) func(name string, args any) (string, bool) {
+func Caller(t testing.TB, url string) func(name string, args any) (string, bool) {
 	t.Helper()
 	cs := Session(t, url)
 	return func(name string, args any) (string, bool) {
@@ -55,7 +55,7 @@ func Caller(t *testing.T, url string) func(name string, args any) (string, bool)
 
 // Session connects to one thread's MCP server at url over HTTP, as its agent
 // does.
-func Session(t *testing.T, url string) *mcpsdk.ClientSession {
+func Session(t testing.TB, url string) *mcpsdk.ClientSession {
 	t.Helper()
 	cs, err := mcpsdk.NewClient(&mcpsdk.Implementation{Name: "test", Version: "1"}, nil).
 		Connect(context.Background(), &mcpsdk.StreamableClientTransport{Endpoint: url}, nil)

@@ -39,6 +39,25 @@ tasks:
     cmds:
       - go test -tags live -count=1 -v ./internal/agent/ ./internal/app/
 
+  bench:
+    summary: Times what the learner waits for (internal/app/bench_test.go), six times each (needs Docker or Podman)
+    cmds:
+      - go test -run '^$' -bench . -benchmem -count 6 ./internal/app/
+
+  bench:compare:
+    summary: Compares the benchmarks on BASE (default main) with the working tree, using benchstat
+    vars:
+      BASE: '{{.BASE | default "main"}}'
+      DIR: '{{.ROOT_DIR}}/.task/bench'
+    cmds:
+      - rm -rf {{.DIR}} && mkdir -p {{.DIR}}
+      - git worktree add --detach {{.DIR}}/base {{.BASE}}
+      - defer: git worktree remove --force {{.DIR}}/base
+      # Without the race detector, which slows Go code but not the sandbox.
+      - cd {{.DIR}}/base && go test -run '^$' -bench . -benchmem -count 6 ./internal/app/ > {{.DIR}}/old.txt
+      - go test -run '^$' -bench . -benchmem -count 6 ./internal/app/ > {{.DIR}}/new.txt
+      - go run golang.org/x/perf/cmd/benchstat@v0.0.0-20261009192801-be2c69fb417e {{.DIR}}/old.txt {{.DIR}}/new.txt
+
   check:
     summary: Runs every pre-commit hook on all files
     cmds:
