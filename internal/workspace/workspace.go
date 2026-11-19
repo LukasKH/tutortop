@@ -170,37 +170,6 @@ type Workspace struct {
 	mu *sync.Mutex
 }
 
-// path is a file in the public workspace.
-func (w *Workspace) path(parts ...string) string {
-	return filepath.Join(append([]string{w.Dir}, parts...)...)
-}
-
-// private is a file outside the workspace that the learner and tutor don't see.
-func (w *Workspace) private(parts ...string) string {
-	return filepath.Join(append([]string{w.PrivateDir}, parts...)...)
-}
-
-func (w *Workspace) saveMeta() error {
-	return writeJSON(w.path(".tutortop", "workspace.json"), w.Meta)
-}
-
-// updateMeta re-reads the metadata under the workspace lock, since several
-// threads change it at once, and saves it if change reports a change.
-func (w *Workspace) updateMeta(change func(m *Meta) bool) error {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	meta, err := readJSON[Meta](w.path(".tutortop", "workspace.json"))
-	if err != nil {
-		return err
-	}
-	changed := change(&meta)
-	w.Meta = meta
-	if !changed {
-		return nil
-	}
-	return w.saveMeta()
-}
-
 // UseProvider switches the workspace to another agent. Resume ids belong to
 // one agent, so switching forgets them: threads start fresh conversations,
 // and the tutor catches up from the workspace files, as it does for new
@@ -261,6 +230,37 @@ func (w *Workspace) Commit(msg string) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	w.commit(msg)
+}
+
+// path is a file in the public workspace.
+func (w *Workspace) path(parts ...string) string {
+	return filepath.Join(append([]string{w.Dir}, parts...)...)
+}
+
+// private is a file outside the workspace that the learner and tutor don't see.
+func (w *Workspace) private(parts ...string) string {
+	return filepath.Join(append([]string{w.PrivateDir}, parts...)...)
+}
+
+func (w *Workspace) saveMeta() error {
+	return writeJSON(w.path(".tutortop", "workspace.json"), w.Meta)
+}
+
+// updateMeta re-reads the metadata under the workspace lock, since several
+// threads change it at once, and saves it if change reports a change.
+func (w *Workspace) updateMeta(change func(m *Meta) bool) error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	meta, err := readJSON[Meta](w.path(".tutortop", "workspace.json"))
+	if err != nil {
+		return err
+	}
+	changed := change(&meta)
+	w.Meta = meta
+	if !changed {
+		return nil
+	}
+	return w.saveMeta()
 }
 
 // commit is Commit for callers that already hold w.mu.

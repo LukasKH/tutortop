@@ -15,13 +15,9 @@ export function upsertChat(items: ChatItem[], item: ChatItem): ChatItem[] {
  * is the notice WorkspaceService.ApproveProposal posts, marked MarkPlanApproved.
  */
 export function afterSetup(items: ChatItem[]): ChatItem[] {
-  const i = items.findIndex(isPlanApproval);
+  const i = items.findIndex((x) => x.mark === ChatMark.MarkPlanApproved);
   return i === -1 ? items : items.slice(i + 1);
 }
-
-// Notices saved before items had marks are known by their text.
-const isPlanApproval = (x: ChatItem) =>
-  x.mark === ChatMark.MarkPlanApproved || (!x.mark && x.role === ChatRole.RoleNotice && x.text.startsWith("You approved the plan"));
 
 /**
  * Merges the saved transcript with what we have live. Items still streaming

@@ -11,7 +11,10 @@ import (
 
 // The benchmarks time what the learner waits for. `task bench:compare`
 // runs them on main and on the working tree and compares the two with
-// benchstat; TestLearnerJourney's budgets catch only large slowdowns.
+// benchstat. What fails a commit counts work instead of timing it:
+// TestLearnerJourney counts the sandbox's containers and cache mounts, and
+// TestWorkspaceSnapshotAllocations the snapshot's allocations. The journey's
+// time budgets catch only large slowdowns.
 
 // BenchmarkWorkspace reads the snapshot of a long-used workspace. The
 // frontend reads it again after every change, run and published task.
@@ -22,6 +25,25 @@ func BenchmarkWorkspace(b *testing.B) {
 		if _, err := a.Workspaces.Workspace(w.ID); err != nil {
 			b.Fatal(err)
 		}
+	}
+}
+
+// The snapshot BenchmarkWorkspace times, held to an allocation ceiling: unlike
+// a timing, the count is the same on any machine. It's about 22,000 today
+// (27,000 with -race), so the ceiling trips when the work about doubles, such
+// as every file being read twice. Raise it only for work the snapshot needs,
+// and say why in the commit.
+func TestWorkspaceSnapshotAllocations(t *testing.T) {
+	const ceiling = 40_000
+	a := newTestApp(t)
+	w := seasonedWorkspace(t, a, 40, 25)
+	allocs := testing.AllocsPerRun(5, func() {
+		if _, err := a.Workspaces.Workspace(w.ID); err != nil {
+			t.Fatal(err)
+		}
+	})
+	if allocs > ceiling {
+		t.Errorf("a snapshot of 40 objectives takes %.0f allocations, over the ceiling of %d", allocs, ceiling)
 	}
 }
 

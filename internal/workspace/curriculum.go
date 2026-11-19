@@ -19,29 +19,6 @@ type Curriculum struct {
 	Modules      []Module     `yaml:"modules" json:"modules"`
 }
 
-// validate fills defaults and reports every problem at once, so the agent can
-// fix them in one go. w reports whether a language is usable. Plans approved
-// before references existed lack them; they're only checked here, when the
-// tutor proposes a plan.
-func (c *Curriculum) validate(w *Workspace) error {
-	var p problems
-
-	if err := w.CheckLanguage(c.Language); err != nil {
-		p.addf("language: %v", err)
-	}
-	c.TaskDefaults.validate(&p)
-	if len(c.Modules) == 0 {
-		p.addf("the curriculum needs at least one module")
-	}
-
-	// Module and objective ids share one namespace.
-	seen := map[string]bool{}
-	for mi := range c.Modules {
-		c.Modules[mi].validate(&p, seen, w)
-	}
-	return p.err("curriculum")
-}
-
 // URLs lists every reference link in the plan.
 func (c *Curriculum) URLs() []string {
 	var out []string
@@ -67,6 +44,29 @@ func (c *Curriculum) Objective(id string) (Objective, string, bool) {
 		}
 	}
 	return Objective{}, "", false
+}
+
+// validate fills defaults and reports every problem at once, so the agent can
+// fix them in one go. w reports whether a language is usable. Plans approved
+// before references existed lack them; they're only checked here, when the
+// tutor proposes a plan.
+func (c *Curriculum) validate(w *Workspace) error {
+	var p problems
+
+	if err := w.CheckLanguage(c.Language); err != nil {
+		p.addf("language: %v", err)
+	}
+	c.TaskDefaults.validate(&p)
+	if len(c.Modules) == 0 {
+		p.addf("the curriculum needs at least one module")
+	}
+
+	// Module and objective ids share one namespace.
+	seen := map[string]bool{}
+	for mi := range c.Modules {
+		c.Modules[mi].validate(&p, seen, w)
+	}
+	return p.err("curriculum")
 }
 
 // Curriculum returns the approved plan, or nil if there isn't one yet.

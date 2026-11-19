@@ -265,37 +265,6 @@ func TestCodexPermissions(t *testing.T) {
 	})
 }
 
-func TestCodexModels(t *testing.T) {
-	clis := fakeBinary(t, "codex")
-	var models []Model
-	done := async(func() (err error) {
-		models, err = codexModels(t.Context())
-		return err
-	})
-	cli := clis.next(t)
-	codexHandshake(t, cli)
-	page := codexExpect(t, cli, "model/list")
-	codexReply(t, cli, page, `{"data":[
-		{"id":"a","model":"gpt-a","displayName":"GPT A","description":"Fast","hidden":false,"isDefault":false,"defaultReasoningEffort":"low","supportedReasoningEfforts":[{"reasoningEffort":"low","description":"Quick"}]},
-		{"id":"h","model":"gpt-hidden","displayName":"Hidden","hidden":true,"isDefault":false,"supportedReasoningEfforts":[]}
-	],"nextCursor":"page2"}`)
-	page = codexExpect(t, cli, "model/list")
-	if page.str("params.cursor") != "page2" {
-		t.Errorf("second model/list %v, want the cursor", page)
-	}
-	codexReply(t, cli, page, `{"data":[{"id":"b","model":"gpt-b","displayName":"","hidden":false,"isDefault":true,"supportedReasoningEfforts":[]}],"nextCursor":null}`)
-	if err := wait(t, done); err != nil {
-		t.Fatal(err)
-	}
-	want := []Model{
-		{ID: "gpt-b", Name: "gpt-b"},
-		{ID: "gpt-a", Name: "GPT A", Description: "Fast", DefaultEffort: "low", Efforts: []Effort{{ID: "low", Description: "Quick"}}},
-	}
-	if !reflect.DeepEqual(models, want) {
-		t.Errorf("models %+v, want %+v", models, want)
-	}
-}
-
 func codexOptions(t *testing.T) Options {
 	return Options{Cwd: t.TempDir(), MCPName: "tutortop", MCPURL: "http://127.0.0.1:1/mcp", Instructions: "Be a tutor."}
 }

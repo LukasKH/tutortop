@@ -117,15 +117,6 @@ func (s *WorkspaceService) DeleteWorkspace(id string) error {
 	return s.store.Delete(id)
 }
 
-// removeCache deletes the workspace's cache volumes in the background, so a
-// slow or stopped Docker doesn't hold up the delete. A cache left behind only
-// takes disk space, so a failure is dropped.
-func (s *WorkspaceService) removeCache(id string) {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
-	defer cancel()
-	_ = s.runner.RemoveCache(ctx, id)
-}
-
 // WorkspaceSnapshot is everything the workspace screen shows, read at one
 // moment. The frontend keeps it current with events until the next one.
 type WorkspaceSnapshot struct {
@@ -249,6 +240,15 @@ func (s *WorkspaceService) WriteObjectiveNow(wsID, objectiveID string) error {
 	}
 	s.writers.Write(w, o, "The learner opened it and is waiting for it, so be quick. Write the lesson first, as they read it first.")
 	return nil
+}
+
+// removeCache deletes the workspace's cache volumes in the background, so a
+// slow or stopped Docker doesn't hold up the delete. A cache left behind only
+// takes disk space, so a failure is dropped.
+func (s *WorkspaceService) removeCache(id string) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	_ = s.runner.RemoveCache(ctx, id)
 }
 
 // prepareImage builds a language's sandbox image in the background, so the

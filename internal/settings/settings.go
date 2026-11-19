@@ -23,8 +23,7 @@ type Prefs struct {
 	// frontend, as the Settings screen calls it.
 	Provider string `yaml:"agent" json:"agent"`
 	// Models holds the model and reasoning effort chosen for each agent, so
-	// switching agents and back keeps both choices. Files saved before it
-	// was renamed have it under "tutor" (load).
+	// switching agents and back keeps both choices.
 	Models map[string]ModelChoice `yaml:"models" json:"models"`
 	// WorkspacesFolder holds the workspaces; "" means workspace.DefaultRoot.
 	// The app reads it at startup.
@@ -95,10 +94,6 @@ func (s *Store) Save(p Prefs) error {
 func load(b []byte) Prefs {
 	s, _ := decode.YAML[Prefs](b)
 	if s.Models == nil {
-		old, _ := decode.YAML[prefsBeforeModels](b)
-		s.Models = old.Tutor
-	}
-	if s.Models == nil {
 		s.Models = map[string]ModelChoice{}
 	}
 	if !knownProvider(s.Provider) {
@@ -116,12 +111,6 @@ func installedProvider() string {
 		}
 	}
 	return string(agent.Providers()[0].ID)
-}
-
-// prefsBeforeModels is where settings.yaml kept the model choices before
-// they were renamed Models.
-type prefsBeforeModels struct {
-	Tutor map[string]ModelChoice `yaml:"tutor"`
 }
 
 func knownProvider(id string) bool {

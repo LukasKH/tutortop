@@ -70,6 +70,25 @@ func startProcess(ctx context.Context, cwd string, env []string, binary string, 
 	return p, nil
 }
 
+func (p *process) Closed() bool {
+	select {
+	case <-p.done:
+		return true
+	default:
+		return false
+	}
+}
+
+// Close stops the process without waiting for it to exit, since callers may
+// hold the app's lock. Closing stdout also frees a write the reader never
+// took, so Wait can't hang on it.
+func (p *process) Close() error {
+	_ = p.stdin.Close()
+	_ = p.stdout.Close()
+	p.cancel()
+	return nil
+}
+
 // send writes v to stdin as one line of JSON. Both CLIs speak newline-delimited
 // JSON: Claude's stream-json and Codex's app-server JSON-RPC.
 func (p *process) send(v any) error {
@@ -93,25 +112,6 @@ func (p *process) await[T any](ctx context.Context, reply <-chan T) (T, error) {
 	case <-ctx.Done():
 		return *new(T), ctx.Err()
 	}
-}
-
-func (p *process) Closed() bool {
-	select {
-	case <-p.done:
-		return true
-	default:
-		return false
-	}
-}
-
-// Close stops the process without waiting for it to exit, since callers may
-// hold the app's lock. Closing stdout also frees a write the reader never
-// took, so Wait can't hang on it.
-func (p *process) Close() error {
-	_ = p.stdin.Close()
-	_ = p.stdout.Close()
-	p.cancel()
-	return nil
 }
 
 // exitError explains why the process stopped, using the tail of stderr.

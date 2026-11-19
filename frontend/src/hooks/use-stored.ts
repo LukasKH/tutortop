@@ -8,11 +8,8 @@ export function useStored<T>(key: string, initial: T | (() => T)) {
   return [value, setValue] as const;
 }
 
-/**
- * What useStored keeps under key, else initial. As useStored's initial, it
- * moves a value from a key that's been renamed.
- */
-export function readStored<T>(key: string, initial: T | (() => T)): T {
+/** What useStored keeps under key, else initial. */
+function readStored<T>(key: string, initial: T | (() => T)): T {
   const raw = localStorage.getItem(`tutortop.${key}`);
   if (raw !== null) {
     try {

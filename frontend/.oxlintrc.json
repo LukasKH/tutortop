@@ -5,12 +5,34 @@
   "rules": {
     "react/rules-of-hooks": "error",
     "react/exhaustive-deps": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
+    "react/only-export-components": ["warn", { "allowConstantExport": true }],
+    "no-restricted-imports": [
+      "error",
+      {
+        "patterns": [
+          {
+            "group": ["@bindings", "@bindings/**", "**/bindings/**"],
+            "message": "Import from @/lib/api, which re-exports the bindings under their Go names (STYLEGUIDE.md)."
+          }
+        ]
+      }
+    ],
+    "no-restricted-globals": [
+      "error",
+      { "name": "fetch", "message": "Call the Go app through its Wails services in @/lib/api." },
+      { "name": "XMLHttpRequest", "message": "Call the Go app through its Wails services in @/lib/api." },
+      { "name": "WebSocket", "message": "Listen to the Go app's events through @/lib/api." },
+      { "name": "EventSource", "message": "Listen to the Go app's events through @/lib/api." }
+    ]
   },
   "overrides": [
     {
       "files": ["src/components/ui/**"],
       "rules": { "react/only-export-components": "off" }
+    },
+    {
+      "files": ["src/lib/api.ts"],
+      "rules": { "no-restricted-imports": "off" }
     }
   ]
 }

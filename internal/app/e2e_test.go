@@ -43,12 +43,13 @@ func TestLearnerJourney(t *testing.T) {
 // journey is TestLearnerJourney's app and workspace, carried from step to
 // step.
 type journey struct {
-	dirs  appDirs
-	tutor *tutorCLI
-	a     *testApp
-	id    string
-	w     *workspace.Workspace
-	plan  *tutorSession // the plan's tutor, as the interview started it
+	dirs   appDirs
+	tutor  *tutorCLI
+	a      *testApp
+	id     string
+	w      *workspace.Workspace
+	plan   *tutorSession // the plan's tutor, as the interview started it
+	engine *engineCalls  // the sandbox's work, counted from after the images are built
 }
 
 // startJourney starts the app on a new workspace, with the sandbox images
@@ -63,6 +64,7 @@ func startJourney(t *testing.T) *journey {
 			t.Fatal(err)
 		}
 	}
+	j.engine = watchEngine(t, j.a.runner)
 	id, err := j.a.Workspaces.CreateWorkspace("Learn to code", "")
 	if err != nil {
 		t.Fatal(err)
@@ -111,9 +113,13 @@ func (j *journey) writeObjectives(t *testing.T) {
 		if out, isErr := writer.try(t, "create_task", unsound); !isErr || !strings.Contains(out, "has hidden tests") {
 			t.Fatalf("a task without hidden tests wasn't sent back with the gate's report: %s", out)
 		}
+		j.engine.wantRuns(t, lang+" gate on a task without hidden tests", 0, noCache)
 		out := within(t, gateBudget, lang+" quality gate", func() string {
 			return writer.call(t, "create_task", wordsTask(thread.ID, lang))
 		})
+		// Reference with all tests, reference with the visible ones, starter:
+		// each starts clean, so no learner's cache can sway the gate.
+		j.engine.wantRuns(t, lang+" quality gate", 3, noCache)
 		if created, err := decode.JSON[createTaskOutput]([]byte(out)); err != nil || !created.Published {
 			t.Fatalf("%s's task wasn't published (%v):\n%s", thread.ID, err, out)
 		}
@@ -174,9 +180,12 @@ func (j *journey) solveTasks(t *testing.T) {
 		if res.Status != sandbox.StatusFailed || len(res.Tests) != 1 {
 			t.Fatalf("running the %s starter: %s with %+v, want one visible test failing", task.Language, res.Status, res.Tests)
 		}
+		// One container per check, with the workspace's warm build cache.
+		j.engine.wantRuns(t, task.Language+" run", 1, fx.cache)
 		res = within(t, runBudget, task.Language+" submit", func() sandbox.Result {
 			return runTests(t, j.a, j.id, task.ID, fx.reference, true)
 		})
+		j.engine.wantRuns(t, task.Language+" submit", 1, fx.cache)
 		if passed, total := res.Counts(); res.Status != sandbox.StatusPassed || passed != 3 || total != 3 {
 			t.Fatalf("submitting the %s reference: %s, %d/%d passed\n%s", task.Language, res.Status, passed, total, res.Output)
 		}
@@ -486,8 +495,10 @@ var words = map[string]struct {
 	file, signature                        string
 	starter, reference, tests, hiddenTests sandbox.Files
 	names                                  sandbox.TestNames // as the quality gate finds them
+	cache                                  cacheMount        // whether the toolchain keeps a build cache between runs
 }{
 	"go": {
+		cache:     buildCache,
 		file:      "solution.go",
 		signature: "func ReverseWords(s string) string",
 		names:     sandbox.TestNames{Visible: []string{"TestBasic"}, Hidden: []string{"TestExtraSpaces", "TestEmpty"}},
@@ -532,6 +543,7 @@ func TestEmpty(t *testing.T) {
 `},
 	},
 	"python": {
+		cache:     noCache,
 		file:      "words.py",
 		signature: "def reverse_words(s: str) -> str",
 		names:     sandbox.TestNames{Visible: []string{"test_basic"}, Hidden: []string{"test_extra_spaces", "test_empty"}},

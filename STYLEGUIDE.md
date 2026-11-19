@@ -14,7 +14,8 @@ Prefer the standard library or a maintained library over hand-rolled code.
 - Functions in a file should be grouped by receiver.
 
 Therefore, exported functions should appear first in a file, after
-`struct`, `const`, `var` definitions.
+`struct`, `const`, `var` definitions. Within a receiver's group, exported
+methods come before unexported ones **(lint: funcorder)**.
 
 A `newXYZ()`/`NewXYZ()` may appear after the type is defined, but before the
 rest of the methods on the receiver.
@@ -77,6 +78,16 @@ Keep tightly coupled types in one package. If a caller must import both packages
 Give each area of the frontend's API its own Wails service, and register each in `main.go`.
 
 Pass a service its dependencies through its constructor, not through package-level variables.
+
+### Boundaries
+
+Each way out of the app has one package **(lint: depguard)**:
+
+- Agents run through their installed CLI (`internal/agent`), never a model's API or SDK.
+- HTTP lives in `internal/mcp`, the agents' tools. The frontend reaches Go through Wails services, not HTTP.
+- Processes start only in `internal/agent` (agent CLIs), `internal/sandbox` (the container engine), `internal/shellpath`, `internal/settings` (finding CLIs) and `internal/workspace` (git). Learner and tutor code runs in the sandbox.
+
+To add a way out, change the rule in `.golangci.yml` in the same commit and say why.
 
 ### Dependencies
 
@@ -400,6 +411,8 @@ Follow the rules of hooks **(lint)**.
 Give a component only what it renders. Don't pass props down more than two levels; let the hook that owns the state provide it.
 
 Re-export generated binding types under their Go names. Don't edit the generated bindings; regenerate them.
+
+Reach the Go app only through `@/lib/api`: import the bindings nowhere else, and don't use `fetch`, `XMLHttpRequest`, `WebSocket` or `EventSource` **(lint)**.
 
 ## Comments
 

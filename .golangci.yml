@@ -15,6 +15,10 @@ linters:
     - revive
     # STYLEGUIDE.md, "Embedding in structs".
     - embeddedstructfieldcheck
+    # STYLEGUIDE.md, "Boundaries".
+    - depguard
+    # STYLEGUIDE.md, "Function Grouping and Ordering".
+    - funcorder
 
   # gocognit (min-complexity 30) and nestif (min-complexity 5) keep their
   # defaults.
@@ -27,6 +31,36 @@ linters:
       default-signifies-exhaustive: false
     embeddedstructfieldcheck:
       forbid-mutex: true
+    depguard:
+      rules:
+        agents-through-their-cli:
+          deny:
+            - pkg: github.com/anthropics/anthropic-sdk-go
+              desc: run agents through their CLI (internal/agent), not a model API
+            - pkg: github.com/openai/openai-go
+              desc: run agents through their CLI (internal/agent), not a model API
+            - pkg: github.com/sashabaranov/go-openai
+              desc: run agents through their CLI (internal/agent), not a model API
+            - pkg: google.golang.org/genai
+              desc: run agents through their CLI (internal/agent), not a model API
+        http-only-in-mcp:
+          files: ["$all", "!$test", "!**/internal/mcp/**"]
+          deny:
+            - pkg: net/http
+              desc: the frontend talks to Go through Wails services and agents through MCP (internal/mcp)
+        processes-only-where-they-belong:
+          # Agent CLIs, the sandbox engine, the login shell, CLI detection and git.
+          files:
+            - "$all"
+            - "!$test"
+            - "!**/internal/agent/**"
+            - "!**/internal/sandbox/**"
+            - "!**/internal/shellpath/**"
+            - "!**/internal/settings/**"
+            - "!**/internal/workspace/**"
+          deny:
+            - pkg: os/exec
+              desc: run learner and tutor code in the sandbox (internal/sandbox)
     revive:
       # Only the rules that turn an if/else ending in return into a guard
       # clause. revive's default rule set is broader than the style guide.

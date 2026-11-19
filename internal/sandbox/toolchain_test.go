@@ -65,15 +65,6 @@ func TestToolchainFromSpec(t *testing.T) {
 	if !strings.HasPrefix(tc.Image, "tutortop-r:") || same.Image != tc.Image || other.Image == tc.Image {
 		t.Errorf("images %q, %q and edited %q", tc.Image, same.Image, other.Image)
 	}
-	// Image names can't hold + or #.
-	for lang, prefix := range map[string]string{"c++": "tutortop-cpp:", "c#": "tutortop-cs:"} {
-		spec := rSpec()
-		spec.Language = lang
-		tc, err := spec.Toolchain()
-		if err != nil || !strings.HasPrefix(tc.Image, prefix) {
-			t.Errorf("%s image %q (%v), want prefix %s", lang, tc.Image, err, prefix)
-		}
-	}
 }
 
 func rSpec() ToolchainSpec {

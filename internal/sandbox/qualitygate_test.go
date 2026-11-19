@@ -67,6 +67,22 @@ func TestNegative(t *testing.T) { check(t, -1, -2, -3) }`)}
 			steps:  []string{"reference solution passes all tests", "✗visible and hidden tests have their own names"},
 		},
 		{
+			// Go can't have two tests of one name, but JUnit frameworks can,
+			// in different files or classes. Results would then be ambiguous.
+			name: "the same test name in visible and hidden files",
+			change: func(in *GateInput) {
+				test := "from calc import add\n\n\ndef test_add():\n    assert add(1, 2) == 3\n"
+				*in = GateInput{
+					Toolchain:   builtins["python"],
+					Starter:     Files{"calc.py": "def add(a, b):\n    return 0\n"},
+					Reference:   Files{"calc.py": "def add(a, b):\n    return a + b\n"},
+					Tests:       Files{"test_calc.py": test},
+					HiddenTests: Files{"test_calc_hidden.py": test},
+				}
+			},
+			steps: []string{"reference solution passes all tests", "✗visible and hidden tests have their own names"},
+		},
+		{
 			name:   "a solved starter",
 			change: func(in *GateInput) { in.Starter = in.Reference },
 			steps: []string{
@@ -107,15 +123,6 @@ func TestNegative(t *testing.T) { check(t, -1, -2, -3) }`)}
 				t.Errorf("names %+v, want %+v", rep.Names, *c.names)
 			}
 		})
-	}
-}
-
-// Go can't have two tests of one name, but JUnit frameworks can, in
-// different files or classes. Results would then be ambiguous.
-func TestSplitNamesRejectsDuplicates(t *testing.T) {
-	all := []TestResult{{Name: "test_x"}, {Name: "test_x"}, {Name: "test_y"}}
-	if _, problem := splitNames(all, all[:1]); problem == "" {
-		t.Error("duplicate names weren't reported")
 	}
 }
 

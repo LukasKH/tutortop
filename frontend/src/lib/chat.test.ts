@@ -23,11 +23,9 @@ test("thinking shows while the tutor works, unless a reply streams or a tool cal
   expect(showThinking([tool("a", ChatStatus.ChatRunning), item("reply"), item("n", { role: ChatRole.RoleNotice })], true)).toBe(true);
 });
 
-test("the setup interview is hidden up to the plan's approval, found by its mark or, in older chats, its text", () => {
+test("the setup interview is hidden up to the plan's approval, found by its mark", () => {
   const interview = item("q", { role: ChatRole.RoleUser, text: "You approved the plan, right?" });
   const approved = item("n", { role: ChatRole.RoleNotice, text: "Plan approved.", mark: ChatMark.MarkPlanApproved });
-  const old = item("n", { role: ChatRole.RoleNotice, text: "You approved the plan (revision 1)." });
   expect(afterSetup([interview, approved, item("after")]).map((x) => x.id)).toEqual(["after"]);
-  expect(afterSetup([interview, old, item("after")]).map((x) => x.id)).toEqual(["after"]);
   expect(afterSetup([item("1")]).map((x) => x.id)).toEqual(["1"]);
 });

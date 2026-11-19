@@ -82,29 +82,6 @@ func TestNamesStayInsideTheWorkspace(t *testing.T) {
 	}
 }
 
-// Older files leave the plan's thread name empty; they read as "plan", the
-// one name the app sends.
-func TestOldFilesNameThePlan(t *testing.T) {
-	w := newWorkspace(t)
-	if err := os.MkdirAll(filepath.Join(w.Dir, ".tutortop", "chat"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	for name, content := range map[string]string{
-		"chat/plan.jsonl": `{"id":"1","role":"user","text":"hi"}` + "\n",
-		"questions.json":  `{"questions":[{"id":"q","question":"Why?"}]}`,
-	} {
-		if err := os.WriteFile(filepath.Join(w.Dir, ".tutortop", name), []byte(content), 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if chat, err := w.Chat("plan"); err != nil || len(chat) != 1 || chat[0].Thread != "plan" {
-		t.Errorf("chat = %+v, %v", chat, err)
-	}
-	if q := w.PendingQuestions(); q == nil || q.Thread != "plan" {
-		t.Errorf("questions = %+v", q)
-	}
-}
-
 // A tutor still finishing after its workspace was deleted mustn't bring the
 // folder back.
 func TestAppendChatAfterDelete(t *testing.T) {

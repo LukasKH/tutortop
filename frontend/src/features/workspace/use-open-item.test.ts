@@ -84,17 +84,6 @@ describe("published work", () => {
   });
 });
 
-test("the open item from an older version stays open, is stored under the new key, and gives way to one stored since", () => {
-  // By default the first lesson would open, ahead of its task.
-  const ws = workspace({ lessons: [lesson("l1", "a"), lesson("l2", "b")], tasks: [task("t1", "a")] });
-  localStorage.setItem("tutortop.task.ws", JSON.stringify("t1"));
-  const { result, unmount } = render(ws);
-  expect(result.current.item).toEqual({ kind: "task", id: "t1" });
-  expect(localStorage.getItem("tutortop.open-item.ws")).toBe(JSON.stringify("t1"));
-  unmount();
-  expect(render(ws, "lesson-l2").result.current.item).toEqual({ kind: "lesson", id: "l2" });
-});
-
 describe("placeQuestions", () => {
   const asked = (thread: string): Questions => ({
     thread,

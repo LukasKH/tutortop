@@ -12,7 +12,7 @@ import {
   type WorkspaceSnapshot,
 } from "@/lib/api";
 import { PLAN_THREAD } from "@/lib/workspace";
-import { readStored, useStored } from "@/hooks/use-stored";
+import { useStored } from "@/hooks/use-stored";
 import {
   exerciseOf,
   itemKey,
@@ -41,9 +41,8 @@ export type NewItem = { item: OpenItem; title: string };
  */
 export function useOpenItem(id: string, { ws, refresh, dismissFinishedCheck }: Pick<UseWorkspaceResult, "ws" | "refresh" | "dismissFinishedCheck">) {
   // A replacement for a missing item is stored, so a default doesn't move on
-  // its own. Older versions stored it as "task.<id>"; that's read once, so
-  // the learner's open item survives the update.
-  const [storedKey, setStoredKey] = useStored<string | null>(`open-item.${id}`, () => readStored(`task.${id}`, null));
+  // its own.
+  const [storedKey, setStoredKey] = useStored<string | null>(`open-item.${id}`, null);
   const stored = parseItemKey(storedKey);
   const item = ws ? resolveOpen(ws, stored) : stored;
   if (!sameItem(item, stored)) setStoredKey(item && itemKey(item));

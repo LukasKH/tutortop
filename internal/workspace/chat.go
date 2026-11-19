@@ -70,13 +70,7 @@ func (w *Workspace) Chat(thread string) ([]ChatItem, error) {
 	if !validName(thread) {
 		return nil, fmt.Errorf("invalid chat thread %q", thread)
 	}
-	items, err := readJSONL[ChatItem](w.path(".tutortop", "chat", thread+".jsonl"))
-	// Every item in the file is the thread's. Older files may leave Thread
-	// empty for the plan.
-	for i := range items {
-		items[i].Thread = thread
-	}
-	return items, err
+	return readJSONL[ChatItem](w.path(".tutortop", "chat", thread+".jsonl"))
 }
 
 type Question struct {
@@ -106,10 +100,6 @@ func (w *Workspace) PendingQuestions() *Questions {
 	q, err := readJSON[Questions](w.path(".tutortop", "questions.json"))
 	if err != nil {
 		return nil
-	}
-	// Older forms left Thread out for the plan.
-	if q.Thread == "" {
-		q.Thread = PlanThread.String()
 	}
 	return &q
 }

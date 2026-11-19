@@ -273,5 +273,6 @@ To add a built-in language:
 4. The `jsonschema` struct tags in `internal/mcp`, `internal/workspace` and `internal/sandbox` that list the other built-ins (such as `stateOutput.Toolchains` in `internal/mcp/state.go`): tags can't be filled in, so add the name by hand.
 5. Search the prompts for its name: `set_toolchain`'s line in `shared.md` gives R, Rust and JavaScript as examples of languages the app doesn't ship.
 6. `internal/workspace/icons.go`: a picture in `icons`, if there's none for it.
+7. Test fixtures, which fail until they're added: a file with a type error in `TestLanguageServers` (`internal/sandbox/lsp_test.go`), and the ReverseWords task in `words` (`internal/app/e2e_test.go`), which the benchmarks use.
 
 A workspace whose tutor set the language up before it was built in keeps its own toolchain: `Workspace.Toolchain` looks in the workspace first, because that workspace's tasks passed the quality gate with it. `set_toolchain` refuses to set up a built-in language anew.
