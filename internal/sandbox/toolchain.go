@@ -12,6 +12,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/LukasKH/tutortop/internal/decode"
 )
@@ -35,6 +36,10 @@ type Toolchain struct {
 	// inside the image, for completions and diagnostics in the editor.
 	// Empty means the editor gets syntax highlighting only.
 	LanguageServer []string
+	// MemoryMB is how much memory a check's container may use, in MB.
+	MemoryMB int
+	// Timeout is how long a check's test command may take.
+	Timeout time.Duration
 
 	report reportFormat
 	// testCommand runs the tests in /work. A junitXML one writes its report
@@ -45,6 +50,19 @@ type Toolchain struct {
 	// volume, such as Go's build cache. Empty for none.
 	cache string
 }
+
+// Limits on a check's container. A toolchain may raise them for tools that
+// need more, such as a machine-learning framework or a proof checker, but
+// only up to the maximums, so a check can't take over the learner's machine.
+const (
+	DefaultMemoryMB = 512
+	MaxMemoryMB     = 4096
+	DefaultTimeout  = 20 * time.Second
+	MaxTimeout      = 2 * time.Minute
+
+	minMemoryMB = 256
+	minTimeout  = 5 * time.Second
+)
 
 // Builtin returns a toolchain the app ships with. Other languages are set up
 // per workspace with a ToolchainSpec.
@@ -71,10 +89,12 @@ type ToolchainSpec struct {
 	Name           string   `yaml:"name" json:"name" jsonschema:"shown to the learner, e.g. R"`
 	EditorLanguage string   `yaml:"editor_language" json:"editorLanguage" jsonschema:"Monaco editor language id for syntax highlighting, e.g. r, rust, javascript, typescript, java, cpp, csharp, ruby, sql; plaintext if none fits"`
 	Dockerfile     string   `yaml:"dockerfile" json:"dockerfile" jsonschema:"Dockerfile for the sandbox image, FROM an official image by its full name, e.g. docker.io/library/node:24-alpine (Podman refuses short names). Install the language, the test framework, any libraries tasks need and the language server, system-wide. The app appends lines that create /work and switch to user 1000 with HOME=/home/runner. Tests run there with no network."`
-	TestCommand    string   `yaml:"test_command" json:"testCommand" jsonschema:"shell command run in /work (the task files) that runs every test file and writes a JUnit XML report to /tmp/junit.xml. It must write the report even when tests fail. Build errors may leave it out. The app stops it after 20 seconds."`
+	TestCommand    string   `yaml:"test_command" json:"testCommand" jsonschema:"shell command run in /work (the task files) that runs every test file and writes a JUnit XML report to /tmp/junit.xml. It must write the report even when tests fail. Build errors may leave it out. The app stops it once it runs well past timeout_seconds."`
 	TestFiles      string   `yaml:"test_files" json:"testFiles" jsonschema:"glob matching the base name of test files, e.g. test-*.R or *.test.js; the test framework must find files named this way"`
 	LanguageServer []string `yaml:"language_server,omitempty" json:"languageServer,omitempty" jsonschema:"optional command (argv) that runs a language server over stdio in /work, installed in the image, for completions and errors in the editor, e.g. [\"R\", \"--slave\", \"-e\", \"languageserver::run()\"]. If it doesn't answer, the language is saved without it."`
 	ExtraFiles     Files    `yaml:"extra_files,omitempty" json:"extraFiles,omitempty" jsonschema:"optional files written next to every task's files, e.g. a package.json or Cargo.toml"`
+	MemoryMB       int      `yaml:"memory_mb,omitempty" json:"memoryMb,omitempty" jsonschema:"optional memory a check may use, in MB; the default and the maximum are in the tool's description"`
+	TimeoutSeconds int      `yaml:"timeout_seconds,omitempty" json:"timeoutSeconds,omitempty" jsonschema:"optional seconds a check's tests may take; the default and the maximum are in the tool's description"`
 
 	// The fields below tune the built-in languages. set_toolchain's schema
 	// leaves them out, so the tutor's languages report JUnit and keep no
@@ -114,6 +134,13 @@ func (s ToolchainSpec) Toolchain() (Toolchain, error) {
 			add("extra file %q must be a relative path", name)
 		}
 	}
+	if s.MemoryMB != 0 && (s.MemoryMB < minMemoryMB || s.MemoryMB > MaxMemoryMB) {
+		add("memory_mb must be from %d to %d", minMemoryMB, MaxMemoryMB)
+	}
+	// In seconds, as a huge number would overflow a time.Duration.
+	if minSeconds, maxSeconds := int(minTimeout.Seconds()), int(MaxTimeout.Seconds()); s.TimeoutSeconds != 0 && (s.TimeoutSeconds < minSeconds || s.TimeoutSeconds > maxSeconds) {
+		add("timeout_seconds must be from %d to %d", minSeconds, maxSeconds)
+	}
 	report, ok := reportFormats[cmp.Or(s.Report, "junit")]
 	if !ok {
 		add("report must be junit or go-json")
@@ -137,6 +164,8 @@ func (s ToolchainSpec) Toolchain() (Toolchain, error) {
 		Dockerfile:     dockerfile,
 		ExtraFiles:     maps.Clone(s.ExtraFiles),
 		LanguageServer: slices.Clone(s.LanguageServer),
+		MemoryMB:       cmp.Or(s.MemoryMB, DefaultMemoryMB),
+		Timeout:        cmp.Or(time.Duration(s.TimeoutSeconds)*time.Second, DefaultTimeout),
 		report:         report,
 		testCommand:    s.TestCommand,
 		testFiles:      s.TestFiles,
@@ -193,11 +222,14 @@ func loadBuiltin(p string) (Toolchain, error) {
 var languageID = regexp.MustCompile(`^[a-z][a-z0-9+#-]{0,19}$`)
 
 // dockerfileTail is appended to every toolchain's Dockerfile, so checks run
-// the same way in every image: unprivileged, in /work.
+// the same way in every image: unprivileged, in /work. The app gives every
+// container its command, so it clears the entrypoint that tools' official
+// images set (hashicorp/terraform's runs terraform).
 const dockerfileTail = `USER root
 RUN mkdir -p /work /home/runner && chown 1000:1000 /work /home/runner
 ENV HOME=/home/runner
 WORKDIR /work
+ENTRYPOINT []
 USER 1000:1000
 `
 

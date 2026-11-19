@@ -86,7 +86,8 @@ func TestProgressReadsATornAttemptLog(t *testing.T) {
 }
 
 // Changing the plan never looks like losing progress: an objective passed
-// and then dropped still counts in PassedEver.
+// and then dropped still counts in PassedEver. A finished plan that gains an
+// objective isn't complete any more.
 func TestProgressSurvivesPlanChanges(t *testing.T) {
 	w := newWorkspace(t)
 	approve(t, w, "a", "b")
@@ -96,10 +97,16 @@ func TestProgressSurvivesPlanChanges(t *testing.T) {
 		workspace.Attempt{TaskID: ta.ID, Kind: workspace.AttemptSubmit, Status: sandbox.StatusPassed},
 		workspace.Attempt{TaskID: tb.ID, Kind: workspace.AttemptSubmit, Status: sandbox.StatusPassed},
 	)
+	if !w.Progress().Complete() {
+		t.Error("every objective passed, but the plan isn't complete")
+	}
 
 	approve(t, w, "b", "c") // a is dropped, b kept
 
 	p := w.Progress()
+	if p.Complete() {
+		t.Error("the plan is complete before c has a task")
+	}
 	if p.Passed != 1 || p.Total != 2 || p.PassedEver != 2 {
 		t.Fatalf("passed %d of %d, ever %d; want 1 of 2, ever 2", p.Passed, p.Total, p.PassedEver)
 	}

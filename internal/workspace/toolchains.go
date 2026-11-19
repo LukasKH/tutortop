@@ -28,17 +28,6 @@ func (w *Workspace) Toolchain(language string) (sandbox.Toolchain, error) {
 	return sandbox.Toolchain{}, err
 }
 
-func (w *Workspace) toolchainSpec(language string) (sandbox.ToolchainSpec, error) {
-	if !validName(language) {
-		return sandbox.ToolchainSpec{}, fmt.Errorf("unsupported language %q", language)
-	}
-	spec, err := readYAML[sandbox.ToolchainSpec](w.path(".tutortop", "toolchains", language+".yaml"))
-	if errors.Is(err, os.ErrNotExist) {
-		return spec, fmt.Errorf("unsupported language %q (built in: %s; set up others with set_toolchain first)", language, strings.Join(sandbox.BuiltinLanguages(), ", "))
-	}
-	return spec, err
-}
-
 // SaveToolchain stores a language set up by the tutor. The spec must already
 // be validated and its image built.
 func (w *Workspace) SaveToolchain(spec sandbox.ToolchainSpec) error {
@@ -58,10 +47,31 @@ func (w *Workspace) SaveToolchain(spec sandbox.ToolchainSpec) error {
 	return nil
 }
 
-// ToolchainSpecs lists the languages the tutor has set up.
+// ToolchainSpecs lists the languages the tutor has set up, leaving out any
+// it can't read.
 func (w *Workspace) ToolchainSpecs() []sandbox.ToolchainSpec {
-	entries, _ := os.ReadDir(w.path(".tutortop", "toolchains"))
-	out := []sandbox.ToolchainSpec{}
+	specs, _ := w.toolchainSpecs()
+	return specs
+}
+
+// CheckLanguage reports whether a language can be used in this workspace.
+func (w *Workspace) CheckLanguage(language string) error {
+	_, err := w.Toolchain(language)
+	return err
+}
+
+// toolchainSpecs reads the languages the tutor has set up. The error joins
+// those of the files it couldn't read; the specs are the rest.
+func (w *Workspace) toolchainSpecs() ([]sandbox.ToolchainSpec, error) {
+	out := []sandbox.ToolchainSpec{} // [] in JSON, not null
+	entries, err := os.ReadDir(w.path(".tutortop", "toolchains"))
+	if errors.Is(err, os.ErrNotExist) {
+		return out, nil
+	}
+	if err != nil {
+		return out, err
+	}
+	var errs []error
 	for _, e := range entries {
 		lang, ok := strings.CutSuffix(e.Name(), ".yaml")
 		if !ok {
@@ -69,15 +79,62 @@ func (w *Workspace) ToolchainSpecs() []sandbox.ToolchainSpec {
 		}
 		spec, err := w.toolchainSpec(lang)
 		if err != nil {
+			errs = append(errs, err)
 			continue
 		}
 		out = append(out, spec)
 	}
-	return out
+	return out, errors.Join(errs...)
 }
 
-// CheckLanguage reports whether a language can be used in this workspace.
-func (w *Workspace) CheckLanguage(language string) error {
-	_, err := w.Toolchain(language)
-	return err
+func (w *Workspace) toolchainSpec(language string) (sandbox.ToolchainSpec, error) {
+	if !validName(language) {
+		return sandbox.ToolchainSpec{}, fmt.Errorf("unsupported language %q", language)
+	}
+	spec, err := readYAML[sandbox.ToolchainSpec](w.path(".tutortop", "toolchains", language+".yaml"))
+	if errors.Is(err, os.ErrNotExist) {
+		return spec, fmt.Errorf("unsupported language %q (built in: %s; set up others with set_toolchain first)", language, strings.Join(sandbox.BuiltinLanguages(), ", "))
+	}
+	return spec, err
+}
+
+// ToolchainsInUse lists the toolchains the tutor set up in the workspaces
+// the learner hasn't completed, so their sandbox images can stay. It fails
+// if a workspace or its toolchains can't be read, as they would then look
+// unused.
+func (s *Store) ToolchainsInUse() ([]sandbox.Toolchain, error) {
+	entries, err := os.ReadDir(s.Root)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var out []sandbox.Toolchain
+	for _, e := range entries {
+		if !e.IsDir() || !validName(e.Name()) {
+			continue
+		}
+		w, err := s.Open(e.Name())
+		if errors.Is(err, os.ErrNotExist) {
+			continue // not a workspace
+		}
+		if err != nil {
+			return nil, err
+		}
+		if w.Progress().Complete() {
+			continue
+		}
+		specs, err := w.toolchainSpecs()
+		if err != nil {
+			return nil, err
+		}
+		for _, spec := range specs {
+			// One that no longer validates can't run checks, so it needs no image.
+			if tc, err := spec.Toolchain(); err == nil {
+				out = append(out, tc)
+			}
+		}
+	}
+	return out, nil
 }

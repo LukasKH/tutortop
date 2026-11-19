@@ -46,6 +46,10 @@ type Progress struct {
 	PassedEver int `json:"passedEver"`
 }
 
+// Complete reports whether the learner passed every objective of the plan.
+// A plan that gains objectives isn't complete any more.
+func (p Progress) Complete() bool { return p.Total > 0 && p.Passed == p.Total }
+
 // Progress is derived from tasks and attempts; nothing the agent writes
 // can change it.
 func (w *Workspace) Progress() Progress {

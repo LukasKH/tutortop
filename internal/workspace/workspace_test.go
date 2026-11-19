@@ -136,3 +136,49 @@ func TestOwnToolchainOutranksANewBuiltin(t *testing.T) {
 		t.Fatalf("python = %+v, %v; want the workspace's own", tc, err)
 	}
 }
+
+// The toolchains in use are those of the workspaces not yet completed. Folders
+// that aren't workspaces don't count, but one that can't be read fails the
+// call, as its toolchains would look unused and lose their images.
+func TestToolchainsInUse(t *testing.T) {
+	s := &workspace.Store{Root: t.TempDir(), PrivateRoot: t.TempDir()}
+	spec := func(language string) sandbox.ToolchainSpec {
+		return sandbox.ToolchainSpec{Language: language, Name: language, Dockerfile: "FROM docker.io/library/alpine:3", TestCommand: "true", TestFiles: "test_*"}
+	}
+	learning, err := s.Create("Learn R", "claude")
+	if err != nil {
+		t.Fatal(err)
+	}
+	done, err := s.Create("Learn Rust", "claude")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for w, language := range map[*workspace.Workspace]string{learning: "r", done: "rust"} {
+		if err := w.SaveToolchain(spec(language)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	approve(t, learning, "a")
+	approve(t, done, "a")
+	record(t, done, workspace.Attempt{TaskID: addTask(t, done, "a").ID, Kind: workspace.AttemptSubmit, Status: sandbox.StatusPassed})
+	for _, dir := range []string{"notes", "My Notes"} {
+		if err := os.Mkdir(filepath.Join(s.Root, dir), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	used, err := s.ToolchainsInUse()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(used) != 1 || used[0].Language != "r" {
+		t.Errorf("toolchains in use %+v, want only r's", used)
+	}
+
+	if err := os.WriteFile(filepath.Join(learning.Dir, ".tutortop", "workspace.json"), []byte("{"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.ToolchainsInUse(); err == nil {
+		t.Error("no error with a workspace that can't be read")
+	}
+}

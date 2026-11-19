@@ -54,7 +54,9 @@ func (r *Runner) StartLanguageServer(ctx context.Context, tc Toolchain, files Fi
 		return nil, err
 	}
 	name := "tutortop-lsp-" + uuid.New().String()
-	args := append([]string{"create", "-i", "--rm", "--name", name}, lockdownFlags("1g")...)
+	// A language server loads the same libraries as the checks, so it gets
+	// at least as much memory.
+	args := append([]string{"create", "-i", "--rm", "--name", name}, lockdownFlags(max(1024, tc.MemoryMB))...)
 	args = append(append(args, tc.Image), tc.LanguageServer...)
 	if out, err := exec.CommandContext(ctx, string(r.Engine), args...).CombinedOutput(); err != nil {
 		return nil, errors.New("starting the language server: " + string(bytes.TrimSpace(out)))

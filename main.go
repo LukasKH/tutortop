@@ -52,6 +52,23 @@ func main() {
 		MinHeight:        600,
 		BackgroundColour: application.NewRGB(10, 10, 10),
 		URL:              "/",
+		// Paint the title bar in the app's colours from globals.css instead of
+		// the system's white.
+		Windows: application.WindowsWindow{
+			Theme: application.Dark,
+			CustomTheme: application.ThemeSettings{
+				DarkModeActive: &application.WindowTheme{
+					TitleBarColour:  application.NewRGBPtr(10, 10, 10),    // --background
+					TitleTextColour: application.NewRGBPtr(237, 237, 237), // --foreground
+					BorderColour:    application.NewRGBPtr(31, 31, 31),    // --border
+				},
+				DarkModeInactive: &application.WindowTheme{
+					TitleBarColour:  application.NewRGBPtr(10, 10, 10),    // --background
+					TitleTextColour: application.NewRGBPtr(133, 133, 133), // --muted-foreground
+					BorderColour:    application.NewRGBPtr(31, 31, 31),    // --border
+				},
+			},
+		},
 	})
 
 	if err := wails.Run(); err != nil {

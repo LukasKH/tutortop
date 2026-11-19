@@ -82,7 +82,7 @@ func (r *Runner) Run(ctx context.Context, job Job) (Result, error) {
 	if err := r.Prepare(ctx, tc); err != nil {
 		return Result{}, err
 	}
-	timeout := cmp.Or(job.Timeout, 45*time.Second) // the test command itself stops after 20s
+	timeout := cmp.Or(job.Timeout, tc.Timeout+startup)
 
 	files := Files{}
 	maps.Copy(files, tc.ExtraFiles)
@@ -140,6 +140,10 @@ func (r *Runner) Run(ctx context.Context, job Job) (Result, error) {
 	}
 	return res, nil
 }
+
+// startup is the time a run gets on top of its toolchain's timeout, to start
+// the container and unpack the files.
+const startup = 25 * time.Second
 
 const maxOutput = 4 << 20 // bytes of test output kept before the run is stopped
 

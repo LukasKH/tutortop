@@ -104,6 +104,25 @@ func (r *Runner) RemoveCache(ctx context.Context, cache string) error {
 	return exec.CommandContext(ctx, string(r.Engine), append([]string{"volume", "rm", "-f"}, names...)...).Run()
 }
 
+// RemoveUnusedImages deletes the toolchain images that none of used needs:
+// those of languages whose Dockerfile changed, of toolchains the tutor tried
+// and dropped, and of deleted workspaces. An image a container still runs on
+// stays until the next call.
+func (r *Runner) RemoveUnusedImages(ctx context.Context, used []Toolchain) error {
+	out, err := exec.CommandContext(ctx, string(r.Engine), "image", "ls", "--filter", "reference=tutortop-*", "--format", "{{.Repository}}:{{.Tag}}").Output()
+	if err != nil {
+		return err
+	}
+	for _, image := range unusedImages(strings.Fields(string(out)), used) {
+		// Fails only for an image in use, which the next call removes.
+		_ = exec.CommandContext(ctx, string(r.Engine), "image", "rm", image).Run()
+		r.mu.Lock()
+		delete(r.prepared, strings.TrimPrefix(image, podmanLocal))
+		r.mu.Unlock()
+	}
+	return nil
+}
+
 func detectEngine() Engine {
 	if _, err := exec.LookPath(string(Docker)); err == nil {
 		return Docker
@@ -143,7 +162,7 @@ func (r *Runner) exec(ctx context.Context, tc Toolchain, script string, files Fi
 	// The images run as an unprivileged user with a build cache baked in,
 	// so nothing is shared between runs but the cache volume, if any.
 	name := "tutortop-" + uuid.New().String()
-	args := append([]string{"run", "--rm", "-i", "--name", name}, lockdownFlags("512m")...)
+	args := append([]string{"run", "--rm", "-i", "--name", name}, lockdownFlags(tc.MemoryMB)...)
 	if volume := cacheVolume(cache, tc); volume != "" {
 		// A new volume starts as a copy of the image's folder, so it
 		// keeps the image's warm cache and its owner.
@@ -200,13 +219,34 @@ func engineHint(engine Engine, output string, notFound bool) error {
 
 // lockdownFlags lock a container down: no network, no capabilities, and
 // capped memory, CPU and processes.
-func lockdownFlags(memory string) []string {
+func lockdownFlags(memoryMB int) []string {
 	return []string{
 		"--network", "none",
 		"--cap-drop", "ALL", "--security-opt", "no-new-privileges",
-		"--memory", memory, "--cpus", "1", "--pids-limit", "256",
+		"--memory", fmt.Sprintf("%dm", memoryMB), "--cpus", "1", "--pids-limit", "256",
 	}
 }
+
+// unusedImages picks the listed images that none of used is built as.
+func unusedImages(listed []string, used []Toolchain) []string {
+	keep := map[string]bool{}
+	for _, tc := range used {
+		keep[tc.Image] = true
+	}
+	var unused []string
+	for _, image := range listed {
+		name := strings.TrimPrefix(image, podmanLocal)
+		// Podman's filter matches a name's last part, so it also lists
+		// images pulled from a registry, which the app didn't build.
+		if !strings.Contains(name, "/") && !keep[name] {
+			unused = append(unused, image)
+		}
+	}
+	return unused
+}
+
+// podmanLocal starts the names Podman lists images built here under.
+const podmanLocal = "localhost/"
 
 func tarFiles(files Files) ([]byte, error) {
 	var buf bytes.Buffer

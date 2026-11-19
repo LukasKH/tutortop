@@ -3,6 +3,7 @@ package sandbox
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestToolchainSpec(t *testing.T) {
@@ -17,6 +18,11 @@ func TestToolchainSpec(t *testing.T) {
 		{"extra file outside the task", func(s *ToolchainSpec) { s.ExtraFiles = Files{"../DESCRIPTION": ""} }, []string{`extra file "../DESCRIPTION" must be a relative path`}},
 		// A volume there would hide the task's files from the run.
 		{"cache over the task files", func(s *ToolchainSpec) { s.Cache = "/work/.cache" }, []string{"cache must be an absolute folder outside /work"}},
+		{"more memory than a check may have", func(s *ToolchainSpec) { s.MemoryMB = MaxMemoryMB + 1 }, []string{"memory_mb must be from"}},
+		{"negative memory", func(s *ToolchainSpec) { s.MemoryMB = -1 }, []string{"memory_mb must be from"}},
+		{"longer than a check may take", func(s *ToolchainSpec) { s.TimeoutSeconds = int(MaxTimeout.Seconds()) + 1 }, []string{"timeout_seconds must be from"}},
+		// 2^64 ns plus 5 s: as a time.Duration it would wrap around to 5 s.
+		{"so long it would overflow", func(s *ToolchainSpec) { s.TimeoutSeconds = 18446744079 }, []string{"timeout_seconds must be from"}},
 		{"every problem at once", func(s *ToolchainSpec) { s.Name, s.TestCommand = "", "" }, []string{"name is required", "test_command is required"}},
 	}
 	for _, c := range cases {
@@ -52,6 +58,17 @@ func TestToolchainFromSpec(t *testing.T) {
 		if tc.IsTestFile(name) != want {
 			t.Errorf("IsTestFile(%q) = %v, want %v", name, !want, want)
 		}
+	}
+
+	// A spec that leaves the limits out gets the defaults; one that raises
+	// them gets what it asked for.
+	if tc.MemoryMB != DefaultMemoryMB || tc.Timeout != DefaultTimeout {
+		t.Errorf("limits %d MB and %s, want the defaults %d MB and %s", tc.MemoryMB, tc.Timeout, DefaultMemoryMB, DefaultTimeout)
+	}
+	raised := rSpec()
+	raised.MemoryMB, raised.TimeoutSeconds = 2048, 90
+	if tc, err := raised.Toolchain(); err != nil || tc.MemoryMB != 2048 || tc.Timeout != 90*time.Second {
+		t.Errorf("raised limits %d MB and %s (%v), want 2048 MB and 1m30s", tc.MemoryMB, tc.Timeout, err)
 	}
 
 	// Images are tagged by content, so an edited spec builds a fresh one.

@@ -46,7 +46,7 @@ The backend is a set of [Wails services](https://v3.wails.io/features/bindings/s
 
 | Service (frontend name) | Go | Calls | Owns |
 | --- | --- | --- | --- |
-| `WorkspaceService` | `app.WorkspaceService` (`internal/app/workspaces.go`) | `ListWorkspaces`, `Activity`, `CreateWorkspace`, `DeleteWorkspace`, `Workspace`, `ApproveProposal`, `RejectProposal`, `SaveMission`, `WriteObjectiveNow` | building the plans' sandbox images ahead (`ServiceStartup`) |
+| `WorkspaceService` | `app.WorkspaceService` (`internal/app/workspaces.go`) | `ListWorkspaces`, `Activity`, `CreateWorkspace`, `DeleteWorkspace`, `Workspace`, `ApproveProposal`, `RejectProposal`, `SaveMission`, `WriteObjectiveNow` | building the plans' sandbox images ahead and removing unused ones (`ServiceStartup`) |
 | `TaskService` | `app.TaskService` (`internal/app/tasks.go`) | `Task`, `SaveWork`, `ResetWork`, `RunTests` | |
 | `LessonService` | `app.LessonService` (`internal/app/lessons.go`) | `Lesson`, `AnswerQuiz` | |
 | `ChatService` | `threads.ChatService` (`internal/agent/threads/chat.go`) | `Chat`, `SendMessage`, `AnswerQuestions`, `DismissQuestions`, `RequestHint`, `StopAgent` | ending the thread agents as the app quits (`ServiceShutdown`) |
@@ -255,7 +255,7 @@ Each tool is a `*mcpsdk.Tool` with its name and description, a handler method on
 
 ## Checks and the editor
 
-**Run** and **Submit** call `TaskService.RunTests`. It saves the learner's code, runs the visible tests (plus the hidden ones on submit) in the sandbox and records the attempt. The sandbox images are built ahead, in the background, so the first test run is fast: when the app starts (`WorkspaceService.ServiceStartup`, for every workspace's plan language) and when the learner approves a plan. Reading a workspace never starts a build, since the frontend repeats reads freely.
+**Run** and **Submit** call `TaskService.RunTests`. It saves the learner's code, runs the visible tests (plus the hidden ones on submit) in the sandbox and records the attempt. The sandbox images are built ahead, in the background, so the first test run is fast: when the app starts (`WorkspaceService.ServiceStartup`, for every unfinished workspace's plan language) and when the learner approves a plan. Reading a workspace never starts a build, since the frontend repeats reads freely. Once those startup builds finish, so old images' layers can still serve as their cache, the app removes the `tutortop-*` images that neither a built-in language nor the toolchain of an unfinished workspace uses (`Runner.RemoveUnusedImages`, `Store.ToolchainsInUse`): older builds of a changed Dockerfile, toolchains the tutor tried and dropped, and those of deleted and completed workspaces. A completed workspace's lessons need no sandbox; running a check there, or approving a plan with new objectives, builds its image again. If a workspace can't be read, it removes nothing.
 
 Each run starts a fresh container, so nothing one run leaves behind reaches the next. The one exception is a toolchain's `cache` folder, such as Go's build cache: a workspace's runs keep it in a volume of their own (`Job.Cache`), so a run only compiles what changed. The quality gate's runs get no cache volume and start clean, and deleting a workspace removes its volumes (`Runner.RemoveCache`).
 
@@ -263,7 +263,7 @@ The editor's completions and errors come from a language server running in the t
 
 ### Languages
 
-A toolchain says how one language's tests run in the sandbox and how their results are read (`sandbox.Toolchain`). Every toolchain is made from a spec (`sandbox.ToolchainSpec`), which validates it, appends the lines that make the image run as user 1000 in `/work`, and tags the image with a hash of its Dockerfile, so a changed Dockerfile builds a fresh image. The built-in specs ship in `internal/sandbox/builtins/<language>.yaml`. Any other language is set up by the tutor with `set_toolchain` and saved in the workspace as `.tutortop/toolchains/<language>.yaml` (`internal/workspace/toolchains.go`); its tests must write a JUnit report. A spec's last two fields (`report` and `cache`) are only for the built-ins: `set_toolchain`'s schema leaves them out.
+A toolchain says how one language's tests run in the sandbox and how their results are read (`sandbox.Toolchain`). Every toolchain is made from a spec (`sandbox.ToolchainSpec`), which validates it, appends the lines that make the image run as user 1000 in `/work` with no entrypoint of its own, and tags the image with a hash of its Dockerfile, so a changed Dockerfile builds a fresh image. The built-in specs ship in `internal/sandbox/builtins/<language>.yaml`. Any other language is set up by the tutor with `set_toolchain` and saved in the workspace as `.tutortop/toolchains/<language>.yaml` (`internal/workspace/toolchains.go`); its tests must write a JUnit report. A spec's last two fields (`report` and `cache`) are only for the built-ins: `set_toolchain`'s schema leaves them out. A spec may raise a check's memory (`memory_mb`) and time (`timeout_seconds`) up to the caps in `internal/sandbox/toolchain.go`, for tools that need more; `set_toolchain`'s description tells the tutor the defaults and the caps.
 
 To add a built-in language:
 

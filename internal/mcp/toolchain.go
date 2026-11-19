@@ -17,10 +17,14 @@ import (
 
 var setToolchainTool = &mcpsdk.Tool{
 	Name: "set_toolchain",
-	Description: "Set up a programming language the app doesn't ship (it ships " + text.List(sandbox.BuiltinLanguages()) + "), or change one you set up before, so the curriculum and tasks can use it. " +
+	Description: "Set up the sandbox for a language or tool the app doesn't ship (it ships " + text.List(sandbox.BuiltinLanguages()) + "), or change one you set up before, so the curriculum and tasks can use it. " +
+		"A built-in language with libraries its image lacks gets a toolchain of its own, under another id. " +
 		"The app builds the sandbox image (this can take several minutes) and runs the example's tests, which must all pass. Only then is the language saved. " +
 		"If something fails, fix the toolchain using the report and call set_toolchain again. A language server that doesn't answer isn't a failure: the language is saved without it. " +
-		"Changing a language affects its existing tasks, so keep the test command compatible.",
+		"Changing a language affects its existing tasks, so keep the test command compatible. " +
+		fmt.Sprintf("A check gets %d MB of memory and %d seconds for its tests. Raise memory_mb (up to %d) or timeout_seconds (up to %d) when the tools need it, and only as far as they need, because the learner waits for every check. "+
+			"A tool that crashes without a clear error has often run out of memory.",
+			sandbox.DefaultMemoryMB, int(sandbox.DefaultTimeout.Seconds()), sandbox.MaxMemoryMB, int(sandbox.MaxTimeout.Seconds())),
 }
 
 type setToolchainInput struct {
@@ -122,5 +126,8 @@ func (t *threadTools) checkToolchain(ctx context.Context, tc sandbox.Toolchain, 
 		}
 	}
 	fmt.Fprintf(&b, "\nOutput:\n%s", text.Tail(res.Output, 2000))
+	// Running out of memory often looks like a tool crashing for no reason,
+	// so remind the tutor of the limits it can raise.
+	fmt.Fprintf(&b, "\nThe run had %d MB of memory and %d seconds for the tests (memory_mb, timeout_seconds).", tc.MemoryMB, int(tc.Timeout.Seconds()))
 	return b.String(), nil
 }

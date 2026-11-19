@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -61,17 +62,8 @@ func TestPrepareSharesBuild(t *testing.T) {
 // quality gate's runs start clean, and deleting a workspace's cache leaves
 // other workspaces' volumes alone.
 func TestCacheVolumes(t *testing.T) {
-	dir := t.TempDir()
-	log := filepath.Join(dir, "calls")
-	engine := filepath.Join(dir, "engine")
 	mine, other := cacheVolumePrefix("ws-a")+"go", cacheVolumePrefix("ws-b")+"go"
-	script := "#!/bin/sh\necho \"$@\" >> " + log + "\n" +
-		"case \"$1 $2\" in \"volume ls\") printf '%s\\n' " + mine + " " + other + " ;; run*) cat >/dev/null ;; esac\n"
-	if err := os.WriteFile(engine, []byte(script), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	r := &Runner{Engine: Engine(engine), prepared: map[string]bool{}}
-	calls := func() string { b, _ := os.ReadFile(log); return string(b) }
+	r, calls := fakeEngine(t, []string{mine, other}, nil)
 	run := func(cache string) string {
 		before := calls()
 		if _, err := r.Run(t.Context(), Job{Toolchain: builtins["go"], Cache: cache}); err != nil {
@@ -92,4 +84,86 @@ func TestCacheVolumes(t *testing.T) {
 	if got := calls(); !strings.Contains(got, "volume rm -f "+mine+"\n") || strings.Contains(got, "rm -f "+other) {
 		t.Errorf("removing ws-a's cache, want only %s removed:\n%s", mine, got)
 	}
+}
+
+// A check's container gets the memory its toolchain allows.
+func TestRunMemory(t *testing.T) {
+	r, calls := fakeEngine(t, nil, nil)
+	raised := rSpec()
+	raised.MemoryMB = 2048
+	custom, err := raised.Toolchain()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cases := []struct {
+		tc   Toolchain
+		want string
+	}{
+		{builtins["go"], " --memory 512m "},
+		{custom, " --memory 2048m "},
+	}
+	for _, c := range cases {
+		before := calls()
+		if _, err := r.Run(t.Context(), Job{Toolchain: c.tc}); err != nil {
+			t.Fatal(err)
+		}
+		if got := strings.TrimPrefix(calls(), before); !strings.Contains(got, c.want) {
+			t.Errorf("%s's run, want%s:\n%s", c.tc.Name, c.want, got)
+		}
+	}
+}
+
+// Images of the toolchains in use stay, whichever engine listed them, and so
+// do images from a registry that only share the name; the rest go, including
+// older builds of a language still in use. A removed image is built again
+// when it's next needed.
+func TestRemoveUnusedImages(t *testing.T) {
+	goTC, r := builtins["go"], customToolchain(t)
+	runner, calls := fakeEngine(t, nil, []string{
+		goTC.Image,
+		"tutortop-go:000000000000",
+		"localhost/" + r.Image,
+		"docker.io/someone/tutortop-r:1",
+	})
+	if err := runner.Prepare(t.Context(), r); err != nil {
+		t.Fatal(err)
+	}
+	if err := runner.RemoveUnusedImages(t.Context(), []Toolchain{goTC}); err != nil {
+		t.Fatal(err)
+	}
+	var removed []string
+	for line := range strings.Lines(calls()) {
+		if image, ok := strings.CutPrefix(strings.TrimSpace(line), "image rm "); ok {
+			removed = append(removed, image)
+		}
+	}
+	if want := []string{"tutortop-go:000000000000", "localhost/" + r.Image}; !slices.Equal(removed, want) {
+		t.Errorf("removed %q, want %q", removed, want)
+	}
+	if err := runner.Prepare(t.Context(), r); err != nil {
+		t.Fatal(err)
+	}
+	if n := strings.Count(calls(), "image inspect "+r.Image+"\n"); n != 2 {
+		t.Errorf("looked up %s %d times, want 2: removing it should make the next Prepare build it again", r.Image, n)
+	}
+}
+
+// fakeEngine is a container engine that logs each call's arguments as a line,
+// lists the given volumes and images, and succeeds at everything else.
+func fakeEngine(t *testing.T, volumes, images []string) (r *Runner, calls func() string) {
+	t.Helper()
+	dir := t.TempDir()
+	log := filepath.Join(dir, "calls")
+	engine := filepath.Join(dir, "engine")
+	script := "#!/bin/sh\necho \"$@\" >> " + log + "\n" +
+		"case \"$1 $2\" in\n" +
+		"\"volume ls\") printf '%s\\n' " + strings.Join(volumes, " ") + " ;;\n" +
+		"\"image ls\") printf '%s\\n' " + strings.Join(images, " ") + " ;;\n" +
+		"run*) cat >/dev/null ;;\n" +
+		"esac\n"
+	if err := os.WriteFile(engine, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	r = &Runner{Engine: Engine(engine), prepared: map[string]bool{}}
+	return r, func() string { b, _ := os.ReadFile(log); return string(b) }
 }
