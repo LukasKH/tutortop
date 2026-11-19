@@ -35,6 +35,18 @@ repos:
         always_run: true
         stages: [pre-commit]
 
+      # The bindings are the contract between the Go app and the frontend.
+      # Regenerate them from the staged Go code; if that changes them, the
+      # commit fails and the new bindings are left to stage. mise.toml pins
+      # wails3 to the Wails version in go.mod.
+      - id: wails-bindings
+        name: Wails bindings up to date
+        entry: wails3 generate bindings -clean=true -ts -i
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-commit]
+
       - id: frontend-typecheck
         name: Frontend typecheck
         entry: npm --prefix frontend exec -- tsc --noEmit -p frontend

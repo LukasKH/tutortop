@@ -64,7 +64,7 @@ To add a service, for a new area that fits none of the others:
 3. `main.go`: `application.NewService(services.<Area>)` in the list.
 4. Regenerate the bindings, export the service from `lib/api.ts` under its frontend name as the others are, and add it to the table above.
 
-The bindings are generated, and committed. After changing an exported method or a type it returns, run `wails3 generate bindings -clean=true -ts -i` and commit the result. CI regenerates them and fails if they differ.
+The bindings are generated, and committed. After changing an exported method or a type it returns, run `wails3 generate bindings -clean=true -ts -i` and commit the result. The `wails-bindings` pre-commit hook regenerates them on every commit, locally and in CI, and fails if they changed: stage the new bindings and commit again.
 
 ### Events from Go
 

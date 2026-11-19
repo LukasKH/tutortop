@@ -38,6 +38,10 @@ jobs:
           node-version: 26
           cache: npm
           cache-dependency-path: frontend/package-lock.json
+      # The wails-bindings hook runs the wails3 on PATH, at the Wails version
+      # in go.mod. CGO_ENABLED=0 so the CLI builds without GTK.
+      - name: Install the Wails CLI
+        run: CGO_ENABLED=0 go install "github.com/wailsapp/wails/v3/cmd/wails3@$(go list -m -f '{{.Version}}' github.com/wailsapp/wails/v3)"
       # The hook runs the golangci-lint on PATH.
       - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
@@ -95,32 +99,12 @@ jobs:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           persist-credentials: false
-      # internal/app imports Wails, which links GTK and WebKitGTK on Linux.
-      - name: Install GTK and WebKitGTK
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends pkg-config libgtk-4-dev libwebkitgtk-6.0-dev
-      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
-        with:
-          go-version-file: go.mod
-          cache-dependency-path: go.sum
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: 26
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-      # The bindings are the contract between the Go app and the frontend.
-      # Regenerate them so tsc checks the frontend against the current Go
-      # code, not a stale copy. CGO_ENABLED=0 so the Wails CLI builds without GTK.
-      - name: Check the bindings are up to date
-        working-directory: .
-        run: |
-          CGO_ENABLED=0 go install "github.com/wailsapp/wails/v3/cmd/wails3@$(go list -m -f '{{.Version}}' github.com/wailsapp/wails/v3)"
-          wails3 generate bindings -clean=true -ts -i
-          if [ -n "$(git status --porcelain -- frontend/bindings)" ]; then
-            git status --short -- frontend/bindings
-            git diff -- frontend/bindings
-            echo "::error::frontend/bindings is out of date. Run 'wails3 generate bindings -clean=true -ts -i' and commit the result."
-            exit 1
-          fi
-      # Typecheck, lint, format and tests run in the pre-commit job.
+      # The bindings, typecheck, lint, format and tests are checked in the
+      # pre-commit job.
       - run: npm ci
       - run: npm run build
