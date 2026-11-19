@@ -7,6 +7,8 @@ import { editorOptions, monaco } from "@/lib/monaco";
 import { modelPath, type LanguageStatus } from "@/features/task/lsp";
 import { Results } from "@/features/task/results";
 import { useLanguageServer } from "@/features/task/use-language-server";
+import { useCopilot } from "@/features/task/use-copilot";
+import { useSettings } from "@/features/settings/use-settings";
 import { useTaskWork } from "@/features/task/use-task-work";
 import { useLiveWorkspace } from "@/features/workspace/use-workspace";
 import { Markdown } from "@/components/markdown";
@@ -36,6 +38,7 @@ export function TaskPanel({ taskId, passed, moduleTitle, next }: Props) {
   const [activeTest, setActiveTest] = useState("");
   const editorLanguage = detail?.editorLanguage || "plaintext";
   const lspStatus = useLanguageServer(wsId, taskId, editorLanguage, !!detail?.hasLanguageServer);
+  const copilotOn = useSettings()?.copilot ?? false;
 
   // Layout the learner can adjust; remembered across tasks and restarts.
   const [split, setSplit] = useStored("split", 0.45); // statement's share of the width
@@ -51,6 +54,7 @@ export function TaskPanel({ taskId, passed, moduleTitle, next }: Props) {
   // Keyboard: Ctrl/Cmd+Enter runs, with Shift it submits. The editor gets the
   // same keys as actions, since it swallows Ctrl+Enter itself.
   const [editor, setEditor] = useState<monaco.editor.IStandaloneCodeEditor | null>(null);
+  const copilotNotice = useCopilot(taskId, editorLanguage, copilotOn, editor);
   const onCheckKey = useEffectEvent((submit: boolean) => void check(submit));
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -149,6 +153,11 @@ export function TaskPanel({ taskId, passed, moduleTitle, next }: Props) {
         <section className="flex min-h-0 min-w-0 flex-1 flex-col" ref={workRef}>
           <FileTabs label="Your files" files={editable} active={fileShown} onSelect={setActiveFile}>
             <LspNote status={lspStatus} />
+            {copilotNotice && (
+              <FileNote className="max-w-64 truncate" title={copilotNotice}>
+                Copilot: {copilotNotice}
+              </FileNote>
+            )}
             <FileNote>{dirty ? "Saving…" : "Saved"}</FileNote>
           </FileTabs>
           <div className={EDITOR_HOST}>

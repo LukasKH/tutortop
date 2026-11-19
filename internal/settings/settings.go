@@ -28,6 +28,10 @@ type Prefs struct {
 	// WorkspacesFolder holds the workspaces; "" means workspace.DefaultRoot.
 	// The app reads it at startup.
 	WorkspacesFolder string `yaml:"workspaces_folder,omitempty" json:"workspacesFolder,omitempty"`
+	// Copilot shows GitHub Copilot's suggestions in the task editor, one line
+	// at a time (internal/copilot). Off by default: it sends the file being
+	// edited to GitHub.
+	Copilot bool `yaml:"copilot,omitempty" json:"copilot"`
 }
 
 // ModelChoice is an agent's model and reasoning effort. Empty fields use the

@@ -5,8 +5,10 @@ import { Events } from "@wailsio/runtime";
 import * as app from "@bindings/github.com/LukasKH/tutortop/internal/app";
 import * as threads from "@bindings/github.com/LukasKH/tutortop/internal/agent/threads";
 import * as settings from "@bindings/github.com/LukasKH/tutortop/internal/settings";
+import * as copilot from "@bindings/github.com/LukasKH/tutortop/internal/copilot";
 import type { WorkspaceSnapshot } from "@bindings/github.com/LukasKH/tutortop/internal/app";
 import type { Environment, Prefs, ProviderStatus } from "@bindings/github.com/LukasKH/tutortop/internal/settings";
+import type { Completion, DeviceCode, Setup, Suggestion } from "@bindings/github.com/LukasKH/tutortop/internal/copilot";
 import type { SandboxCheck } from "@bindings/github.com/LukasKH/tutortop/internal/events";
 import type { Model } from "@bindings/github.com/LukasKH/tutortop/internal/agent";
 import type {
@@ -35,7 +37,9 @@ export { Status } from "@bindings/github.com/LukasKH/tutortop/internal/sandbox";
 export type {
   Activity,
   ChatItem,
+  Completion,
   Curriculum,
+  DeviceCode,
   Environment,
   LessonDetail,
   LessonStatus,
@@ -49,7 +53,9 @@ export type {
   Result,
   Prefs,
   SandboxCheck,
+  Setup,
   Source,
+  Suggestion,
   Summary,
   TaskDetail,
   TaskStatus,
@@ -78,8 +84,8 @@ export const LessonService = { ...app.LessonService, Lesson: patiently(app.Lesso
 
 export const ChatService = { ...threads.ChatService, Chat: patiently(threads.ChatService.Chat) };
 
-// settings.Service and editor.Service are both named Service in Go, so they
-// take their package's name here.
+// settings.Service, editor.Service and copilot.Service are all named Service
+// in Go, so they take their package's name here.
 export const SettingsService = {
   ...settings.Service,
   Load: patiently(settings.Service.Load),
@@ -88,6 +94,8 @@ export const SettingsService = {
 };
 
 export { Service as EditorService } from "@bindings/github.com/LukasKH/tutortop/internal/editor";
+
+export const CopilotService = { ...copilot.Service, Setup: patiently(copilot.Service.Setup) };
 
 export function errorText(err: unknown): string {
   if (isOffline(err)) return "Can't reach Tutortop. Reload the page once it's running again.";

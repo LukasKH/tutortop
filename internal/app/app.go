@@ -2,7 +2,7 @@
 // lessons to the frontend. Each area of the frontend's API is a Wails
 // service: WorkspaceService, TaskService and LessonService here, the chats'
 // threads.ChatService, the Settings screen's settings.Service and the
-// editor's editor.Service.
+// editor's editor.Service and copilot.Service.
 package app
 
 import (
@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 
 	"github.com/LukasKH/tutortop/internal/agent/threads"
+	"github.com/LukasKH/tutortop/internal/copilot"
 	"github.com/LukasKH/tutortop/internal/editor"
 	"github.com/LukasKH/tutortop/internal/mcp"
 	"github.com/LukasKH/tutortop/internal/sandbox"
@@ -28,6 +29,7 @@ type Services struct {
 	Lessons    *LessonService
 	Chat       *threads.ChatService
 	Editor     *editor.Service
+	Copilot    *copilot.Service
 }
 
 // New builds the services on the user's workspaces and settings, with
@@ -60,5 +62,6 @@ func newServices(store *workspace.Store, settingsStore *settings.Store, runner *
 		Lessons:    newLessonService(store),
 		Chat:       threads.NewChatService(store, agents),
 		Editor:     editor.NewService(store, runner, servers),
+		Copilot:    copilot.NewService(filepath.Join(xdg.DataHome, "tutortop", "copilot")),
 	}
 }

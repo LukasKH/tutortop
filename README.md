@@ -2,7 +2,7 @@
 
 A desktop app for learning anything you can check with a program. You write your own curriculum with an AI tutor, solve tasks in a built-in editor, and a sandboxed test runner decides whether you passed. The AI never grades you.
 
-Tutortop runs on the coding agent you already have: your own signed-in **Claude Code** or **Codex** CLI. No API keys, and nothing is sent anywhere except through that CLI.
+Tutortop runs on the coding agent you already have: your own signed-in **Claude Code** or **Codex** CLI. No API keys, and nothing is sent anywhere except through that CLI, unless you turn on GitHub Copilot suggestions in Settings, which send the file you're editing to GitHub.
 
 ## How it works
 
