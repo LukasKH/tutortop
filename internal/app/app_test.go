@@ -17,6 +17,7 @@ import (
 // and the shared pieces tests look into.
 type testApp struct {
 	*Services
+
 	store  *workspace.Store
 	runner *sandbox.Runner
 	agents *threads.Agents

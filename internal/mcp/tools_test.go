@@ -105,7 +105,7 @@ func TestSetToolchainEnablesALanguage(t *testing.T) {
 	if out, isErr := setup(broken, reference); isErr {
 		t.Fatalf("set_toolchain with a broken language server: %s", out)
 	}
-	if specs := w.ToolchainSpecs(); len(specs) != 1 || specs[0].LanguageServer != nil {
+	if specs := w.ToolchainSpecs(); len(specs) != 1 || len(specs[0].LanguageServer) != 0 {
 		t.Fatalf("saved = %+v", specs)
 	}
 }

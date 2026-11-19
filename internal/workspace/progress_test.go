@@ -190,11 +190,11 @@ func TestSummarizeStreaks(t *testing.T) {
 		cs                  []workspace.Completion
 		today, streak, best int
 	}{
-		{"today only", []workspace.Completion{on(3, 10, "task"), on(3, 10, "lesson")}, 2, 1, 1},
+		{name: "today only", cs: []workspace.Completion{on(3, 10, "task"), on(3, 10, "lesson")}, today: 2, streak: 1, best: 1},
 		// Nothing yet today keeps yesterday's streak alive until midnight.
-		{"up to yesterday", []workspace.Completion{on(3, 8, "task"), on(3, 9, "task")}, 0, 2, 2},
-		{"broken two days ago", []workspace.Completion{on(3, 7, "task"), on(3, 8, "task")}, 0, 0, 2},
-		{"best is an older run", []workspace.Completion{on(2, 27, "task"), on(2, 28, "task"), on(3, 1, "task"), on(3, 10, "task")}, 1, 1, 3},
+		{name: "up to yesterday", cs: []workspace.Completion{on(3, 8, "task"), on(3, 9, "task")}, today: 0, streak: 2, best: 2},
+		{name: "broken two days ago", cs: []workspace.Completion{on(3, 7, "task"), on(3, 8, "task")}, today: 0, streak: 0, best: 2},
+		{name: "best is an older run", cs: []workspace.Completion{on(2, 27, "task"), on(2, 28, "task"), on(3, 1, "task"), on(3, 10, "task")}, today: 1, streak: 1, best: 3},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

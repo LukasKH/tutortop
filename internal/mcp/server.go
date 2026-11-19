@@ -10,6 +10,7 @@ package mcp
 import (
 	"crypto/rand"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/http"
 	"strings"
@@ -62,7 +63,10 @@ func Start(runner *sandbox.Runner, links *LinkChecker) (*Server, error) {
 		defer s.mu.Unlock()
 		return s.servers[token] // nil -> 400
 	}, nil)
-	go http.Serve(ln, handler)
+	go func() {
+		// Serve returns only if the listener fails. The agents then lose their tools.
+		slog.Error("MCP server stopped", "err", http.Serve(ln, handler))
+	}()
 	return s, nil
 }
 

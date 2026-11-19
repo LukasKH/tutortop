@@ -3,14 +3,25 @@ default_install_hook_types: [pre-commit, commit-msg]
 repos:
   - repo: local
     hooks:
-      # go vet's analyzers, Staticcheck, exhaustive, gocognit, nestif and
-      # gofmt/goimports, configured in .golangci.yml.
+      # go vet's analyzers, Staticcheck, errcheck, exhaustive, gocognit, nestif,
+      # revive, embeddedstructfieldcheck and gofmt/goimports, configured in
+      # .golangci.yml.
       - id: golangci-lint
         name: Go vet and lint
         entry: golangci-lint run ./internal/...
         language: system
         pass_filenames: false
         always_run: true
+        stages: [pre-commit]
+
+      # STYLEGUIDE.md, "Struct literals": &T{...}, not new(T). A regex can't
+      # see types, so this flags new() of any named type, and lets through
+      # built-in types and single-letter type parameters such as *new(T).
+      - id: no-new-struct
+        name: Build structs with &T{} not new(T)
+        entry: '(?<![\w.])new\((?!(?:any|bool|byte|complex64|complex128|error|float32|float64|int|int8|int16|int32|int64|rune|string|uint|uint8|uint16|uint32|uint64|uintptr|[A-Z])\))[\w.]+\)'
+        language: pygrep
+        types: [go]
         stages: [pre-commit]
 
       # The sandbox tests need Docker or Podman, and fail without one.

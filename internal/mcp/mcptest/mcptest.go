@@ -62,6 +62,6 @@ func Session(t testing.TB, url string) *mcpsdk.ClientSession {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { cs.Close() })
+	t.Cleanup(func() { _ = cs.Close() })
 	return cs
 }

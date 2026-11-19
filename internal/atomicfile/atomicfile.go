@@ -17,9 +17,9 @@ func Write(p string, data []byte) error {
 	if err != nil {
 		return err
 	}
-	defer os.Remove(f.Name()) // no-op after a successful rename
+	defer func() { _ = os.Remove(f.Name()) }() // fails after a successful rename, as it should
 	if _, err := f.Write(data); err != nil {
-		f.Close()
+		_ = f.Close() // the write error is the one to report
 		return err
 	}
 	if err := f.Close(); err != nil {

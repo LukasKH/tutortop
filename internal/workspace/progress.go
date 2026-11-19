@@ -4,6 +4,7 @@ package workspace
 // deepest hint they've asked for (0 for none).
 type TaskStatus struct {
 	TaskInfo
+
 	Passed    bool `json:"passed"`
 	HintLevel int  `json:"hintLevel"`
 }
@@ -116,7 +117,7 @@ func progress(cur *Curriculum, tasks []TaskInfo, passedTask map[string]bool) Pro
 	for _, m := range cur.Modules {
 		for _, o := range m.Objectives {
 			op := ObjectiveProgress{ID: o.ID, Status: ObjectivePlanned, Tasks: byObjective[o.ID]}
-			if op.Tasks == nil {
+			if len(op.Tasks) == 0 {
 				op.Tasks = []string{} // [] in JSON, not null
 			}
 			switch {

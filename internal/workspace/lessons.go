@@ -62,6 +62,7 @@ type LessonInfo struct {
 // LessonStatus is a lesson plus how far the learner got with its quiz.
 type LessonStatus struct {
 	LessonInfo
+
 	Answered int `json:"answered"`
 	Correct  int `json:"correct"`
 }
@@ -73,6 +74,7 @@ func (s LessonStatus) Done() bool { return s.Answered >= s.Questions }
 // not yet answered stay hidden.
 type LessonDetail struct {
 	LessonStatus
+
 	Summary       string             `json:"summary"`
 	Body          string             `json:"body"`
 	PrimarySource Source             `json:"primarySource"`

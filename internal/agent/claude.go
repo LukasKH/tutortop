@@ -24,6 +24,7 @@ import (
 // Authentication is whatever the learner's Claude Code is signed in with.
 type claudeSession struct {
 	*process
+
 	id      string
 	policy  policy
 	mcpName string
@@ -324,6 +325,8 @@ func (s *claudeSession) canUseTool(name string, input json.RawMessage) error {
 }
 
 type claudeLine struct {
+	claudeResult
+
 	Type  string          `json:"type"`
 	Event json.RawMessage `json:"event"`
 	// ParentToolUseID is set on a subagent's messages: the Agent call that
@@ -339,7 +342,6 @@ type claudeLine struct {
 		Name   string          `json:"name"`
 		Status claudeMCPStatus `json:"status"`
 	} `json:"mcp_servers"`
-	claudeResult
 }
 
 type claudeBlock struct {

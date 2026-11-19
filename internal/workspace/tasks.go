@@ -92,6 +92,7 @@ type TaskInfo struct {
 // TaskDetail is everything the task screen needs.
 type TaskDetail struct {
 	TaskInfo
+
 	Statement   string        `json:"statement"`
 	Tests       sandbox.Files `json:"tests"`
 	Work        sandbox.Files `json:"work"`

@@ -4,15 +4,55 @@ How we write code in Tutortop. Reviews check changes against this guide. Rules m
 
 ## Defaults first
 
-Follow each library's documented structure and idioms: Wails v3 services and bindings, React and the Vite template, shadcn/ui, the Go standard library. If you need to deviate, explain why in a comment.
+Follow each library's documented structure and idioms. If you need to deviate, explain why in a comment.
 
 Prefer the standard library or a maintained library over hand-rolled code.
 
-## File layout
+## Function Grouping and Ordering
 
-Put what a file offers first: its exported types and functions, the main one at the top. Put helpers below the code that uses them.
+- Functions should be sorted in rough call order.
+- Functions in a file should be grouped by receiver.
 
-In Go, keep a type's constructor and methods next to the type. In TypeScript, keep a module-level value above its first use at load time.
+Therefore, exported functions should appear first in a file, after
+`struct`, `const`, `var` definitions.
+
+A `newXYZ()`/`NewXYZ()` may appear after the type is defined, but before the
+rest of the methods on the receiver.
+
+Since functions are grouped by receiver, plain utility functions should appear
+towards the end of the file.
+
+```go
+// Good:
+type something struct{ ... }
+
+func newSomething() *something {
+	return &something{}
+}
+
+func (s *something) Cost() int {
+	return calcCost(s.weights)
+}
+
+func (s *something) Stop() {...}
+
+func calcCost(n []int) int {...}
+
+// Bad:
+func (s *something) Cost() int {
+	return calcCost(s.weights)
+}
+
+type something struct{ ... }
+
+func calcCost(n []int) int {...}
+
+func (s *something) Stop() {...}
+
+func newSomething() *something {
+	return &something{}
+}
+```
 
 ## Go
 
@@ -80,6 +120,32 @@ order, ok := store.Order(id)
 order, ok := app.orders[orderKey{customerID, id}]
 ```
 
+### Arguments
+
+Don't pass a bare `true` or `false` when the call doesn't show what it means. Give each case its own function or method, or give the parameter a named type with constants. A `/* name */` comment next to the value doesn't count: nothing checks it.
+
+```go
+// Good:
+func (r *Report) pass(name, detail string) {
+	r.Steps = append(r.Steps, Step{Name: name, OK: true, Detail: detail})
+}
+
+func (r *Report) fail(name, detail string) {
+	r.Steps = append(r.Steps, Step{Name: name, OK: false, Detail: detail})
+}
+
+rep.fail("has tests", "Add at least one test file.")
+rep.pass("reference passes", "")
+
+// Bad:
+add := func(name string, ok bool, detail string) { rep.Steps = append(rep.Steps, Step{name, ok, detail}) }
+
+add("has tests", false, "Add at least one test file.")
+add("reference passes", true, "")
+```
+
+A bool that already has a name at the call site is fine: `run(job, submit)`, `engineHint(out, errors.Is(err, exec.ErrNotFound))`.
+
 ### Return values
 
 Return values instead of filling a pointer. A generic function puts the result and its type on one line.
@@ -94,6 +160,93 @@ err := json.Unmarshal(b, &cfg)
 ```
 
 Use a pointer when performance calls for it, such as reusing one value while decoding many items in a loop. Reset it on each pass: `Unmarshal` keeps fields the input doesn't set.
+
+A nil slice is a valid empty slice. Start from `var s []T` and append, return `nil` for no results, and check `len(s) == 0`, not `s == nil`.
+
+```go
+// Good:
+func activeNames(users []User) []string {
+	var names []string
+	for _, u := range users {
+		if u.Active {
+			names = append(names, u.Name)
+		}
+	}
+	return names
+}
+
+if len(names) == 0 {
+	return errNoActiveUsers
+}
+
+// Bad:
+func activeNames(users []User) []string {
+	names := []string{}
+	for _, u := range users {
+		if u.Active {
+			names = append(names, u.Name)
+		}
+	}
+	return names
+}
+
+if names == nil {
+	return errNoActiveUsers
+}
+```
+
+Exception: return `[]T{}` when the frontend receives the slice as JSON. A nil slice encodes as `null`, and the frontend expects `[]`.
+
+```go
+// Good:
+func (s *OrderService) Orders() ([]Order, error) {
+	entries, err := os.ReadDir(s.dir)
+	if errors.Is(err, os.ErrNotExist) {
+		return []Order{}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	out := []Order{}
+	for _, e := range entries {
+		out = append(out, orderFrom(e))
+	}
+	return out, nil
+}
+
+// Bad: no orders reach the frontend as null.
+func (s *OrderService) Orders() ([]Order, error) {
+	entries, err := os.ReadDir(s.dir)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var out []Order
+	for _, e := range entries {
+		out = append(out, orderFrom(e))
+	}
+	return out, nil
+}
+```
+
+### Errors
+
+Handle every error a call returns **(lint: errcheck)**. When nothing can be done with one, assign it to `_` and say why in a comment. Return the error from `Close` on a file you wrote to: a failed write can show up only there.
+
+```go
+// Good:
+_, err = f.Write(b)
+return errors.Join(err, f.Close())
+
+defer func() { _ = f.Close() }() // read only: nothing to lose
+
+// Bad:
+defer f.Close()
+_, err = f.Write(b)
+return err
+```
 
 ### Struct literals
 
@@ -110,6 +263,62 @@ return &Cache{
 // Bad:
 return &Cache{items: map[string]Item{}, ttl: time.Minute,
 	seq: uint64(time.Now().UnixMicro())}
+```
+
+Name the fields in a struct literal. Leave the names out only for a type with two or three fields whose order is obvious, such as a map key or a table row. Leave out fields set to their zero value unless the zero means something, such as an index of 0 or a test case's expected result.
+
+```go
+// Good:
+key := threadKey{wsID, name}
+streak := Streak{Today: 0, Current: 2, Best: 5}
+
+// Bad:
+streak := Streak{0, 2, 5}
+user := User{Name: "Ada", Admin: false, Nickname: ""}
+```
+
+Declare an empty struct with `var`, and a pointer to a new struct with `&T{...}`, not `new(T)` **(lint: pre-commit no-new-struct)**. `var x T` and `x := T{}` compile to the same thing; `var` tells the reader the value starts empty and gets filled in later.
+
+```go
+// Good:
+var rep Report
+cache := &Cache{ttl: time.Minute}
+
+// Bad:
+rep := Report{}
+cache := new(Cache)
+cache.ttl = time.Minute
+```
+
+### Embedding in structs
+
+Put embedded fields at the top of a struct, then a blank line before the regular fields **(lint: embeddedstructfieldcheck)**. An embedded type adds its fields and methods to the outer type, so a reader should see it first.
+
+Embed a type only when the outer type should offer every exported method and field of the inner one. Otherwise, use a named field and write the methods the outer type needs. Don't embed a mutex: callers could lock your type from outside **(lint: embeddedstructfieldcheck)**. Embedding a pointer makes the promoted methods panic on a zero value, so embed one only when a constructor always sets it.
+
+```go
+// Good:
+type TaskStatus struct {
+	TaskInfo // its fields sit at the top level of the JSON
+
+	Passed bool `json:"passed"`
+}
+
+type Cache struct {
+	mu    sync.Mutex
+	items map[string]Item
+}
+
+// Bad:
+type TaskStatus struct {
+	Passed bool `json:"passed"`
+	TaskInfo
+}
+
+type Cache struct {
+	sync.Mutex // callers can call cache.Lock()
+	items map[string]Item
+}
 ```
 
 ### Control flow
@@ -143,7 +352,7 @@ if o.Status == "pending" {
 }
 ```
 
-Handle the error or the special case first and return, so the main path stays at the left margin.
+Handle the error or the special case first and return, so the main path stays at the left margin **(lint: revive)**. The lint catches an `if`/`else` where one branch ends in `return`, `continue` or `break`; review catches the rest.
 
 ```go
 // Good:
@@ -163,6 +372,24 @@ if o.Coupon != "" {
 }
 return nil
 ```
+## Unnecessary Else
+When both branches of an `if` set the same variable, set the default first and drop the `else`. Keep the `else` when the default calls a function, since hoisting it would run the call every time.
+
+```go
+// Good:
+discount := 0
+if o.Coupon != "" {
+	discount = 10
+}
+
+// Bad:
+var discount int
+if o.Coupon != "" {
+	discount = 10
+} else {
+	discount = 0
+}
+```
 
 Split a function that branches a lot into one function per part, each named for what it does **(lint: gocognit, nestif)**. A validator for nested data, for example, gets one `validate` method per type, each called by its parent's.
 
@@ -180,9 +407,9 @@ Keep comments short. Explain why, not what.
 
 ## Tests
 
-Test behaviour that can break: translating a CLI's protocol, permission and path guards, files on disk and their old formats, parsing outside formats, races, and the logic a bug fix changed. Each test is a contract: break the behaviour and the test fails.
+Test behaviour that can break. Each test is a contract: break the behaviour and the test fails.
 
-Leave out what the compiler or CI already checks (an interface assertion, a registration the generated bindings cover), trivial logic, wording, smoke runs, asserts that a fake was called the way the code calls it, and one validator case per `if`.
+Leave out what the compiler or CI already checks (an interface assertion, a registration the generated bindings cover).
 
 Test through a module's interface, the way its callers use it.
 

@@ -290,10 +290,10 @@ func TestClaudePermissions(t *testing.T) {
 		input any
 		allow bool
 	}{
-		{"search outside", "Grep", map[string]any{"pattern": "x", "path": outside}, false},
-		{"web search", "WebSearch", map[string]any{"query": "goroutines"}, true},
+		{name: "search outside", tool: "Grep", input: map[string]any{"pattern": "x", "path": outside}, allow: false},
+		{name: "web search", tool: "WebSearch", input: map[string]any{"query": "goroutines"}, allow: true},
 		// A field of an unexpected type mustn't hide the path from the check.
-		{"odd field beside an outside path", "Read", map[string]any{"file_path": outside, "pattern": 1.0}, false},
+		{name: "odd field beside an outside path", tool: "Read", input: map[string]any{"file_path": outside, "pattern": 1.0}, allow: false},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			if got := allowed(t, c.tool, c.input); got != c.allow {

@@ -6,10 +6,15 @@ linters:
     - govet
     - staticcheck
     - unused
-    # STYLEGUIDE.md, "Types and control flow".
+    # STYLEGUIDE.md, "Errors".
+    - errcheck
+    # STYLEGUIDE.md, "Control flow".
     - exhaustive
     - gocognit
     - nestif
+    - revive
+    # STYLEGUIDE.md, "Embedding in structs".
+    - embeddedstructfieldcheck
 
   # gocognit (min-complexity 30) and nestif (min-complexity 5) keep their
   # defaults.
@@ -20,6 +25,15 @@ linters:
       # about it would go unflagged. List every case; a default: may still
       # handle values outside the constants.
       default-signifies-exhaustive: false
+    embeddedstructfieldcheck:
+      forbid-mutex: true
+    revive:
+      # Only the rules that turn an if/else ending in return into a guard
+      # clause. revive's default rule set is broader than the style guide.
+      rules:
+        - name: early-return
+        - name: indent-error-flow
+        - name: superfluous-else
 
 formatters:
   enable:

@@ -229,10 +229,25 @@ func TestCodexPermissions(t *testing.T) {
 		params       map[string]any
 		want         string // in the result
 	}{
-		{"file change Codex never described", "item/fileChange/requestApproval", with(map[string]any{"itemId": "fc_unknown"}), `"decline"`},
+		{
+			name:   "file change Codex never described",
+			method: "item/fileChange/requestApproval",
+			params: with(map[string]any{"itemId": "fc_unknown"}),
+			want:   `"decline"`,
+		},
 		// What older app-servers send.
-		{"v1 patch inside", "applyPatchApproval", map[string]any{"conversationId": "thr_1", "callId": "c", "fileChanges": map[string]any{filepath.Join(opts.Cwd, "NOTES.md"): map[string]any{}}}, `"approved"`},
-		{"v1 patch touching tasks", "applyPatchApproval", map[string]any{"conversationId": "thr_1", "callId": "c", "fileChanges": map[string]any{filepath.Join(opts.Cwd, "NOTES.md"): map[string]any{}, tasks: map[string]any{}}}, `"denied"`},
+		{
+			name:   "v1 patch inside",
+			method: "applyPatchApproval",
+			params: map[string]any{"conversationId": "thr_1", "callId": "c", "fileChanges": map[string]any{filepath.Join(opts.Cwd, "NOTES.md"): map[string]any{}}},
+			want:   `"approved"`,
+		},
+		{
+			name:   "v1 patch touching tasks",
+			method: "applyPatchApproval",
+			params: map[string]any{"conversationId": "thr_1", "callId": "c", "fileChanges": map[string]any{filepath.Join(opts.Cwd, "NOTES.md"): map[string]any{}, tasks: map[string]any{}}},
+			want:   `"denied"`,
+		},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			b, _ := json.Marshal(ask(t, c.method, c.params)["result"])
@@ -303,7 +318,8 @@ func startFakeCodex(t *testing.T, opts Options) (Session, *fakeCLI, *eventLog, m
 func beginCodex(t *testing.T, opts Options) (cli *fakeCLI, started <-chan error, sess *Session, log *eventLog) {
 	t.Helper()
 	clis := fakeBinary(t, "codex")
-	log, sess = &eventLog{}, new(Session)
+	var s Session
+	log, sess = &eventLog{}, &s
 	started = async(func() (err error) {
 		*sess, err = startCodex(t.Context(), opts, log.add)
 		if err == nil {

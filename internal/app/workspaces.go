@@ -256,6 +256,7 @@ func (s *WorkspaceService) WriteObjectiveNow(wsID, objectiveID string) error {
 // when the app starts (ServiceStartup).
 func (s *WorkspaceService) prepareImage(w *workspace.Workspace, language string) {
 	if tc, err := w.Toolchain(language); err == nil {
-		go s.runner.Prepare(context.Background(), tc)
+		// A failed warm-up shows at the first run, which prepares the image again.
+		go func() { _ = s.runner.Prepare(context.Background(), tc) }()
 	}
 }

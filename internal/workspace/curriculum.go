@@ -95,10 +95,9 @@ func (w *Workspace) ApproveProposal() (*Curriculum, error) {
 	if err != nil || p == nil {
 		return nil, errors.Join(err, errors.New("no proposal to approve"))
 	}
+	p.Revision = 1
 	if cur, _ := w.Curriculum(); cur != nil {
 		p.Revision = cur.Revision + 1
-	} else {
-		p.Revision = 1
 	}
 	if err := writeYAML(w.path("curriculum.yaml"), p); err != nil {
 		return nil, err

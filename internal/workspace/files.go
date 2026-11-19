@@ -88,12 +88,11 @@ func appendJSONL(p string, v any) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
 	if endsMidLine(f) {
 		b = append([]byte{'\n'}, b...)
 	}
 	_, err = f.Write(append(b, '\n'))
-	return err
+	return errors.Join(err, f.Close()) // Close can report a failed write
 }
 
 // endsMidLine reports whether f's last byte isn't a newline.
@@ -115,7 +114,7 @@ func readJSONL[T any](p string) ([]T, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }() // read only: nothing to lose
 	out := []T{}
 	sc := bufio.NewScanner(f)
 	sc.Buffer(make([]byte, 1024*1024), 16*1024*1024)

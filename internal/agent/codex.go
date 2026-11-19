@@ -23,6 +23,7 @@ import (
 // installed `codex` with its existing login.
 type codexSession struct {
 	*process
+
 	rpc      *rpcConn
 	policy   policy
 	threadID string
@@ -364,7 +365,7 @@ func codexModels(ctx context.Context) ([]Model, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer proc.Close()
+	defer func() { _ = proc.Close() }() // the models are all we need from it
 
 	var out []Model
 	cursor := ""
