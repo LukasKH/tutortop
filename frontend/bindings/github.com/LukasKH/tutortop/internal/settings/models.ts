@@ -42,8 +42,7 @@ export interface Prefs {
 
     /**
      * Models holds the model and reasoning effort chosen for each agent, so
-     * switching agents and back keeps both choices. Files saved before it
-     * was renamed have it under "tutor" (load).
+     * switching agents and back keeps both choices.
      */
     "models": { [_ in string]?: ModelChoice } | null;
 
