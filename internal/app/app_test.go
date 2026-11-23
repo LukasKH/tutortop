@@ -70,7 +70,7 @@ func newTestAppWith(t testing.TB, dirs appDirs, cli threads.CLI) *testApp {
 	}
 	agents := threads.NewAgents(settingsStore, tools, cli)
 	a := &testApp{
-		Services: newServices(store, settingsStore, runner, agents),
+		Services: newServices(store, settingsStore, runner, agents, nil),
 		store:    store,
 		runner:   runner,
 		agents:   agents,

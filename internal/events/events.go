@@ -4,8 +4,9 @@
 package events
 
 import (
+	"sync/atomic"
+
 	"github.com/LukasKH/tutortop/internal/workspace"
-	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
 // Name is the name of an event. Its type says what data the event carries,
@@ -24,25 +25,24 @@ const (
 	CurriculumProposed Name[Workspace] = "curriculum:proposed"
 )
 
-// Each event is registered with its data type, so the generated bindings type
-// it in TypeScript and Wails rejects an emit with the wrong type.
-func init() {
-	application.RegisterEvent[Chat](string(ChatMessage))
-	application.RegisterEvent[Busy](string(ThreadBusy))
-	application.RegisterEvent[Check](string(CheckStatus))
-	application.RegisterEvent[Task](string(TaskPublished))
-	application.RegisterEvent[Lesson](string(LessonPublished))
-	application.RegisterEvent[Questions](string(QuestionsAsked))
-	application.RegisterEvent[LSP](string(LSPMessage))
-	application.RegisterEvent[Workspace](string(WorkspaceChanged))
-	application.RegisterEvent[Workspace](string(CurriculumProposed))
+// emitter is wired by main.go to Wails' event bus. Tests leave it unset.
+var emitter atomic.Pointer[func(name string, data any)]
+
+// SetEmitter sets where Emit sends events. main.go points it at Wails;
+// tests leave it unset and Emit does nothing.
+func SetEmitter(emit func(name string, data any)) {
+	if emit == nil {
+		emitter.Store(nil)
+		return
+	}
+	emitter.Store(&emit)
 }
 
 // Emit sends an event to the frontend. Tests run without a Wails app, and
 // there it does nothing.
 func Emit[Data any](name Name[Data], data Data) {
-	if wails := application.Get(); wails != nil {
-		wails.Event.Emit(string(name), data)
+	if emit := emitter.Load(); emit != nil {
+		(*emit)(string(name), data)
 	}
 }
 

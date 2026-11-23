@@ -86,6 +86,7 @@ Each way out of the app has one package **(lint: depguard)**:
 - Agents run through their installed CLI (`internal/agent`), never a model's API or SDK.
 - HTTP lives in `internal/mcp`, the agents' tools, and `internal/copilot`, which downloads GitHub's Copilot language server. The frontend reaches Go through Wails services, not HTTP.
 - Processes start only in `internal/agent` (agent CLIs), `internal/sandbox` (the container engine), `internal/shellpath`, `internal/settings` (finding CLIs), `internal/workspace` (git) and `internal/copilot` (Copilot's language server, which must reach GitHub). Learner and tutor code runs in the sandbox.
+- Wails stays in `main.go`, never under `internal/`: Wails links GTK and WebKitGTK on Linux under CGO, so keeping it out of `internal/` lets CI lint and run `go test -race ./internal/...` without them.
 
 To add a way out, change the rule in `.golangci.yml` in the same commit and say why.
 
@@ -113,7 +114,7 @@ A function is fine when the caller hands it in to be called back: a handler (`on
 
 Use a concrete type. Define an interface only when a test needs a fake or to break an import cycle, and define it in the package that uses it.
 
-When a library looks for an interface at runtime, such as Wails' `ServiceShutdown`, assert it so a wrong signature fails to compile:
+When a library looks for an interface at runtime, such as Wails' `ServiceShutdown`, assert it in `main.go` so a wrong signature fails to compile without pulling Wails into `internal/`:
 
 ```go
 var _ application.ServiceShutdown = (*OrderService)(nil)

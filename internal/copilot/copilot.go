@@ -17,13 +17,19 @@ import (
 
 	"github.com/LukasKH/tutortop/internal/decode"
 	"github.com/sourcegraph/jsonrpc2"
-	"github.com/wailsapp/wails/v3/pkg/application"
 )
+
+// Browser opens URLs in the user's web browser, for GitHub's sign-in page.
+// A nil Browser skips opening them, as in tests.
+type Browser interface {
+	OpenURL(url string) error
+}
 
 // Service installs Copilot's language server, signs in to GitHub and asks it
 // for suggestions. One server runs for the whole app, started on first use.
 type Service struct {
-	dir string // where Install puts the language server
+	dir     string  // where Install puts the language server
+	browser Browser // opens GitHub's sign-in page; nil in tests
 
 	mu         sync.Mutex
 	server     *server
@@ -31,11 +37,9 @@ type Service struct {
 	installing bool
 }
 
-var _ application.ServiceShutdown = (*Service)(nil)
-
 // NewService keeps the language server in dir, which needn't exist yet.
-func NewService(dir string) *Service {
-	return &Service{dir: dir}
+func NewService(dir string, browser Browser) *Service {
+	return &Service{dir: dir, browser: browser}
 }
 
 // ServiceShutdown is called by Wails on exit and stops the language server.
@@ -248,7 +252,7 @@ func (s *Service) running() (*server, error) {
 	if installedVersion(s.dir) == "" {
 		return nil, errors.New("copilot isn't installed")
 	}
-	srv, err := start(binaryPath(s.dir))
+	srv, err := start(binaryPath(s.dir), s.browser)
 	if err != nil {
 		return nil, fmt.Errorf("starting Copilot: %w", err)
 	}

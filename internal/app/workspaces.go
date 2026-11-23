@@ -14,7 +14,6 @@ import (
 	"github.com/LukasKH/tutortop/internal/sandbox"
 	"github.com/LukasKH/tutortop/internal/settings"
 	"github.com/LukasKH/tutortop/internal/workspace"
-	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
 // WorkspaceService serves the workspaces: the list on Home, creating and
@@ -29,41 +28,8 @@ type WorkspaceService struct {
 	servers  *editor.Servers
 }
 
-var _ application.ServiceStartup = (*WorkspaceService)(nil)
-
 func newWorkspaceService(store *workspace.Store, settingsStore *settings.Store, runner *sandbox.Runner, agents *threads.Agents, writers *threads.Writers, servers *editor.Servers) *WorkspaceService {
 	return &WorkspaceService{store: store, settings: settingsStore, runner: runner, agents: agents, writers: writers, servers: servers}
-}
-
-// ServiceStartup is called by Wails as the app starts. In the background, it
-// builds the sandbox images of the unfinished workspaces' plans, so the first
-// check in each is fast, then removes the images no unfinished workspace
-// uses. A completed course needs none: its lessons need no sandbox, and a
-// check run there or a new plan builds the image again. Reading a workspace
-// has no such side effect.
-func (s *WorkspaceService) ServiceStartup(context.Context, application.ServiceOptions) error {
-	go func() {
-		var builds sync.WaitGroup
-		list, _ := s.store.List()
-		for _, sum := range list {
-			w, err := s.store.Open(sum.ID)
-			if err != nil || w.Progress().Complete() {
-				continue
-			}
-			c, _ := w.Curriculum()
-			if c == nil {
-				continue
-			}
-			if tc, err := w.Toolchain(c.Language); err == nil {
-				// A failed warm-up shows at the first run, which prepares the image again.
-				builds.Go(func() { _ = s.runner.Prepare(context.Background(), tc) })
-			}
-		}
-		// After the builds, so the old images' layers can serve them as cache.
-		builds.Wait()
-		s.removeUnusedImages()
-	}()
-	return nil
 }
 
 func (s *WorkspaceService) ListWorkspaces() ([]workspace.Summary, error) { return s.store.List() }
@@ -264,9 +230,38 @@ func (s *WorkspaceService) removeCache(id string) {
 	_ = s.runner.RemoveCache(ctx, id)
 }
 
+// warmUp builds the sandbox images of the unfinished workspaces' plans in the
+// background, so the first check in each is fast, then removes the images no
+// unfinished workspace uses. A completed course needs none: its lessons need
+// no sandbox, and a check run there or a new plan builds the image again.
+// Reading a workspace has no such side effect.
+func (s *WorkspaceService) warmUp() {
+	go func() {
+		var builds sync.WaitGroup
+		list, _ := s.store.List()
+		for _, sum := range list {
+			w, err := s.store.Open(sum.ID)
+			if err != nil || w.Progress().Complete() {
+				continue
+			}
+			c, _ := w.Curriculum()
+			if c == nil {
+				continue
+			}
+			if tc, err := w.Toolchain(c.Language); err == nil {
+				// A failed warm-up shows at the first run, which prepares the image again.
+				builds.Go(func() { _ = s.runner.Prepare(context.Background(), tc) })
+			}
+		}
+		// After the builds, so the old images' layers can serve them as cache.
+		builds.Wait()
+		s.removeUnusedImages()
+	}()
+}
+
 // prepareImage builds a language's sandbox image in the background, so the
-// first test run is fast. Plans prepare theirs when approved; ServiceStartup
-// prepares the unfinished workspaces'.
+// first test run is fast. Plans prepare theirs when approved; warmUp prepares
+// the unfinished workspaces'.
 func (s *WorkspaceService) prepareImage(w *workspace.Workspace, language string) {
 	if tc, err := w.Toolchain(language); err == nil {
 		// A failed warm-up shows at the first run, which prepares the image again.

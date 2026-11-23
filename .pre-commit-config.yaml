@@ -38,10 +38,11 @@ repos:
       # The bindings are the contract between the Go app and the frontend.
       # Regenerate them from the staged Go code; if that changes them, the
       # commit fails and the new bindings are left to stage. mise.toml pins
-      # wails3 to the Wails version in go.mod.
+      # wails3 to the Wails version in go.mod. -tags server avoids GTK/WebKitGTK
+      # when paired with CGO_ENABLED=0 in CI.
       - id: wails-bindings
         name: Wails bindings up to date
-        entry: wails3 generate bindings -clean=true -ts -i
+        entry: wails3 generate bindings -f '-tags server' -clean=true -ts -i
         language: system
         pass_filenames: false
         always_run: true

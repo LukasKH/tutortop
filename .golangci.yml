@@ -65,6 +65,13 @@ linters:
           deny:
             - pkg: os/exec
               desc: run learner and tutor code in the sandbox (internal/sandbox)
+        wails-only-in-main:
+          # Wails links GTK and WebKitGTK on Linux under CGO; keeping it in
+          # main.go lets internal packages lint and test with -race without them.
+          files: ["**/internal/**"]
+          deny:
+            - pkg: github.com/wailsapp/wails/v3
+              desc: keep Wails in main.go so internal packages test and lint without GTK
     revive:
       # Only the rules that turn an if/else ending in return into a guard
       # clause. revive's default rule set is broader than the style guide.

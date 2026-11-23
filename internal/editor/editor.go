@@ -16,7 +16,6 @@ import (
 	"github.com/LukasKH/tutortop/internal/events"
 	"github.com/LukasKH/tutortop/internal/sandbox"
 	"github.com/LukasKH/tutortop/internal/workspace"
-	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
 // Service serves the editor its language servers, and stops them as the app
@@ -26,8 +25,6 @@ type Service struct {
 	runner  *sandbox.Runner
 	servers *Servers
 }
-
-var _ application.ServiceShutdown = (*Service)(nil)
 
 // NewService serves the editor the workspaces in store, starting language
 // servers on runner and keeping them in servers.

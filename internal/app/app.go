@@ -34,7 +34,7 @@ type Services struct {
 
 // New builds the services on the user's workspaces and settings, with
 // thread agents on the agent CLIs installed on the computer.
-func New() (*Services, error) {
+func New(browser copilot.Browser) (*Services, error) {
 	settingsStore := settings.NewStore(filepath.Join(xdg.ConfigHome, "tutortop", "settings.yaml"))
 	// The workspaces folder: TUTORTOP_HOME, else the one chosen in the
 	// settings, else ~/Tutortop. It's fixed for the run: running agents open
@@ -46,13 +46,19 @@ func New() (*Services, error) {
 		return nil, err
 	}
 	agents := threads.NewAgents(settingsStore, tools, threads.InstalledCLI{})
-	return newServices(store, settingsStore, runner, agents), nil
+	return newServices(store, settingsStore, runner, agents, browser), nil
+}
+
+// Start runs the background work the app starts with: building the unfinished
+// workspaces' sandbox images ahead and removing unused ones.
+func (s *Services) Start() {
+	s.Workspaces.warmUp()
 }
 
 // newServices builds the pieces several services share once, and the
 // services on them: the workspaces in store, the settings, the sandbox
 // runner and the thread agents. Tests pass agents on a fake CLI.
-func newServices(store *workspace.Store, settingsStore *settings.Store, runner *sandbox.Runner, agents *threads.Agents) *Services {
+func newServices(store *workspace.Store, settingsStore *settings.Store, runner *sandbox.Runner, agents *threads.Agents, browser copilot.Browser) *Services {
 	writers := threads.NewWriters(agents)
 	servers := editor.NewServers()
 	return &Services{
@@ -62,6 +68,6 @@ func newServices(store *workspace.Store, settingsStore *settings.Store, runner *
 		Lessons:    newLessonService(store),
 		Chat:       threads.NewChatService(store, agents),
 		Editor:     editor.NewService(store, runner, servers),
-		Copilot:    copilot.NewService(filepath.Join(xdg.DataHome, "tutortop", "copilot")),
+		Copilot:    copilot.NewService(filepath.Join(xdg.DataHome, "tutortop", "copilot"), browser),
 	}
 }

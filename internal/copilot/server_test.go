@@ -2,6 +2,7 @@ package copilot
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net"
 	"testing"
@@ -164,6 +165,45 @@ func TestSyncSendsDidFocus(t *testing.T) {
 	want("textDocument/didFocus", a)
 }
 
+func TestShowDocumentOpensBrowser(t *testing.T) {
+	params := json.RawMessage(`{"uri":"https://github.com/login/device"}`)
+	req := &jsonrpc2.Request{Method: "window/showDocument", Params: &params}
+
+	var opened []string
+	srv := &server{browser: browserFunc(func(u string) error {
+		opened = append(opened, u)
+		return nil
+	})}
+	got, err := srv.handle(t.Context(), nil, req)
+	if err != nil {
+		t.Fatalf("handle: %v", err)
+	}
+	if m, _ := got.(map[string]bool); !m["success"] {
+		t.Errorf("result = %v, want success=true", got)
+	}
+	if len(opened) != 1 || opened[0] != "https://github.com/login/device" {
+		t.Errorf("opened = %v, want [https://github.com/login/device]", opened)
+	}
+
+	failSrv := &server{browser: browserFunc(func(string) error { return errors.New("boom") })}
+	got, err = failSrv.handle(t.Context(), nil, req)
+	if err != nil {
+		t.Fatalf("handle on error: %v", err)
+	}
+	if m, _ := got.(map[string]bool); m["success"] {
+		t.Errorf("result on browser error = %v, want success=false", got)
+	}
+
+	nilSrv := &server{}
+	got, err = nilSrv.handle(t.Context(), nil, req)
+	if err != nil {
+		t.Fatalf("handle with nil browser: %v", err)
+	}
+	if m, _ := got.(map[string]bool); !m["success"] {
+		t.Errorf("result with nil browser = %v, want success=true", got)
+	}
+}
+
 func fakeServer(t *testing.T, handle func(context.Context, *jsonrpc2.Conn, *jsonrpc2.Request)) *server {
 	t.Helper()
 	c1, c2 := net.Pipe()
@@ -175,6 +215,10 @@ func fakeServer(t *testing.T, handle func(context.Context, *jsonrpc2.Conn, *json
 	})
 	return &server{conn: clientConn, docs: map[string]*document{}}
 }
+
+type browserFunc func(string) error
+
+func (f browserFunc) OpenURL(url string) error { return f(url) }
 
 type handlerFunc func(context.Context, *jsonrpc2.Conn, *jsonrpc2.Request)
 

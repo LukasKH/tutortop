@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/LukasKH/tutortop/internal/workspace"
-	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
 // ChatService serves the chats: what the learner sends to a thread's agent,
@@ -22,8 +21,6 @@ type ChatService struct {
 	store  *workspace.Store
 	agents *Agents
 }
-
-var _ application.ServiceShutdown = (*ChatService)(nil)
 
 // NewChatService serves the chats of the workspaces in store, answered by
 // the thread agents.

@@ -13,16 +13,16 @@ import (
 
 	"github.com/LukasKH/tutortop/internal/decode"
 	"github.com/sourcegraph/jsonrpc2"
-	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
 // server is a running Copilot language server, which the app talks to over
 // stdio. The protocol is documented in
 // https://github.com/github/copilot-language-server-release.
 type server struct {
-	cmd    *exec.Cmd
-	conn   *jsonrpc2.Conn
-	nextID atomic.Uint64
+	cmd     *exec.Cmd
+	conn    *jsonrpc2.Conn
+	browser Browser
+	nextID  atomic.Uint64
 
 	mu      sync.Mutex
 	docs    map[string]*document // by URI
@@ -33,7 +33,7 @@ type server struct {
 // start runs the language server at path and initializes it. It doesn't
 // take the caller's context: a suggestion cancelled by the next key mustn't
 // stop a server that's still starting.
-func start(path string) (*server, error) {
+func start(path string, browser Browser) (*server, error) {
 	cmd := exec.Command(path, "--stdio")
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
@@ -46,7 +46,7 @@ func start(path string) (*server, error) {
 	if err := cmd.Start(); err != nil {
 		return nil, err
 	}
-	s := &server{cmd: cmd, docs: map[string]*document{}}
+	s := &server{cmd: cmd, browser: browser, docs: map[string]*document{}}
 	stream := jsonrpc2.NewBufferedStream(stdio{stdout, stdin}, jsonrpc2.VSCodeObjectCodec{})
 	// Async, as answering showDocument mustn't hold up the call that caused it.
 	s.conn = jsonrpc2.NewConn(context.Background(), stream, jsonrpc2.AsyncHandler(jsonrpc2.HandlerWithError(s.handle)))
@@ -194,8 +194,8 @@ func (s *server) handle(_ context.Context, _ *jsonrpc2.Conn, req *jsonrpc2.Reque
 		if err != nil {
 			return nil, err
 		}
-		if wails := application.Get(); wails != nil {
-			if err := wails.Browser.OpenURL(p.URI); err != nil {
+		if s.browser != nil {
+			if err := s.browser.OpenURL(p.URI); err != nil {
 				return map[string]bool{"success": false}, nil
 			}
 		}
