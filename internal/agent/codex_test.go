@@ -26,7 +26,7 @@ func TestCodexStart(t *testing.T) {
 		t.Errorf("thread/start approvalPolicy = %q, want untrusted", got)
 	}
 	config, _ := thread.get("params.config").(map[string]any)
-	if mcp, _ := config["mcp_servers.tutortop"].(map[string]any); mcp["url"] != opts.MCPURL || mcp["tool_timeout_sec"] != 600.0 {
+	if mcp, _ := config["mcp_servers.tutortop"].(map[string]any); mcp["url"] != opts.MCPURL || mcp["tool_timeout_sec"] != 1800.0 {
 		t.Errorf("config %v doesn't point at our server with a long tool timeout", config)
 	}
 }

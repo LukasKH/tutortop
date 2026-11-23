@@ -46,11 +46,14 @@ func TestClaudeStart(t *testing.T) {
 			if err := json.Unmarshal([]byte(cli.arg("--mcp-config")), &mcp); err != nil || mcp.MCPServers["tutortop"].URL != opts.MCPURL {
 				t.Errorf("--mcp-config %s doesn't point at our server (%v)", cli.arg("--mcp-config"), err)
 			}
-			if !slices.Contains(cli.Env, "MCP_TOOL_TIMEOUT=600000") {
-				t.Error("MCP tool calls get Claude's default timeout, too short for create_task")
-			}
-			if !slices.Contains(cli.Env, "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1") {
-				t.Error("background tasks are on, so work can outlive the turn")
+			for _, env := range []string{
+				"MCP_TOOL_TIMEOUT=1800000",
+				"CLAUDE_CODE_MCP_TOOL_IDLE_TIMEOUT=1800000",
+				"CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1",
+			} {
+				if !slices.Contains(cli.Env, env) {
+					t.Errorf("env missing %s: %v", env, cli.Env)
+				}
 			}
 		})
 	}

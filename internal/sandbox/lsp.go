@@ -43,7 +43,8 @@ func (r *Runner) StartLanguageServer(ctx context.Context, tc Toolchain, files Fi
 	if len(tc.LanguageServer) == 0 {
 		return nil, errors.New("this language has no language server")
 	}
-	if err := r.Prepare(ctx, tc); err != nil {
+	gen, err := r.prepare(ctx, tc)
+	if err != nil {
 		return nil, err
 	}
 	all := Files{}
@@ -58,7 +59,17 @@ func (r *Runner) StartLanguageServer(ctx context.Context, tc Toolchain, files Fi
 	// at least as much memory.
 	args := append([]string{"create", "-i", "--rm", "--name", name}, lockdownFlags(max(1024, tc.MemoryMB))...)
 	args = append(append(args, tc.Image), tc.LanguageServer...)
-	if out, err := exec.CommandContext(ctx, string(r.Engine), args...).CombinedOutput(); err != nil {
+	out, err := exec.CommandContext(ctx, string(r.Engine), args...).CombinedOutput()
+	if err != nil {
+		rebuilt, rebuildErr := r.rebuildIfMissing(ctx, tc, gen)
+		if rebuildErr != nil {
+			return nil, rebuildErr
+		}
+		if rebuilt {
+			out, err = exec.CommandContext(ctx, string(r.Engine), args...).CombinedOutput()
+		}
+	}
+	if err != nil {
 		return nil, errors.New("starting the language server: " + string(bytes.TrimSpace(out)))
 	}
 	remove := func() { _ = exec.Command(string(r.Engine), "rm", "-f", name).Run() }

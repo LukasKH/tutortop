@@ -39,7 +39,7 @@ type toolchainExample struct {
 
 // setToolchain saves a language only once its example passes in the sandbox.
 // The learner watches the check like a task's quality gate.
-func (t *threadTools) setToolchain(ctx context.Context, _ *mcpsdk.CallToolRequest, in setToolchainInput) (*mcpsdk.CallToolResult, any, error) {
+func (t *threadTools) setToolchain(ctx context.Context, req *mcpsdk.CallToolRequest, in setToolchainInput) (*mcpsdk.CallToolResult, any, error) {
 	tc, err := in.Toolchain.Toolchain()
 	if err != nil {
 		return nil, nil, err
@@ -47,6 +47,7 @@ func (t *threadTools) setToolchain(ctx context.Context, _ *mcpsdk.CallToolReques
 	if _, ok := sandbox.Builtin(tc.Language); ok {
 		return nil, nil, fmt.Errorf("%s is built in; use it directly", tc.Language)
 	}
+	defer keepAlive(ctx, req, "setting up "+tc.Name+" sandbox")()
 	check := events.SandboxCheck{Kind: events.CheckToolchain, Thread: t.thread.String(), Title: tc.Name, Running: true}
 	t.checks.Show(t.w.ID, check)
 	report, err := t.checkToolchain(ctx, tc, in.Example)

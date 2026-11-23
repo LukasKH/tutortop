@@ -8,6 +8,7 @@
 package mcp
 
 import (
+	"context"
 	"crypto/rand"
 	"fmt"
 	"log/slog"
@@ -15,6 +16,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/LukasKH/tutortop/internal/events"
 	"github.com/LukasKH/tutortop/internal/sandbox"
@@ -145,5 +147,49 @@ func fixAndRetry(tool *mcpsdk.Tool, problems error) error {
 
 // sandboxProblem reports a sandbox that doesn't work, which the agent can't fix.
 func sandboxProblem(err error) error {
-	return fmt.Errorf("sandbox problem (not your fault, tell the learner): %w", err)
+	return fmt.Errorf("sandbox problem (not your fault; tell the learner in plain words, without naming internal tools or files): %w", err)
+}
+
+// progressInterval is how often a slow tool call notifies its MCP client that
+// it is still working, so clients with an idle timeout don't abort a slow
+// image build or quality gate. Overridden in tests.
+var progressInterval = 15 * time.Second
+
+// keepAlive sends periodic MCP progress notifications while a slow tool call
+// runs, when the client provided a progressToken. Call the returned function
+// before returning from the tool handler.
+func keepAlive(ctx context.Context, req *mcpsdk.CallToolRequest, message string) func() {
+	if req == nil || req.Session == nil {
+		return func() {}
+	}
+	token := req.Params.GetProgressToken()
+	if token == nil {
+		return func() {}
+	}
+	stop := make(chan struct{})
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		tick := time.NewTicker(progressInterval)
+		defer tick.Stop()
+		for n := 1.0; ; n++ {
+			select {
+			case <-stop:
+				return
+			case <-ctx.Done():
+				return
+			case <-tick.C:
+				// Best-effort heartbeat; the tool call itself reports real errors.
+				_ = req.Session.NotifyProgress(ctx, &mcpsdk.ProgressNotificationParams{
+					ProgressToken: token,
+					Progress:      n,
+					Message:       message,
+				})
+			}
+		}
+	}()
+	return func() {
+		close(stop)
+		<-done
+	}
 }

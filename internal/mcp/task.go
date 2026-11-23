@@ -27,7 +27,7 @@ type createTaskOutput struct {
 }
 
 // createTask publishes a task only once it passes the quality gate.
-func (t *threadTools) createTask(ctx context.Context, _ *mcpsdk.CallToolRequest, spec workspace.TaskSpec) (*mcpsdk.CallToolResult, createTaskOutput, error) {
+func (t *threadTools) createTask(ctx context.Context, req *mcpsdk.CallToolRequest, spec workspace.TaskSpec) (*mcpsdk.CallToolResult, createTaskOutput, error) {
 	if err := t.ownObjective(spec.ObjectiveID); err != nil {
 		return nil, createTaskOutput{}, err
 	}
@@ -35,6 +35,7 @@ func (t *threadTools) createTask(ctx context.Context, _ *mcpsdk.CallToolRequest,
 	if err != nil {
 		return nil, createTaskOutput{}, err
 	}
+	defer keepAlive(ctx, req, "checking "+spec.Title)()
 	rep, err := t.qualityGate(ctx, spec, tc)
 	if err != nil {
 		return nil, createTaskOutput{}, sandboxProblem(err)

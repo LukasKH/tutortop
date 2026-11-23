@@ -72,7 +72,7 @@ func startCodex(ctx context.Context, opts Options, onEvent func(Event)) (Session
 		"config": map[string]any{
 			"mcp_servers." + opts.MCPName: map[string]any{
 				"url":              opts.MCPURL,
-				"tool_timeout_sec": 600,
+				"tool_timeout_sec": 1800,
 			},
 		},
 	}

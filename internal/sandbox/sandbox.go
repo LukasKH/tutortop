@@ -32,7 +32,8 @@ type Runner struct {
 
 	builds   singleflight.Group // callers that need the same image share one build
 	mu       sync.Mutex
-	prepared map[string]bool
+	gen      uint64            // rises with each build, so concurrent callers see a rebuild
+	prepared map[string]uint64 // image -> gen it was prepared at
 }
 
 // Engine is the container CLI that runs the checks: Docker or Podman.
@@ -46,7 +47,7 @@ const (
 // New uses Docker if it's installed, or else Podman. With neither installed it keeps "docker", and Available says
 // how to get one.
 func New() *Runner {
-	return &Runner{Engine: detectEngine(), prepared: map[string]bool{}}
+	return &Runner{Engine: detectEngine(), prepared: map[string]uint64{}}
 }
 
 // Available reports whether the sandbox's engine is usable, with a fix-it
@@ -64,24 +65,8 @@ func (r *Runner) Available(ctx context.Context) error {
 // Prepare builds the language image. The first call can take a few minutes.
 // A caller can give up waiting; the build carries on for the others.
 func (r *Runner) Prepare(ctx context.Context, tc Toolchain) error {
-	r.mu.Lock()
-	done := r.prepared[tc.Image]
-	r.mu.Unlock()
-	if done {
-		return nil
-	}
-	build := r.builds.DoChan(tc.Image, func() (any, error) {
-		// Its own deadline, so a stuck build doesn't hold up every later caller.
-		ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), buildTimeout)
-		defer cancel()
-		return nil, r.build(ctx, tc)
-	})
-	select {
-	case res := <-build:
-		return res.Err
-	case <-ctx.Done():
-		return ctx.Err()
-	}
+	_, err := r.prepare(ctx, tc)
+	return err
 }
 
 // RemoveCache deletes the volumes that keep the toolchain caches of runs
@@ -123,33 +108,81 @@ func (r *Runner) RemoveUnusedImages(ctx context.Context, used []Toolchain) error
 	return nil
 }
 
-func detectEngine() Engine {
-	if _, err := exec.LookPath(string(Docker)); err == nil {
-		return Docker
-	}
-	if _, err := exec.LookPath(string(Podman)); err == nil {
-		return Podman
-	}
-	return Docker
-}
-
 // buildTimeout only stops a stuck build. A healthy first build can take a
 // while: it pulls a base image of a gigabyte or more, and a custom toolchain
 // may compile tools.
 const buildTimeout = time.Hour
 
-func (r *Runner) build(ctx context.Context, tc Toolchain) error {
-	if exec.CommandContext(ctx, string(r.Engine), "image", "inspect", tc.Image).Run() != nil {
+func (r *Runner) prepare(ctx context.Context, tc Toolchain) (uint64, error) {
+	r.mu.Lock()
+	gen := r.prepared[tc.Image]
+	r.mu.Unlock()
+	if gen > 0 {
+		return gen, nil
+	}
+	build := r.builds.DoChan(tc.Image, func() (any, error) {
+		// Its own deadline, so a stuck build doesn't hold up every later caller.
+		ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), buildTimeout)
+		defer cancel()
+		return r.build(ctx, tc)
+	})
+	select {
+	case res := <-build:
+		if res.Err != nil {
+			return 0, res.Err
+		}
+		return res.Val.(uint64), nil
+	case <-ctx.Done():
+		return 0, ctx.Err()
+	}
+}
+
+func (r *Runner) build(ctx context.Context, tc Toolchain) (uint64, error) {
+	if !r.hasImage(ctx, tc.Image) {
 		cmd := exec.CommandContext(ctx, string(r.Engine), "build", "-t", tc.Image, "-")
 		cmd.Stdin = strings.NewReader(tc.Dockerfile)
 		if out, err := cmd.CombinedOutput(); err != nil {
-			return fmt.Errorf("preparing the %s sandbox: %v\n%s", tc.Name, err, text.Tail(string(out), 1500))
+			return 0, fmt.Errorf("preparing the %s sandbox: %v\n%s", tc.Name, err, text.Tail(string(out), 1500))
 		}
 	}
 	r.mu.Lock()
-	r.prepared[tc.Image] = true
+	r.gen++
+	gen := r.gen
+	r.prepared[tc.Image] = gen
 	r.mu.Unlock()
-	return nil
+	return gen, nil
+}
+
+// rebuildIfMissing rebuilds tc's image when it disappeared after prepare
+// cached it (e.g. `docker image prune` or another instance's cleanup), and
+// reports whether the caller should retry. seenGen lets concurrent callers
+// notice a rebuild another caller just finished.
+func (r *Runner) rebuildIfMissing(ctx context.Context, tc Toolchain, seenGen uint64) (bool, error) {
+	if ctx.Err() != nil {
+		return false, nil
+	}
+	r.mu.Lock()
+	cur := r.prepared[tc.Image]
+	r.mu.Unlock()
+	if cur > seenGen {
+		return true, nil
+	}
+	if r.hasImage(ctx, tc.Image) {
+		return false, nil
+	}
+	r.mu.Lock()
+	if r.prepared[tc.Image] == cur {
+		delete(r.prepared, tc.Image)
+	}
+	r.mu.Unlock()
+	if err := r.Prepare(ctx, tc); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func (r *Runner) hasImage(ctx context.Context, image string) bool {
+	return exec.CommandContext(ctx, string(r.Engine), "image", "inspect", image).Run() == nil
 }
 
 // exec unpacks the files into a throwaway container and runs the script
@@ -178,6 +211,16 @@ func (r *Runner) exec(ctx context.Context, tc Toolchain, script string, files Fi
 	cmd.Stdin = bytes.NewReader(archive)
 	cmd.Stdout, cmd.Stderr = out, out
 	return cmd.Run()
+}
+
+func detectEngine() Engine {
+	if _, err := exec.LookPath(string(Docker)); err == nil {
+		return Docker
+	}
+	if _, err := exec.LookPath(string(Podman)); err == nil {
+		return Podman
+	}
+	return Docker
 }
 
 // cacheVolume names the volume that keeps tc's cache folder for the runs

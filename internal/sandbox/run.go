@@ -79,21 +79,35 @@ type TestResult struct {
 // output is a Result with StatusError.
 func (r *Runner) Run(ctx context.Context, job Job) (Result, error) {
 	tc := job.Toolchain
-	if err := r.Prepare(ctx, tc); err != nil {
+	gen, err := r.prepare(ctx, tc)
+	if err != nil {
 		return Result{}, err
 	}
-	timeout := cmp.Or(job.Timeout, tc.Timeout+startup)
-
-	files := Files{}
-	maps.Copy(files, tc.ExtraFiles)
-	for _, set := range []Files{job.Solution, job.Tests, job.HiddenTests} {
-		for name, content := range set {
-			if !filepath.IsLocal(name) {
-				return Result{}, fmt.Errorf("file path %q must be relative and stay inside the task", name)
-			}
-			files[name] = content
-		}
+	files, err := jobFiles(job)
+	if err != nil {
+		return Result{}, err
 	}
+	res, runErr, maybeMissing := r.runOnce(ctx, job, files)
+	if !maybeMissing {
+		return res, runErr
+	}
+	rebuilt, err := r.rebuildIfMissing(ctx, tc, gen)
+	if err != nil {
+		return Result{}, err
+	}
+	if !rebuilt {
+		return res, runErr
+	}
+	res, runErr, _ = r.runOnce(ctx, job, files)
+	return res, runErr
+}
+
+// runOnce runs job once in a fresh container. maybeMissing is true when the
+// container failed without producing test results, so Run can check whether
+// the cached image was removed externally and rebuild it.
+func (r *Runner) runOnce(ctx context.Context, job Job, files Files) (res Result, err error, maybeMissing bool) {
+	tc := job.Toolchain
+	timeout := cmp.Or(job.Timeout, tc.Timeout+startup)
 	hidden := map[string]bool{}
 	for _, n := range job.Names.Hidden {
 		hidden[n] = true
@@ -107,28 +121,28 @@ func (r *Runner) Run(ctx context.Context, job Job) (Result, error) {
 
 	start := time.Now()
 	runErr := r.exec(runCtx, tc, tc.script(), files, job.Cache, out)
-	res := Result{DurationMs: time.Since(start).Milliseconds()}
+	res = Result{DurationMs: time.Since(start).Milliseconds()}
 	stdout := out.String()
 
 	switch context.Cause(runCtx) {
 	case errTimeout:
 		res.Status = StatusError
 		res.Output = fmt.Sprintf("Timed out after %s. Look for an infinite loop or a blocked channel.", timeout)
-		return res, nil
+		return res, nil, false
 	case errTooMuchOutput:
 		res.Status = StatusError
 		res.Output = "Your code printed more than 4 MB, so the run was stopped. Look for printing inside a loop."
-		return res, nil
+		return res, nil, false
 	}
 	if runErr != nil && stdout == "" {
-		return Result{}, runErr
+		return Result{}, runErr, true
 	}
 
 	tests, ok := tc.parse(stdout, hidden)
 	res.Output = text.Tail(tc.readable(stdout), 8000)
 	if !ok || len(tests) == 0 {
 		res.Status = StatusError
-		return res, nil
+		return res, nil, runErr != nil
 	}
 	res.Tests = append(tests, notRun(job, tests)...)
 	res.Status = StatusPassed
@@ -138,7 +152,21 @@ func (r *Runner) Run(ctx context.Context, job Job) (Result, error) {
 			break
 		}
 	}
-	return res, nil
+	return res, nil, false
+}
+
+func jobFiles(job Job) (Files, error) {
+	files := Files{}
+	maps.Copy(files, job.Toolchain.ExtraFiles)
+	for _, set := range []Files{job.Solution, job.Tests, job.HiddenTests} {
+		for name, content := range set {
+			if !filepath.IsLocal(name) {
+				return nil, fmt.Errorf("file path %q must be relative and stay inside the task", name)
+			}
+			files[name] = content
+		}
+	}
+	return files, nil
 }
 
 // startup is the time a run gets on top of its toolchain's timeout, to start

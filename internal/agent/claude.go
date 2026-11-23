@@ -73,8 +73,11 @@ func startClaude(ctx context.Context, opts Options, onEvent func(Event)) (Sessio
 	}
 
 	proc, err := startProcess(ctx, opts.Cwd, []string{
-		// create_task runs the sandbox checks, which can take minutes.
-		"MCP_TOOL_TIMEOUT=600000",
+		// set_toolchain and create_task build images and run sandbox checks,
+		// which can take minutes (especially pulling a custom base image).
+		// Raise both total and idle timeouts so a slow pull isn't cut short.
+		"MCP_TOOL_TIMEOUT=1800000",
+		"CLAUDE_CODE_MCP_TOOL_IDLE_TIMEOUT=1800000",
 		// Nothing may outlive the turn, while the app shows the tutor as
 		// done: Claude waits for subagents, and doesn't move a long MCP call
 		// such as create_task to the background either.

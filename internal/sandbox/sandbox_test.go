@@ -22,7 +22,7 @@ func TestPrepareSharesBuild(t *testing.T) {
 	if err := os.WriteFile(engine, []byte(script), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	r := &Runner{Engine: Engine(engine), prepared: map[string]bool{}}
+	r := &Runner{Engine: Engine(engine), prepared: map[string]uint64{}}
 	tc := Toolchain{Name: "Go", Image: "tutortop-test:1", Dockerfile: "FROM scratch"}
 	calls := func() string { b, _ := os.ReadFile(log); return string(b) }
 
@@ -164,6 +164,93 @@ func fakeEngine(t *testing.T, volumes, images []string) (r *Runner, calls func()
 	if err := os.WriteFile(engine, []byte(script), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	r = &Runner{Engine: Engine(engine), prepared: map[string]bool{}}
+	r = &Runner{Engine: Engine(engine), prepared: map[string]uint64{}}
 	return r, func() string { b, _ := os.ReadFile(log); return string(b) }
+}
+
+// If a prepared image disappears externally (e.g. `docker image prune` or
+// another instance's cleanup), Run rebuilds it once and retries — even when
+// two runs hit the missing image at the same time. A compile error on a
+// present image doesn't trigger a rebuild.
+func TestRunRebuildsRemovedImage(t *testing.T) {
+	dir := t.TempDir()
+	log := filepath.Join(dir, "calls")
+	present := filepath.Join(dir, "present")
+	engine := filepath.Join(dir, "engine")
+	// Fake engine: image exists iff `present` exists; `build` creates `present`;
+	// `run` prints one passing go-json test when `present` exists, else fails
+	// with Docker's missing-image message.
+	script := `#!/bin/sh
+echo "$1 $2" >> ` + log + `
+case "$1" in
+image)
+	test -f ` + present + `
+	;;
+build)
+	cat >/dev/null
+	sleep 0.1
+	touch ` + present + `
+	;;
+run)
+	cat >/dev/null
+	if [ ! -f ` + present + ` ]; then
+		echo "Unable to find image locally" >&2
+		exit 125
+	fi
+	if [ -f ` + filepath.Join(dir, "compile-error") + ` ]; then
+		echo "syntax error" >&2
+		exit 1
+	fi
+	printf '{"Action":"pass","Package":"task","Test":"TestOK"}\n'
+	;;
+esac
+`
+	if err := os.WriteFile(engine, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	r := &Runner{Engine: Engine(engine), prepared: map[string]uint64{}}
+	tc := builtins["go"]
+	calls := func() string { b, _ := os.ReadFile(log); return string(b) }
+
+	// Prepare once so the image is cached as prepared, then delete it externally.
+	if err := r.Prepare(t.Context(), tc); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(present); err != nil {
+		t.Fatal(err)
+	}
+
+	// Two concurrent runs hit the missing image at once; both should succeed
+	// after sharing one rebuild.
+	var wg sync.WaitGroup
+	results := make([]Result, 2)
+	errs := make([]error, 2)
+	for i := range results {
+		wg.Go(func() {
+			results[i], errs[i] = r.Run(t.Context(), Job{Toolchain: tc})
+		})
+	}
+	wg.Wait()
+	for i := range results {
+		if errs[i] != nil || results[i].Status != StatusPassed {
+			t.Fatalf("run %d: res=%+v err=%v", i, results[i], errs[i])
+		}
+	}
+	// One build from the initial Prepare, one from the external removal.
+	if got := strings.Count(calls(), "build -t"); got != 2 {
+		t.Fatalf("%d builds, want 2:\n%s", got, calls())
+	}
+
+	// A compile error while the image is present returns StatusError without rebuilding.
+	if err := os.WriteFile(filepath.Join(dir, "compile-error"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	before := strings.Count(calls(), "build -t")
+	res, err := r.Run(t.Context(), Job{Toolchain: tc})
+	if err != nil || res.Status != StatusError {
+		t.Fatalf("compile error: res=%+v err=%v, want StatusError", res, err)
+	}
+	if got := strings.Count(calls(), "build -t"); got != before {
+		t.Fatalf("compile error triggered a rebuild:\n%s", calls())
+	}
 }
