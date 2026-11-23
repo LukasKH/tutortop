@@ -11,6 +11,7 @@ Tutortop is a Go program with a React frontend, shipped as one desktop app by [W
    |     '-- internal/agent     the learner's Claude Code or Codex CLI
    |-- internal/mcp             MCP server on 127.0.0.1, the tools the agent works through
    |-- internal/editor          the editor's language servers (Editor service)
+   |-- internal/copilot         optional GitHub Copilot suggestions (Copilot service)
    |-- internal/settings        settings.yaml (Settings service)
    |-- internal/sandbox         Docker/Podman sandbox: checks, quality gate, language servers
    |-- internal/workspace       files on disk, one git repo per topic
@@ -27,12 +28,13 @@ Each package is named after the part of the app it represents, so a name says wh
 - `internal/agent` starts the Claude Code or Codex CLI, streams its output as text and tool events, and decides which tool calls to allow. The agent may change files in the workspace, except under `tasks/`, and may not run commands. [Adding an agent](agents.md) describes its contract.
 - `internal/mcp` serves the MCP tools agents change the app's state through, one server per thread, and checks the links they cite. It doesn't import the agents: it shows sandbox checks through `mcp.Checks`, which `threads.Agents` implements.
 - `internal/editor` serves the editor's language servers (`editor.Service`) and relays their messages.
+- `internal/copilot` installs GitHub's Copilot language server, signs in to GitHub and serves the editor its suggestions (`copilot.Service`). It's the only part besides the agents' CLIs that sends anything off the computer, and only once the learner turns it on.
 - `internal/settings` keeps the app-wide settings in `settings.yaml` (`settings.Store`) and serves the Settings screen (`settings.Service`).
 - `internal/sandbox` runs tests in a Docker or Podman container built for the task's toolchain. It also runs the quality gate for new tasks and the language servers' processes.
 - `internal/workspace` stores one topic as plain files in `~/Tutortop/<id>`, plus private files (hidden tests, reference solutions) under the XDG data dir. It knows nothing about agents or Wails.
 - `internal/events` holds every event Go sends the frontend (see [Events from Go](#events-from-go)).
 - `internal/decode` turns JSON, YAML and XML into typed values (`decode.JSON[T]`, ...), for every package. `internal/text` and `internal/shellpath` are small helpers.
-- `frontend/src/lib/api.ts` wraps the generated bindings and events; components import from it. A few modules use the Wails runtime directly: links open in the browser, the settings pick a folder, the window zooms, and the language client listens to its event outside React. The frontend's own layout is described under [Frontend](#frontend).
+- `frontend/src/lib/api.ts` wraps the generated bindings and events; components import from it. A few modules use the Wails runtime directly: links open in the browser, the settings pick a folder and copy the Copilot sign-in code, the window zooms, and the language client listens to its event outside React. The frontend's own layout is described under [Frontend](#frontend).
 
 Imports point one way: `app` imports the packages below it; `agent/threads` imports `agent`, `mcp`, `settings`, `sandbox`, `workspace` and `events`; `mcp` and `editor` import only `sandbox`, `workspace` and `events`. Test doubles that several packages' tests share live in `mcp/mcptest` (fake links, a tool caller and an MCP client session) and `agent/threads/threadstest` (a fake agent CLI).
 
@@ -52,10 +54,11 @@ The backend is a set of [Wails services](https://v3.wails.io/features/bindings/s
 | `ChatService` | `threads.ChatService` (`internal/agent/threads/chat.go`) | `Chat`, `SendMessage`, `AnswerQuestions`, `DismissQuestions`, `RequestHint`, `StopAgent` | ending the thread agents as the app quits (`ServiceShutdown`) |
 | `SettingsService` | `settings.Service` (`internal/settings/service.go`) | `Load`, `Save`, `Models`, `Environment` | |
 | `EditorService` | `editor.Service` (`internal/editor/editor.go`) | `StartLanguageServer`, `SendLanguageServer`, `StopLanguageServer` | stopping the language servers as the app quits (`ServiceShutdown`) |
+| `CopilotService` | `copilot.Service` (`internal/copilot/copilot.go`) | `Setup`, `Install`, `SignIn`, `FinishSignIn`, `SignOut`, `Complete`, `Shown`, `Accepted`, `Focus`, `CloseFiles` | stopping Copilot's language server as the app quits (`ServiceShutdown`) |
 
 `app.New` reads the settings, opens the workspaces folder, starts the MCP server (`mcp.Start`) and the thread agents (`threads.NewAgents`), and hands them to `newServices`. That builds the rest of the pieces several services share once (`threads.Writers`, `editor.Servers`) and passes each service the ones it uses. When one area sets off another, the service gets the narrow piece, not the other service: `RunTests` and the workspace calls message the plan's tutor through `threads.Agents.Send`, and keep objectives written through `threads.Writers`. Tests build the services the same way, with thread agents on a fake CLI (`newTestAppWith` in `internal/app/app_test.go`). `main.go` registers them in order; Wails starts them in that order and shuts them down in reverse, and none depends on another's.
 
-`wails3 generate bindings` reads the registered services and writes `frontend/bindings`, one folder per Go package with a module per service, one TypeScript function per exported method, and a TypeScript type for every struct those methods take or return. A service named `Service` in its package (`settings.Service`, `editor.Service`) is the module `Service` in its package's folder. `lib/api.ts` re-exports each service under its frontend name, so a component writes `TaskService.RunTests(wsID, taskID, files, false)` or `SettingsService.Load()`. A returned Go error becomes a rejected promise.
+`wails3 generate bindings` reads the registered services and writes `frontend/bindings`, one folder per Go package with a module per service, one TypeScript function per exported method, and a TypeScript type for every struct those methods take or return. A service named `Service` in its package (`settings.Service`, `editor.Service`, `copilot.Service`) is the module `Service` in its package's folder. `lib/api.ts` re-exports each service under its frontend name, so a component writes `TaskService.RunTests(wsID, taskID, files, false)` or `SettingsService.Load()`. A returned Go error becomes a rejected promise.
 
 To add a service, for a new area that fits none of the others:
 
@@ -260,6 +263,8 @@ Each tool is a `*mcpsdk.Tool` with its name and description, a handler method on
 Each run starts a fresh container, so nothing one run leaves behind reaches the next. The one exception is a toolchain's `cache` folder, such as Go's build cache: a workspace's runs keep it in a volume of their own (`Job.Cache`), so a run only compiles what changed. The quality gate's runs get no cache volume and start clean, and deleting a workspace removes its volumes (`Runner.RemoveCache`).
 
 The editor's completions and errors come from a language server running in the task's sandbox image. Go doesn't read the LSP messages. It relays them between the server's stdio and the frontend, sending them out as `lsp:message` events and taking them in through `EditorService.SendLanguageServer` (`internal/editor`). The framing and the check that a new toolchain's server answers (`sandbox.ProbeLanguageServer`) are in `internal/sandbox/lsp.go`, as `set_toolchain` uses the check too.
+
+GitHub Copilot's suggestions are optional, and off until the learner sets them up in Settings: **Install** downloads GitHub's Copilot language server into the XDG data dir (`tutortop/copilot`, with a `version` file), **Sign in with GitHub** runs GitHub's device sign-in, and a checkbox turns suggestions on (`Prefs.Copilot`). The server runs on the computer, not in the sandbox, as it must reach GitHub; one runs for the whole app, started on first use. Unlike the sandbox's language servers, Go speaks its protocol itself (`internal/copilot/server.go`), so the frontend makes plain calls: `useCopilot` registers a Monaco inline-completions provider that calls `CopilotService.Complete` with the file and cursor. Each suggestion is cut to the rest of the cursor's line (`oneLine`), so Copilot helps with syntax but doesn't write the solution. As in GitHub's own plugins (copilot.vim, and Zed's integration), the editor tells the server which file is in front (`Focus`), which suggestions were shown (`Shown`) and accepted (`Accepted`, which reports a cut suggestion as partly accepted), and closes the files when the learner leaves the task (`CloseFiles`). Install checks the download against the SHA-256 GitHub publishes for it. Sign-in is stored by the server where GitHub's other editor plugins keep it, so an account signed in for one of them is signed in here too.
 
 ### Languages
 

@@ -27,8 +27,8 @@ func main() {
 		Description: "Learn anything verifiable, with your own AI tutor",
 		// Wails starts these in this order and shuts them down in reverse.
 		// No service needs another started first or stopped last: Workspaces
-		// builds sandbox images in the background, Chat ends the agents and
-		// Editor stops the language servers, each on its own.
+		// builds sandbox images in the background, Chat ends the agents, and
+		// Editor and Copilot stop their language servers, each on its own.
 		Services: []application.Service{
 			application.NewService(services.Settings),
 			application.NewService(services.Workspaces),
@@ -36,6 +36,7 @@ func main() {
 			application.NewService(services.Lessons),
 			application.NewService(services.Chat),
 			application.NewService(services.Editor),
+			application.NewService(services.Copilot),
 		},
 		Assets: application.AssetOptions{Handler: application.AssetFileServerFS(assets)},
 		Mac:    application.MacOptions{ApplicationShouldTerminateAfterLastWindowClosed: true},

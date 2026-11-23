@@ -3,6 +3,7 @@ import { SettingsService, type Prefs } from "@/lib/api";
 import { Home } from "@/features/home/home";
 import { SettingsDialog } from "@/features/settings/settings-dialog";
 import { TutorContext } from "@/features/settings/use-tutor";
+import { SettingsContext } from "@/features/settings/use-settings";
 import { checkEnvironment, loadModels, tutorLabel, useEnvironment, useModels } from "@/lib/agents";
 import { WorkspaceView } from "@/features/workspace/workspace-view";
 import { useStored } from "@/hooks/use-stored";
@@ -45,9 +46,11 @@ export function AppRoot() {
   const tutor = { label: settings ? tutorLabel(settings, providers, models) : "", openSettings: () => setSettingsOpen(true) };
 
   return (
-    <TutorContext value={tutor}>
-      {workspaceId ? <WorkspaceView key={workspaceId} id={workspaceId} onBack={() => setWorkspaceId(null)} /> : <Home lastId={lastId} onOpen={open} />}
-      {settingsOpen && settings && <SettingsDialog settings={settings} onChange={changeSettings} onClose={() => setSettingsOpen(false)} />}
-    </TutorContext>
+    <SettingsContext value={settings}>
+      <TutorContext value={tutor}>
+        {workspaceId ? <WorkspaceView key={workspaceId} id={workspaceId} onBack={() => setWorkspaceId(null)} /> : <Home lastId={lastId} onOpen={open} />}
+        {settingsOpen && settings && <SettingsDialog settings={settings} onChange={changeSettings} onClose={() => setSettingsOpen(false)} />}
+      </TutorContext>
+    </SettingsContext>
   );
 }

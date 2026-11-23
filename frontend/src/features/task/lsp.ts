@@ -376,8 +376,9 @@ const CLIENT_CAPABILITIES = {
 type LspPosition = { line: number; character: number };
 type LspRange = { start: LspPosition; end: LspPosition };
 
-const toPosition = (p: monaco.IPosition): LspPosition => ({ line: p.lineNumber - 1, character: p.column - 1 });
-const toRange = (r: LspRange): monaco.IRange => ({
+/** Monaco counts lines and columns from 1, the language server protocol from 0. */
+export const toPosition = (p: monaco.IPosition): LspPosition => ({ line: p.lineNumber - 1, character: p.column - 1 });
+export const toRange = (r: LspRange): monaco.IRange => ({
   startLineNumber: r.start.line + 1,
   startColumn: r.start.character + 1,
   endLineNumber: r.end.line + 1,

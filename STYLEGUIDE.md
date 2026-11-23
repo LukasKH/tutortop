@@ -84,8 +84,8 @@ Pass a service its dependencies through its constructor, not through package-lev
 Each way out of the app has one package **(lint: depguard)**:
 
 - Agents run through their installed CLI (`internal/agent`), never a model's API or SDK.
-- HTTP lives in `internal/mcp`, the agents' tools. The frontend reaches Go through Wails services, not HTTP.
-- Processes start only in `internal/agent` (agent CLIs), `internal/sandbox` (the container engine), `internal/shellpath`, `internal/settings` (finding CLIs) and `internal/workspace` (git). Learner and tutor code runs in the sandbox.
+- HTTP lives in `internal/mcp`, the agents' tools, and `internal/copilot`, which downloads GitHub's Copilot language server. The frontend reaches Go through Wails services, not HTTP.
+- Processes start only in `internal/agent` (agent CLIs), `internal/sandbox` (the container engine), `internal/shellpath`, `internal/settings` (finding CLIs), `internal/workspace` (git) and `internal/copilot` (Copilot's language server, which must reach GitHub). Learner and tutor code runs in the sandbox.
 
 To add a way out, change the rule in `.golangci.yml` in the same commit and say why.
 

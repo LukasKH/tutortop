@@ -44,16 +44,20 @@ linters:
             - pkg: google.golang.org/genai
               desc: run agents through their CLI (internal/agent), not a model API
         http-only-in-mcp:
-          files: ["$all", "!$test", "!**/internal/mcp/**"]
+          # internal/copilot downloads GitHub's Copilot language server.
+          files: ["$all", "!$test", "!**/internal/mcp/**", "!**/internal/copilot/**"]
           deny:
             - pkg: net/http
               desc: the frontend talks to Go through Wails services and agents through MCP (internal/mcp)
         processes-only-where-they-belong:
-          # Agent CLIs, the sandbox engine, the login shell, CLI detection and git.
+          # Agent CLIs, the sandbox engine, the login shell, CLI detection, git
+          # and Copilot's language server, which must reach GitHub and so
+          # can't run in the sandbox.
           files:
             - "$all"
             - "!$test"
             - "!**/internal/agent/**"
+            - "!**/internal/copilot/**"
             - "!**/internal/sandbox/**"
             - "!**/internal/shellpath/**"
             - "!**/internal/settings/**"

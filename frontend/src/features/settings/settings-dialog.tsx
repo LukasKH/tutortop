@@ -1,11 +1,13 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
-import { Dialogs } from "@wailsio/runtime";
-import { errorText, type Environment, type Prefs } from "@/lib/api";
+import { Clipboard, Dialogs } from "@wailsio/runtime";
+import { CopilotService, errorText, type DeviceCode, type Environment, type Prefs, type Setup } from "@/lib/api";
 import { checkEnvironment, currentModel, effortLabel, loadModels, providerName, useEnvironment, useModels } from "@/lib/agents";
 import { useTutor } from "@/features/settings/use-tutor";
 import { ErrorText } from "@/components/error-text";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Spinner } from "@/components/ui/spinner";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
@@ -146,6 +148,9 @@ export function SettingsDialog({ settings, onChange, onClose }: Props) {
             Changes apply from the tutor's next message. Switching agent starts new conversations; your mission, notes and progress stay.
           </p>
 
+          <h2 className={SECTION}>Editor</h2>
+          <CopilotSetting enabled={settings.copilot} onChange={(copilot) => save({ ...settings, copilot })} />
+
           <h2 className={SECTION}>Files</h2>
           <WorkspacesFolder
             env={env}
@@ -186,6 +191,167 @@ function Choice({ value, title, disabled, children }: { value: string; title?: s
       <RadioGroupItem value={value} disabled={disabled} className="disabled:cursor-default disabled:opacity-100" />
       {children}
     </Label>
+  );
+}
+
+/**
+ * GitHub Copilot's suggestions in the editor, in three steps: install its
+ * language server, sign in to GitHub, turn suggestions on.
+ */
+function CopilotSetting({ enabled, onChange }: { enabled: boolean; onChange: (on: boolean) => void }) {
+  const [setup, setSetup] = useState<Setup | null>(null);
+  const [code, setCode] = useState<DeviceCode | null>(null);
+  const [busy, setBusy] = useState(""); // what's going on, while a step runs
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    CopilotService.Setup()
+      .then(setSetup)
+      .catch((e) => setError(errorText(e)));
+  }, []);
+
+  /** Runs one step, showing what it's doing, then the setup it leaves. */
+  async function step(doing: string, work: () => Promise<Setup | null>) {
+    setBusy(doing);
+    setError("");
+    try {
+      const next = await work();
+      if (next) setSetup(next);
+    } catch (e) {
+      setError(errorText(e));
+    } finally {
+      setBusy("");
+    }
+  }
+
+  const install = () => step("Downloading Copilot, about 120 MB…", () => CopilotService.Install());
+  const check = () => step("Checking…", () => CopilotService.Setup());
+  const signIn = () =>
+    step("Starting sign-in…", async () => {
+      const c = await CopilotService.SignIn();
+      if (!c.userCode) return CopilotService.Setup(); // signed in already, e.g. in another editor
+      setCode(c);
+      return null;
+    });
+  // Copilot opens GitHub's page; the code is on the clipboard to paste there.
+  const finishSignIn = (userCode: string) =>
+    step("Waiting for you to enter the code on GitHub…", async () => {
+      // Best-effort: the code stays visible on screen if clipboard access fails.
+      await Clipboard.SetText(userCode).catch(() => {});
+      try {
+        return await CopilotService.FinishSignIn();
+      } finally {
+        setCode(null);
+      }
+    });
+  const signOut = () =>
+    step("Signing out…", async () => {
+      await CopilotService.SignOut();
+      return CopilotService.Setup();
+    });
+
+  return (
+    <div className={FIELD}>
+      <span className={FIELD_LABEL}>GitHub Copilot</span>
+      {!setup ? (
+        busy ? null : error ? (
+          <SettingRow text="Couldn't check Copilot">
+            <Button type="button" variant="ghost" onClick={check}>
+              Check again
+            </Button>
+            <Button type="button" variant="ghost" onClick={install}>
+              Reinstall
+            </Button>
+          </SettingRow>
+        ) : (
+          <p className="text-muted-foreground">Loading…</p>
+        )
+      ) : !setup.installed ? (
+        <SettingRow text="Not installed">
+          <Button type="button" variant="ghost" disabled={!!busy} onClick={install}>
+            Install
+          </Button>
+        </SettingRow>
+      ) : code ? (
+        <SettingRow
+          text={
+            <>
+              Enter <code className="font-semibold text-foreground">{code.userCode}</code>
+              {code.verificationUri ? (
+                <>
+                  {" "}
+                  at <code className="text-foreground">{code.verificationUri.replace(/^https?:\/\//, "")}</code>
+                </>
+              ) : (
+                " on GitHub"
+              )}
+            </>
+          }
+        >
+          <Button type="button" variant="ghost" disabled={!!busy} onClick={() => finishSignIn(code.userCode)}>
+            Copy code and open GitHub
+          </Button>
+        </SettingRow>
+      ) : !setup.user && !setup.problem ? (
+        <SettingRow text="Not signed in">
+          <Button type="button" variant="ghost" disabled={!!busy} onClick={signIn}>
+            Sign in with GitHub
+          </Button>
+        </SettingRow>
+      ) : (
+        <>
+          {setup.user && (
+            <SettingRow text={`Signed in as ${setup.user}`}>
+              <Button type="button" variant="ghost" disabled={!!busy} onClick={signOut}>
+                Sign out
+              </Button>
+            </SettingRow>
+          )}
+          {setup.problem ? (
+            <SettingRow text={<span className="text-fail">{setup.problem}</span>}>
+              <Button type="button" variant="ghost" disabled={!!busy} onClick={check}>
+                Check again
+              </Button>
+            </SettingRow>
+          ) : (
+            <Label className="cursor-pointer gap-2.5 py-[5px] text-base leading-normal font-normal text-soft-foreground has-[[data-state=checked]]:text-foreground">
+              <Checkbox checked={enabled} onCheckedChange={(on) => onChange(on === true)} />
+              Suggest the rest of the line as you type
+            </Label>
+          )}
+        </>
+      )}
+      {busy && (
+        <p className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Spinner />
+          {busy}
+        </p>
+      )}
+      <ErrorText error={error} />
+      <p className={FIELD_NOTE}>
+        Suggestions only finish the line you're typing, so you still write the solution yourself. They send the file you're editing to GitHub. Copilot Free
+        includes 2,000 suggestions a month.
+        {setup?.installed && (
+          <>
+            {" "}
+            Copilot {setup.version}.{" "}
+            <Button type="button" variant="link" size="sm" className="h-auto px-0 text-xs" disabled={!!busy} onClick={install}>
+              Update
+            </Button>
+          </>
+        )}
+      </p>
+    </div>
+  );
+}
+
+/** A line of grey text with its action on the right. */
+function SettingRow({ text, children }: { text: ReactNode; children: ReactNode }) {
+  return (
+    <div className="flex min-w-0 items-center justify-between gap-2 text-sm text-soft-foreground">
+      <span className="min-w-0">{text}</span>
+      <span className="flex flex-none gap-1">{children}</span>
+    </div>
   );
 }
 
