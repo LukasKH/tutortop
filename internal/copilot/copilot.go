@@ -25,9 +25,10 @@ import (
 type Service struct {
 	dir string // where Install puts the language server
 
-	mu     sync.Mutex
-	server *server
-	signIn *command // finishes the sign-in SignIn started
+	mu         sync.Mutex
+	server     *server
+	signIn     *command // finishes the sign-in SignIn started
+	installing bool
 }
 
 var _ application.ServiceShutdown = (*Service)(nil)
@@ -66,8 +67,7 @@ func (s *Service) Setup(ctx context.Context) (Setup, error) {
 // Install downloads the latest Copilot language server for this computer,
 // about 120 MB, replacing any installed one.
 func (s *Service) Install(ctx context.Context) (Setup, error) {
-	s.stop()
-	if err := install(ctx, s.dir); err != nil {
+	if err := s.replace(ctx); err != nil {
 		return Setup{}, fmt.Errorf("installing Copilot: %w", err)
 	}
 	return s.Setup(ctx)
@@ -127,11 +127,14 @@ func (s *Service) SignOut(ctx context.Context) error {
 // the rest of the cursor's line (oneLine), so it helps with syntax rather
 // than writing the solution.
 func (s *Service) Complete(ctx context.Context, req CompletionRequest) (Completion, error) {
+	if err := ctx.Err(); err != nil {
+		return Completion{}, err
+	}
 	srv, err := s.running()
 	if err != nil {
 		return Completion{}, err
 	}
-	version, err := srv.sync(req.URI, req.LanguageID, req.Text)
+	version, err := srv.sync(ctx, req.URI, req.LanguageID, req.Text)
 	if err != nil {
 		return Completion{}, err
 	}
@@ -231,8 +234,16 @@ func (s *Service) current() *server {
 func (s *Service) running() (*server, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.server != nil && s.server.alive() {
-		return s.server, nil
+	if s.installing {
+		return nil, errors.New("copilot is installing")
+	}
+	if s.server != nil {
+		if s.server.alive() {
+			return s.server, nil
+		}
+		// Reap the exited server before starting a fresh one.
+		s.server.close()
+		s.server = nil
 	}
 	if installedVersion(s.dir) == "" {
 		return nil, errors.New("copilot isn't installed")
@@ -243,6 +254,30 @@ func (s *Service) running() (*server, error) {
 	}
 	s.server = srv
 	return srv, nil
+}
+
+// replace stops any running server and installs the latest one into s.dir,
+// preventing concurrent callers from restarting the old binary mid-install.
+func (s *Service) replace(ctx context.Context) error {
+	s.mu.Lock()
+	if s.installing {
+		s.mu.Unlock()
+		return errors.New("already installing")
+	}
+	s.installing = true
+	srv := s.server
+	s.server = nil
+	s.signIn = nil
+	s.mu.Unlock()
+	defer func() {
+		s.mu.Lock()
+		s.installing = false
+		s.mu.Unlock()
+	}()
+	if srv != nil {
+		srv.close()
+	}
+	return install(ctx, s.dir)
 }
 
 // stop stops the language server, if it's running.

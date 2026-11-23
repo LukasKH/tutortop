@@ -21,14 +21,15 @@ export function useCopilot(taskId: string, language: string, enabled: boolean, e
 
   useEffect(() => {
     if (!enabled) return;
+    const stop = new AbortController();
     const workPath = `/${taskId}/work/`;
     const command = monaco.editor.registerCommand(ACCEPTED, (_accessor, sg: Suggestion) => void CopilotService.Accepted(sg).catch(() => {}));
     const provider = monaco.languages.registerInlineCompletionsProvider(language, {
-      // Ask once typing pauses, not on every key: each request counts
-      // towards Copilot Free's monthly allowance.
-      debounceDelayMs: 250,
+      // Wait briefly after a keystroke, matching Zed's 75 ms debounce;
+      // superseded in-flight requests cancel on the server via $/cancelRequest.
+      debounceDelayMs: 75,
       provideInlineCompletions: async (model, position, _context, token) => {
-        if (!model.uri.path.startsWith(workPath)) return;
+        if (stop.signal.aborted || token.isCancellationRequested || !model.uri.path.startsWith(workPath)) return;
         const { tabSize, insertSpaces } = model.getOptions();
         const call = CopilotService.Complete({
           uri: model.uri.toString(),
@@ -38,9 +39,12 @@ export function useCopilot(taskId: string, language: string, enabled: boolean, e
           tabSize,
           insertSpaces,
         });
-        token.onCancellationRequested(() => call.cancel());
+        const cancel = () => void call.cancel();
+        stop.signal.addEventListener("abort", cancel, { once: true });
+        const onCancel = token.onCancellationRequested(cancel);
         try {
           const res = await call;
+          if (stop.signal.aborted) return;
           setNotice(res.notice ?? "");
           const items: CopilotItem[] = (res.suggestions ?? []).map((s) => ({
             insertText: s.text,
@@ -50,14 +54,18 @@ export function useCopilot(taskId: string, language: string, enabled: boolean, e
           }));
           return { items };
         } catch (e) {
-          if (!token.isCancellationRequested) setNotice(errorText(e));
+          if (!stop.signal.aborted && !token.isCancellationRequested) setNotice(errorText(e));
           return;
+        } finally {
+          stop.signal.removeEventListener("abort", cancel);
+          onCancel.dispose();
         }
       },
       handleItemDidShow: (_completions, item) => void CopilotService.Shown((item as CopilotItem).suggestion).catch(() => {}),
       disposeInlineCompletions: () => {},
     });
     return () => {
+      stop.abort();
       provider.dispose();
       command.dispose();
       CopilotService.CloseFiles().catch(() => {});

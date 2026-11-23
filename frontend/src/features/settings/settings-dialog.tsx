@@ -236,7 +236,8 @@ function CopilotSetting({ enabled, onChange }: { enabled: boolean; onChange: (on
   // Copilot opens GitHub's page; the code is on the clipboard to paste there.
   const finishSignIn = (userCode: string) =>
     step("Waiting for you to enter the code on GitHub…", async () => {
-      await Clipboard.SetText(userCode);
+      // Best-effort: the code stays visible on screen if clipboard access fails.
+      await Clipboard.SetText(userCode).catch(() => {});
       try {
         return await CopilotService.FinishSignIn();
       } finally {
@@ -253,7 +254,18 @@ function CopilotSetting({ enabled, onChange }: { enabled: boolean; onChange: (on
     <div className={FIELD}>
       <span className={FIELD_LABEL}>GitHub Copilot</span>
       {!setup ? (
-        !error && <p className="text-muted-foreground">Loading…</p>
+        busy ? null : error ? (
+          <SettingRow text="Couldn't check Copilot">
+            <Button type="button" variant="ghost" onClick={check}>
+              Check again
+            </Button>
+            <Button type="button" variant="ghost" onClick={install}>
+              Reinstall
+            </Button>
+          </SettingRow>
+        ) : (
+          <p className="text-muted-foreground">Loading…</p>
+        )
       ) : !setup.installed ? (
         <SettingRow text="Not installed">
           <Button type="button" variant="ghost" disabled={!!busy} onClick={install}>
@@ -264,7 +276,15 @@ function CopilotSetting({ enabled, onChange }: { enabled: boolean; onChange: (on
         <SettingRow
           text={
             <>
-              Enter <code className="font-semibold text-foreground">{code.userCode}</code> on GitHub
+              Enter <code className="font-semibold text-foreground">{code.userCode}</code>
+              {code.verificationUri ? (
+                <>
+                  {" "}
+                  at <code className="text-foreground">{code.verificationUri.replace(/^https?:\/\//, "")}</code>
+                </>
+              ) : (
+                " on GitHub"
+              )}
             </>
           }
         >
@@ -272,7 +292,7 @@ function CopilotSetting({ enabled, onChange }: { enabled: boolean; onChange: (on
             Copy code and open GitHub
           </Button>
         </SettingRow>
-      ) : !setup.user ? (
+      ) : !setup.user && !setup.problem ? (
         <SettingRow text="Not signed in">
           <Button type="button" variant="ghost" disabled={!!busy} onClick={signIn}>
             Sign in with GitHub
@@ -280,11 +300,13 @@ function CopilotSetting({ enabled, onChange }: { enabled: boolean; onChange: (on
         </SettingRow>
       ) : (
         <>
-          <SettingRow text={`Signed in as ${setup.user}`}>
-            <Button type="button" variant="ghost" disabled={!!busy} onClick={signOut}>
-              Sign out
-            </Button>
-          </SettingRow>
+          {setup.user && (
+            <SettingRow text={`Signed in as ${setup.user}`}>
+              <Button type="button" variant="ghost" disabled={!!busy} onClick={signOut}>
+                Sign out
+              </Button>
+            </SettingRow>
+          )}
           {setup.problem ? (
             <SettingRow text={<span className="text-fail">{setup.problem}</span>}>
               <Button type="button" variant="ghost" disabled={!!busy} onClick={check}>

@@ -8,6 +8,7 @@ import (
 	"io"
 	"os/exec"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/LukasKH/tutortop/internal/decode"
@@ -19,11 +20,13 @@ import (
 // stdio. The protocol is documented in
 // https://github.com/github/copilot-language-server-release.
 type server struct {
-	cmd  *exec.Cmd
-	conn *jsonrpc2.Conn
+	cmd    *exec.Cmd
+	conn   *jsonrpc2.Conn
+	nextID atomic.Uint64
 
 	mu      sync.Mutex
 	docs    map[string]*document // by URI
+	focused string               // URI last sent in textDocument/didFocus
 	message string               // what the server last said is wrong
 }
 
@@ -106,38 +109,55 @@ func (s *server) close() {
 
 // sync sends the server a file's text, opening it the first time, and
 // returns the version the server now has.
-func (s *server) sync(uri, languageID, text string) (int, error) {
+func (s *server) sync(ctx context.Context, uri, languageID, text string) (int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	ctx := context.Background()
+	if err := ctx.Err(); err != nil {
+		return 0, err
+	}
+	bg := context.Background()
 	d := s.docs[uri]
 	if d == nil {
 		d = &document{version: 1, text: text}
-		s.docs[uri] = d
-		return d.version, s.conn.Notify(ctx, "textDocument/didOpen", map[string]any{
+		if err := s.conn.Notify(bg, "textDocument/didOpen", map[string]any{
 			"textDocument": map[string]any{"uri": uri, "languageId": languageID, "version": d.version, "text": text},
-		})
+		}); err != nil {
+			return 0, err
+		}
+		s.docs[uri] = d
+	} else if d.text != text {
+		version := d.version + 1
+		// A change without a range replaces the whole text; fine for task-sized files.
+		if err := s.conn.Notify(bg, "textDocument/didChange", map[string]any{
+			"textDocument":   versionedDocument{URI: uri, Version: version},
+			"contentChanges": []map[string]string{{"text": text}},
+		}); err != nil {
+			return 0, err
+		}
+		d.version = version
+		d.text = text
 	}
-	if d.text == text {
-		return d.version, nil
+	if s.focused != uri {
+		if err := s.conn.Notify(bg, "textDocument/didFocus", map[string]any{"textDocument": map[string]string{"uri": uri}}); err != nil {
+			return 0, err
+		}
+		s.focused = uri
 	}
-	d.version++
-	d.text = text
-	// A change without a range replaces the whole text; fine for task-sized files.
-	return d.version, s.conn.Notify(ctx, "textDocument/didChange", map[string]any{
-		"textDocument":   versionedDocument{URI: uri, Version: d.version},
-		"contentChanges": []map[string]string{{"text": text}},
-	})
+	return d.version, nil
 }
 
 // focus tells the server which file is in front, if it has that file open.
 func (s *server) focus(ctx context.Context, uri string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.docs[uri] == nil {
+	if s.docs[uri] == nil || s.focused == uri {
 		return nil
 	}
-	return s.conn.Notify(ctx, "textDocument/didFocus", map[string]any{"textDocument": map[string]string{"uri": uri}})
+	if err := s.conn.Notify(ctx, "textDocument/didFocus", map[string]any{"textDocument": map[string]string{"uri": uri}}); err != nil {
+		return err
+	}
+	s.focused = uri
+	return nil
 }
 
 // closeAll closes every file the server has open.
@@ -149,6 +169,7 @@ func (s *server) closeAll(ctx context.Context) error {
 		errs = append(errs, s.conn.Notify(ctx, "textDocument/didClose", map[string]any{"textDocument": map[string]string{"uri": uri}}))
 	}
 	clear(s.docs)
+	s.focused = ""
 	return errors.Join(errs...)
 }
 
@@ -222,11 +243,23 @@ func (s *server) setNotice(message string) {
 	s.message = message
 }
 
-// call sends a request and waits for its result.
+// call sends a request and waits for its result, cancelling it on the server
+// if ctx is cancelled while waiting.
 func call[T any](ctx context.Context, s *server, method string, params any) (T, error) {
 	var zero T
+	if err := ctx.Err(); err != nil {
+		return zero, err
+	}
+	id := s.nextID.Add(1)
+	waiter, err := s.conn.DispatchCall(ctx, method, params, jsonrpc2.PickID(jsonrpc2.ID{Num: id}))
+	if err != nil {
+		return zero, fmt.Errorf("copilot %s: %w", method, err)
+	}
 	var raw json.RawMessage
-	if err := s.conn.Call(ctx, method, params, &raw); err != nil {
+	if err := waiter.Wait(ctx, &raw); err != nil {
+		if ctx.Err() != nil {
+			_ = s.conn.Notify(context.Background(), "$/cancelRequest", map[string]uint64{"id": id}) // best effort; server may have closed
+		}
 		return zero, fmt.Errorf("copilot %s: %w", method, err)
 	}
 	if len(raw) == 0 || string(raw) == "null" {
