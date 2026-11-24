@@ -1,6 +1,8 @@
 import { useLayoutEffect, useRef, type ReactNode } from "react";
 import { ChatRole, ChatStatus, type ChatItem, type SandboxCheck } from "@/lib/api";
 import { useTutor } from "@/features/settings/use-tutor";
+import { TutorPicker } from "@/features/settings/tutor-picker";
+import { AgentIcon } from "@/components/agent-icon";
 import type { OpenItem } from "@/features/workspace/open-item";
 import type { NewItem } from "@/features/workspace/use-open-item";
 import { useLiveWorkspace } from "@/features/workspace/use-workspace";
@@ -10,7 +12,7 @@ import { Markdown } from "@/components/markdown";
 import { AutoTextarea } from "@/components/auto-textarea";
 import { IconButton } from "@/components/icon-button";
 import { useArmed } from "@/hooks/use-armed";
-import { PanelRightIcon } from "lucide-react";
+import { ChevronDown, PanelRightIcon } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -124,14 +126,17 @@ export function ChatPanel({ composer: { draft, setDraft, inputRef }, ...p }: Pro
           ↑
         </Button>
       </div>
-      <Button
-        variant="ghost"
-        className="mx-3 mb-2 h-auto max-w-[calc(100%-24px)] flex-none justify-start rounded-sm px-1 py-0.5 text-xs font-normal text-faint hover:not-disabled:bg-transparent hover:not-disabled:text-foreground"
-        onClick={tutor.openSettings}
-        title="Change the tutor's agent, model and reasoning"
-      >
-        <span className="min-w-0 truncate">{tutor.label}</span>
-      </Button>
+      <TutorPicker side="top">
+        <Button
+          variant="ghost"
+          className="mx-3 mb-2 h-auto max-w-[calc(100%-24px)] flex-none justify-start gap-1.5 self-start rounded-sm px-1 py-0.5 text-xs font-normal text-faint hover:not-disabled:bg-transparent hover:not-disabled:text-foreground aria-expanded:text-foreground"
+          title="Change the tutor's agent, model and reasoning"
+        >
+          {tutor.agent && <AgentIcon id={tutor.agent} size={12} />}
+          <span className="min-w-0 truncate">{tutor.label}</span>
+          <ChevronDown size={12} aria-hidden="true" />
+        </Button>
+      </TutorPicker>
     </aside>
   );
 }

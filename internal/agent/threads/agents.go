@@ -266,6 +266,7 @@ func (ag *Agents) open(ctx context.Context, w *workspace.Workspace, ta *threadAg
 		MCPName:      mcp.Name,
 		MCPURL:       ag.mcp.URL(w, ta.thread, ag),
 		Instructions: instructions(w, ta.thread),
+		Binary:       ta.cfg.Binary,
 		Model:        ta.cfg.Model,
 		Effort:       ta.cfg.Effort,
 		Subagents:    usesSubagents(ta.thread.Kind),
@@ -326,7 +327,7 @@ func (ag *Agents) end(ta *threadAgent) {
 type threadAgent struct {
 	key     threadKey
 	thread  workspace.Thread
-	cfg     agentConfig // the agent, model and effort it was started with
+	cfg     agentConfig // the agent, CLI, model and effort it was started with
 	queue   chan string
 	cancel  context.CancelFunc
 	once    sync.Once   // close runs once
@@ -367,14 +368,15 @@ type threadKey struct{ ws, name string }
 // older config restarts once it's idle.
 type agentConfig struct {
 	Provider string
+	Binary   string // the CLI's path from the settings; "" finds it on PATH
 	Model    string
 	Effort   string
 }
 
-// configOf is the agent, model and effort the settings choose.
+// configOf is the agent, CLI, model and effort the settings choose.
 func configOf(s settings.Prefs) agentConfig {
 	c := s.Models[s.Provider]
-	return agentConfig{Provider: s.Provider, Model: c.Model, Effort: c.Effort}
+	return agentConfig{Provider: s.Provider, Binary: s.Agents[s.Provider].Path, Model: c.Model, Effort: c.Effort}
 }
 
 // firstSeq is where Agents.seq starts. Counting from the time in

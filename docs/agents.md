@@ -8,9 +8,9 @@ The contract is in code. `agent.go` has the types and their doc comments, and `p
 
 An adapter is one file, like `claude.go`, `codex.go` or `antigravity.go`, and an entry in a list:
 
-1. `internal/agent/<x>.go`: `startX(ctx, opts, onEvent) (Session, error)`, which starts the CLI and returns a `Session` that keeps [the contract](#the-contract).
-2. The same file: `xModels(ctx) ([]Model, error)`, which lists the models it offers, the CLI's default first, each with the reasoning efforts it takes. Claude's list is fixed, because the CLI takes aliases that follow each release. Codex's is asked live from the CLI. The app caches the answer for a few minutes.
-3. `internal/agent/agent.go`: a `ProviderID` constant, an entry in `Providers()` with it, a display name and the binary to look up on `PATH`, and a case for it in `Start` and `Provider.Models` that calls the two functions. The `exhaustive` lint flags a switch that misses it.
+1. `internal/agent/<x>.go`: `startX(ctx, opts, onEvent) (Session, error)`, which starts the CLI, `opts.Binary` or else its usual name, and returns a `Session` that keeps [the contract](#the-contract).
+2. The same file: `xModels(ctx, binary) ([]Model, error)`, which lists the models it offers, the CLI's default first, each with the reasoning efforts it takes. Claude's list is fixed, because the CLI takes aliases that follow each release. Codex's is asked live from the CLI. The app caches the answer for a few minutes.
+3. `internal/agent/agent.go`: a `ProviderID` constant, an entry in `Providers()` with it, a display name and the binary to look up on `PATH`, and a case for it in `Start` and `Provider.Models` that calls the two functions. In `check.go`, a case in `Provider.Check` that reads the account the CLI is signed in with, if it has a command for that; Settings shows it. Without one, listing the models has to prove the sign-in, as Antigravity's does. The `exhaustive` lint flags a switch that misses it.
 4. `internal/agent/<x>_test.go`: tests against a fake CLI, including the shared policy cases (`testPolicy`); see [Testing an adapter](#testing-an-adapter).
 5. `internal/agent/live_test.go`: add the id to the provider list in `TestLive`. `internal/app/live_test.go`'s `TestLiveInterview` runs a whole interview on any agent: `TUTORTOP_PROVIDER=<id> task test:live`.
 6. `Taskfile.yml`: the `test:live` summary, and `.github/workflows/ci.yml`: the comment above the `test` job. Both name the CLIs the live tests talk to.
@@ -18,7 +18,7 @@ An adapter is one file, like `claude.go`, `codex.go` or `antigravity.go`, and an
 8. `internal/shellpath/shellpath.go`: `commonDirs`. An app started from a desktop launcher doesn't get the user's shell PATH, so it asks the login shell and falls back to these folders, where the agents' installers put their binaries. Add the new CLI's folder if it isn't there; OpenCode's install script, for one, uses `~/.opencode/bin`.
 9. `README.md`: the introduction and **Install** name the agents Tutortop runs on, with a link to each one's setup.
 
-Nothing else changes. Settings list `Providers()` and show the ones that aren't installed as missing. The frontend gets each provider's display name from `SettingsService.Environment`, so a new agent needs no frontend change. The prompts in `internal/agent/threads/prompts` don't name an agent, and the chat shows Tutortop's own tools by their line in `internal/mcp/tools.go`, whatever title the CLI gives the call.
+Nothing else changes. Settings list `Providers()` under Agents, check each one that's installed (`Provider.Check`: version, sign-in, models), and let the learner switch one off or point it at another CLI (`settings.AgentSetup`). The frontend gets each provider's display name from `SettingsService.Environment`, so a new agent needs no frontend change. The prompts in `internal/agent/threads/prompts` don't name an agent, and the chat shows Tutortop's own tools by their line in `internal/mcp/tools.go`, whatever title the CLI gives the call.
 
 A workspace remembers one agent (`Meta.Provider`) and, for each chat, the `Session.ID()` to resume (`Meta.ResumeIDs`). Those ids belong to one agent, so when a thread starts with another agent, `Workspace.UseProvider` switches the workspace to it and forgets them: every thread starts a fresh conversation, and the tutor catches up from the workspace files.
 

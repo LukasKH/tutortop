@@ -204,6 +204,91 @@ func TestShowDocumentOpensBrowser(t *testing.T) {
 	}
 }
 
+// The plan comes from copilot/quotaChange: an allowance on Copilot Free, none
+// on a paid plan.
+func TestQuotaChangeSetsPlan(t *testing.T) {
+	for _, c := range []struct {
+		name   string
+		params string
+		want   Plan
+	}{
+		{
+			name:   "free",
+			params: `{"copilotPlan":"free","completions":{"quota":2000,"used":312.4,"unlimited":false,"resetDate":"2026-12-01T00:00:00.000Z"},"chat":{"quota":50}}`,
+			want:   Plan{Name: "Copilot Free", Allowance: 2000, Used: 312, ResetDate: "2026-12-01T00:00:00.000Z"},
+		},
+		{
+			name:   "paid",
+			params: `{"copilotPlan":"individual","completions":{"quota":0,"used":0,"unlimited":true}}`,
+			want:   Plan{Name: "Copilot Pro", Unlimited: true},
+		},
+		{
+			name:   "max",
+			params: `{"copilotPlan":"individual_max","completions":{"unlimited":true}}`,
+			want:   Plan{Name: "Copilot Max", Unlimited: true},
+		},
+		{
+			name:   "unknown plan, no allowances",
+			params: `{"copilotPlan":"something_new"}`,
+			want:   Plan{Name: "Copilot"},
+		},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			params := json.RawMessage(c.params)
+			srv := &server{}
+			if _, err := srv.handle(t.Context(), nil, &jsonrpc2.Request{Method: "copilot/quotaChange", Params: &params}); err != nil {
+				t.Fatal(err)
+			}
+			if got := srv.awaitPlan(t.Context(), 0); got == nil || *got != c.want {
+				t.Errorf("plan %+v, want %+v", got, c.want)
+			}
+		})
+	}
+}
+
+// awaitPlan returns as soon as copilot/quotaChange comes, stops waiting once
+// a wait has timed out, and waits again for the next account after resetPlan.
+func TestAwaitPlan(t *testing.T) {
+	srv := &server{}
+	srv.resetPlan()
+	quotaChange := func(plan string) {
+		params := json.RawMessage(`{"copilotPlan":"` + plan + `"}`)
+		if _, err := srv.handle(t.Context(), nil, &jsonrpc2.Request{Method: "copilot/quotaChange", Params: &params}); err != nil {
+			t.Error(err)
+		}
+	}
+
+	cancelled, cancel := context.WithCancel(t.Context())
+	cancel()
+	if got := srv.awaitPlan(cancelled, time.Minute); got != nil {
+		t.Fatalf("plan %+v for a cancelled context, want nil", got)
+	}
+
+	start := time.Now()
+	go quotaChange("free")
+	if got := srv.awaitPlan(t.Context(), time.Minute); got == nil || got.Name != "Copilot Free" {
+		t.Fatalf("plan %+v, want Copilot Free", got)
+	}
+	if elapsed := time.Since(start); elapsed > 10*time.Second {
+		t.Errorf("waited %v for a plan that came at once", elapsed)
+	}
+
+	srv.resetPlan()
+	if got := srv.awaitPlan(t.Context(), time.Millisecond); got != nil {
+		t.Fatalf("plan %+v after resetPlan, want nil", got)
+	}
+	start = time.Now()
+	if got := srv.awaitPlan(t.Context(), time.Minute); got != nil || time.Since(start) > 10*time.Second {
+		t.Fatalf("plan %+v after %v, want nil at once after a timed-out wait", got, time.Since(start))
+	}
+
+	srv.resetPlan()
+	go quotaChange("business")
+	if got := srv.awaitPlan(t.Context(), time.Minute); got == nil || got.Name != "Copilot Business" {
+		t.Fatalf("plan %+v after resetPlan, want the new account's Copilot Business", got)
+	}
+}
+
 func fakeServer(t *testing.T, handle func(context.Context, *jsonrpc2.Conn, *jsonrpc2.Request)) *server {
 	t.Helper()
 	c1, c2 := net.Pipe()

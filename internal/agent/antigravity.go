@@ -39,7 +39,7 @@ func startAntigravity(ctx context.Context, opts Options, onEvent func(Event)) (S
 		return nil, fmt.Errorf("setting up Antigravity: %w", err)
 	}
 	client := &antigravityClient{policy: newPolicy(opts), mcpName: opts.MCPName, onEvent: onEvent}
-	proc, conn, err := startAntigravityACP(ctx, opts.Cwd, client)
+	proc, conn, err := startAntigravityACP(ctx, opts.Binary, opts.Cwd, client)
 	if err != nil {
 		return nil, err
 	}
@@ -114,7 +114,7 @@ func (s *antigravitySession) open(ctx context.Context, opts Options) error {
 	if s.id == "" {
 		res, err := s.conn.NewSession(ctx, acp.NewSessionRequest{Meta: meta, Cwd: opts.Cwd, McpServers: servers})
 		if err != nil {
-			return antigravitySetupError(err)
+			return antigravitySetupError(opts.Binary, err)
 		}
 		s.id, options = res.SessionId, res.ConfigOptions
 	}
@@ -322,21 +322,46 @@ func (c *antigravityClient) describe(id acp.ToolCallId, name, title string, kind
 
 // antigravityModels lists the models and thinking levels a short-lived `agy
 // acp` session offers, in the temporary folder: ACP reports them per session.
-func antigravityModels(ctx context.Context) ([]Model, error) {
+func antigravityModels(ctx context.Context, binary string) ([]Model, error) {
+	models, _, err := askAntigravity(ctx, binary)
+	return models, err
+}
+
+// askAntigravity opens a short-lived `agy acp` session for the models it
+// offers and the account's plan, such as "Google AI Pro" ("" if agy doesn't
+// say). Opening it fails unless agy is signed in.
+func askAntigravity(ctx context.Context, binary string) ([]Model, string, error) {
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	dir := os.TempDir()
-	proc, conn, err := startAntigravityACP(ctx, dir, &antigravityClient{onEvent: func(Event) {}})
+	proc, conn, err := startAntigravityACP(ctx, binary, dir, &antigravityClient{onEvent: func(Event) {}})
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
-	defer func() { _ = proc.Close() }() // the models are all we need from it
+	defer func() { _ = proc.Close() }() // the answers are all we need from it
 	res, err := conn.NewSession(ctx, acp.NewSessionRequest{Cwd: dir, McpServers: []acp.McpServer{}})
 	if err != nil {
-		return nil, antigravityAbort(proc, conn, antigravitySetupError(err))
+		if ctx.Err() != nil {
+			return nil, "", ctx.Err()
+		}
+		var re *acp.RequestError
+		if errors.As(err, &re) {
+			return nil, "", antigravitySetupError(binary, err)
+		}
+		return nil, "", antigravityAbort(proc, conn, antigravitySetupError(binary, err))
 	}
+	meta, _ := decode.JSON[struct { // the plan is extra; without it the check still passes
+		Tier struct {
+			Name string `json:"name"`
+		} `json:"tier"`
+	}](res.Meta["antigravity"])
+	return antigravitySessionModels(res), meta.Tier.Name, nil
+}
 
-	var efforts []Effort
+// antigravitySessionModels reads the models and thinking levels from a new
+// session's options, the current model first.
+func antigravitySessionModels(res acp.NewSessionResponse) []Model {
+	efforts := []Effort{}
 	if o := antigravityOption(res.ConfigOptions, acp.SessionConfigOptionCategoryThoughtLevel); o != nil {
 		for _, v := range antigravityValues(o) {
 			efforts = append(efforts, Effort{ID: string(v.Value), Description: v.Name})
@@ -344,9 +369,9 @@ func antigravityModels(ctx context.Context) ([]Model, error) {
 	}
 	o := antigravityOption(res.ConfigOptions, acp.SessionConfigOptionCategoryModel)
 	if o == nil || len(antigravityValues(o)) == 0 {
-		return []Model{{Name: "Antigravity's default"}}, nil // the CLI chooses
+		return []Model{{Name: "Antigravity's default", Efforts: []Effort{}}} // the CLI chooses
 	}
-	var models []Model
+	models := []Model{}
 	for _, v := range antigravityValues(o) {
 		m := Model{ID: string(v.Value), Name: cmp.Or(v.Name, string(v.Value)), Description: ptrValue(v.Description), Efforts: efforts}
 		if v.Value == o.CurrentValue {
@@ -355,14 +380,14 @@ func antigravityModels(ctx context.Context) ([]Model, error) {
 			models = append(models, m)
 		}
 	}
-	return models, nil
+	return models
 }
 
 // startAntigravityACP starts `agy acp` on Tutortop's profile and completes
 // the handshake. We offer agy no terminal and no file access, so it uses its
 // own tools, which ask permission (see setUpAntigravity).
-func startAntigravityACP(ctx context.Context, cwd string, client acp.Client) (*process, *acp.ClientSideConnection, error) {
-	proc, err := startProcess(ctx, cwd, nil, "agy", "acp", "--gemini-dir", antigravityProfile())
+func startAntigravityACP(ctx context.Context, binary, cwd string, client acp.Client) (*process, *acp.ClientSideConnection, error) {
+	proc, err := startProcess(ctx, cwd, binary, nil, "acp", "--gemini-dir", antigravityProfile())
 	if err != nil {
 		return nil, nil, err
 	}
@@ -436,11 +461,11 @@ var antigravityDenied = []string{
 }
 
 // antigravitySetupError explains why agy wouldn't open a session.
-func antigravitySetupError(err error) error {
+func antigravitySetupError(binary string, err error) error {
 	var re *acp.RequestError
 	if errors.As(err, &re) && re.Code == antigravityAuthRequired {
 		// Quoted for the shell, not with %q, which would double a Windows path's backslashes.
-		return fmt.Errorf("not signed in to Antigravity: run `agy acp --login --gemini-dir \"%s\"` in a terminal, then try again", antigravityProfile())
+		return fmt.Errorf("not signed in to Antigravity: run `%s acp --login --gemini-dir \"%s\"` in a terminal, then try again", binary, antigravityProfile())
 	}
 	return fmt.Errorf("starting Antigravity: %s", antigravityReason(err))
 }

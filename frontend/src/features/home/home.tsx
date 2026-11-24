@@ -7,7 +7,7 @@ import { IDEAS, type Idea } from "@/features/home/ideas";
 import { SettingsIcon } from "lucide-react";
 import { Logo } from "@/components/logo";
 import { TutorLine } from "@/features/settings/settings-dialog";
-import { useTutor } from "@/features/settings/use-tutor";
+import { useSettings } from "@/features/settings/use-settings";
 import { TopicIcon } from "@/components/topic-icon";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { ErrorText } from "@/components/error-text";
@@ -26,7 +26,7 @@ type Props = {
 type Draft = { title: string; icon: string };
 
 export function Home({ lastId, onOpen }: Props) {
-  const { openSettings } = useTutor();
+  const { openSettings } = useSettings();
   const env = useEnvironment();
   const [workspaces, setWorkspaces] = useState<Summary[] | null>(null);
   const [creating, setCreating] = useState(false);

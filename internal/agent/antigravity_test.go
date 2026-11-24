@@ -247,15 +247,20 @@ func TestAntigravityModels(t *testing.T) {
 	antigravityOptions(t) // for the profile
 	clis := fakeBinary(t, "agy")
 	var models []Model
+	var plan string
 	done := async(func() (err error) {
-		models, err = antigravityModels(t.Context())
+		models, plan, err = askAntigravity(t.Context(), "agy")
 		return err
 	})
 	cli := clis.next(t)
 	acpReply(t, cli, acpExpect(t, cli, "initialize"), antigravityInitialize)
-	acpReply(t, cli, acpExpect(t, cli, "session/new"), `{"sessionId":"s1","configOptions":`+antigravityConfigOptions+`}`)
+	acpReply(t, cli, acpExpect(t, cli, "session/new"),
+		`{"sessionId":"s1","_meta":{"antigravity":{"tier":{"name":"Google AI Pro"}}},"configOptions":`+antigravityConfigOptions+`}`)
 	if err := wait(t, done); err != nil {
 		t.Fatal(err)
+	}
+	if plan != "Google AI Pro" {
+		t.Errorf("plan %q, want Google AI Pro", plan)
 	}
 	efforts := []Effort{{ID: "low", Description: "Low"}, {ID: "high", Description: "High"}}
 	want := []Model{
@@ -362,7 +367,7 @@ func antigravityOptions(t *testing.T) Options {
 	t.Cleanup(xdg.Reload) // runs after Setenv restores the variable
 	t.Setenv("XDG_DATA_HOME", t.TempDir())
 	xdg.Reload()
-	return Options{Cwd: t.TempDir(), MCPName: "tutortop", MCPURL: "http://127.0.0.1:1/mcp/token", Instructions: "Be a tutor."}
+	return Options{Cwd: t.TempDir(), MCPName: "tutortop", MCPURL: "http://127.0.0.1:1/mcp/token", Instructions: "Be a tutor.", Binary: "agy"}
 }
 
 // startFakeAntigravity starts the adapter on a fake agy, through a new

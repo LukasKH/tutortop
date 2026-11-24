@@ -275,8 +275,77 @@ func TestCodexPermissions(t *testing.T) {
 	})
 }
 
+// What a check asks a short-lived app-server: the plan, its usage limits and
+// the models, or that Codex isn't signed in.
+func TestCodexCheck(t *testing.T) {
+	// ask starts a check on a fake app-server and answers account/read.
+	ask := func(t *testing.T, account string) (*codexInfo, *fakeCLI, <-chan error) {
+		t.Helper()
+		clis := fakeBinary(t, "codex")
+		info := &codexInfo{}
+		done := async(func() (err error) { *info, err = codexCheck(t.Context(), "codex"); return })
+		cli := clis.next(t)
+		codexHandshake(t, cli)
+		codexReply(t, cli, codexExpect(t, cli, "account/read"), account)
+		return info, cli, done
+	}
+
+	t.Run("signed in", func(t *testing.T) {
+		info, cli, done := ask(t, `{"requiresOpenaiAuth":true,"account":{"type":"chatgpt","email":"a@b.c","planType":"plus"}}`)
+		codexReply(t, cli, codexExpect(t, cli, "account/rateLimits/read"),
+			`{"rateLimits":{"primary":{"usedPercent":12,"windowDurationMins":300,"resetsAt":1798022099},"secondary":null}}`)
+		codexReply(t, cli, codexExpect(t, cli, "model/list"), `{"data":[{"model":"gpt-x","displayName":"GPT X","isDefault":true}]}`)
+		if err := wait(t, done); err != nil {
+			t.Fatal(err)
+		}
+		if info.account != "ChatGPT Plus" || len(info.models) != 1 {
+			t.Errorf("account %q, %d models; want ChatGPT Plus and 1", info.account, len(info.models))
+		}
+		want := Limit{UsedPercent: 12, WindowMinutes: 300, ResetsAt: "2026-12-23T10:34:59Z"}
+		if len(info.limits) != 1 || info.limits[0] != want {
+			t.Errorf("limits %+v, want [%+v]", info.limits, want)
+		}
+	})
+
+	t.Run("limits without a reset time", func(t *testing.T) {
+		info, cli, done := ask(t, `{"requiresOpenaiAuth":true,"account":{"type":"chatgpt","planType":"pro"}}`)
+		codexReply(t, cli, codexExpect(t, cli, "account/rateLimits/read"),
+			`{"rateLimits":{"primary":{"usedPercent":5,"windowDurationMins":300,"resetsAt":null},"secondary":{"usedPercent":1,"windowDurationMins":10080,"resetsAt":0}}}`)
+		codexReply(t, cli, codexExpect(t, cli, "model/list"), `{"data":[{"model":"gpt-x"}]}`)
+		if err := wait(t, done); err != nil {
+			t.Fatal(err)
+		}
+		for _, l := range info.limits {
+			if l.ResetsAt != "" {
+				t.Errorf("limit %+v resets at %q, want none", l, l.ResetsAt)
+			}
+		}
+		if len(info.limits) != 2 {
+			t.Errorf("%d limits, want 2", len(info.limits))
+		}
+	})
+
+	t.Run("not ChatGPT", func(t *testing.T) {
+		info, cli, done := ask(t, `{"requiresOpenaiAuth":false,"account":{"type":"amazonBedrock"}}`)
+		codexReply(t, cli, codexExpect(t, cli, "model/list"), `{"data":[{"model":"gpt-x"}]}`)
+		if err := wait(t, done); err != nil {
+			t.Fatal(err)
+		}
+		if info.account != "Amazon Bedrock" || len(info.limits) != 0 {
+			t.Errorf("account %q, limits %+v; want Amazon Bedrock and none", info.account, info.limits)
+		}
+	})
+
+	t.Run("signed out", func(t *testing.T) {
+		_, _, done := ask(t, `{"requiresOpenaiAuth":true,"account":null}`)
+		if err := wait(t, done); err == nil || !strings.Contains(err.Error(), "codex login") {
+			t.Errorf("err %v, want one that says to run codex login", err)
+		}
+	})
+}
+
 func codexOptions(t *testing.T) Options {
-	return Options{Cwd: t.TempDir(), MCPName: "tutortop", MCPURL: "http://127.0.0.1:1/mcp", Instructions: "Be a tutor."}
+	return Options{Cwd: t.TempDir(), MCPName: "tutortop", MCPURL: "http://127.0.0.1:1/mcp", Instructions: "Be a tutor.", Binary: "codex"}
 }
 
 // startFakeCodex starts the Codex adapter on a fake app-server, through a

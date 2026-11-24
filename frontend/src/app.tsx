@@ -1,10 +1,9 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SettingsService, type Prefs } from "@/lib/api";
 import { Home } from "@/features/home/home";
 import { SettingsDialog } from "@/features/settings/settings-dialog";
-import { TutorContext } from "@/features/settings/use-tutor";
 import { SettingsContext } from "@/features/settings/use-settings";
-import { checkEnvironment, loadModels, tutorLabel, useEnvironment, useModels } from "@/lib/agents";
+import { checkEnvironment, loadModels } from "@/lib/agents";
 import { WorkspaceView } from "@/features/workspace/workspace-view";
 import { useStored } from "@/hooks/use-stored";
 
@@ -19,38 +18,47 @@ export function AppRoot() {
   };
   const [settings, setSettings] = useState<Prefs | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // Saves are numbered. Once none is in flight, the settings shown are the
+  // newest the backend took: a failed save rolls back, but not past a later
+  // save, or an earlier one that succeeded after it.
+  const saves = useRef(0);
+  const inFlight = useRef(new Set<number>());
+  const saved = useRef<{ seq: number; prefs: Prefs | null }>({ seq: 0, prefs: null });
 
-  // The tutor's label names the agent and model, which come with these lists.
   const agent = settings?.agent ?? "";
-  const providers = useEnvironment()?.providers ?? [];
-  const models = useModels(agent);
   useEffect(() => {
+    const controller = new AbortController();
     checkEnvironment().catch(() => {});
-    SettingsService.Load().then(setSettings);
+    SettingsService.Load().then((prefs) => {
+      if (controller.signal.aborted || saves.current > 0) return;
+      saved.current = { seq: 0, prefs };
+      setSettings(prefs);
+    });
+    return () => controller.abort();
   }, []);
   useEffect(() => {
     if (agent) loadModels(agent).catch(() => {});
   }, [agent]);
 
-  async function changeSettings(next: Prefs) {
-    const prev = settings;
+  const changeSettings = useCallback(async (next: Prefs) => {
+    const seq = ++saves.current;
+    inFlight.current.add(seq);
     setSettings(next);
     try {
       await SettingsService.Save(next);
-    } catch (e) {
-      setSettings(prev);
-      throw e;
+      if (seq > saved.current.seq) saved.current = { seq, prefs: next };
+    } finally {
+      inFlight.current.delete(seq);
+      if (inFlight.current.size === 0 && saved.current.seq !== saves.current) setSettings(saved.current.prefs);
     }
-  }
+  }, []);
 
-  const tutor = { label: settings ? tutorLabel(settings, providers, models) : "", openSettings: () => setSettingsOpen(true) };
+  const context = useMemo(() => ({ settings, change: changeSettings, openSettings: () => setSettingsOpen(true) }), [settings, changeSettings]);
 
   return (
-    <SettingsContext value={settings}>
-      <TutorContext value={tutor}>
-        {workspaceId ? <WorkspaceView key={workspaceId} id={workspaceId} onBack={() => setWorkspaceId(null)} /> : <Home lastId={lastId} onOpen={open} />}
-        {settingsOpen && settings && <SettingsDialog settings={settings} onChange={changeSettings} onClose={() => setSettingsOpen(false)} />}
-      </TutorContext>
+    <SettingsContext value={context}>
+      {workspaceId ? <WorkspaceView key={workspaceId} id={workspaceId} onBack={() => setWorkspaceId(null)} /> : <Home lastId={lastId} onOpen={open} />}
+      {settingsOpen && <SettingsDialog onClose={() => setSettingsOpen(false)} />}
     </SettingsContext>
   );
 }

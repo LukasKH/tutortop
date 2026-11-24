@@ -64,8 +64,8 @@ export function Install(): $CancellablePromise<$models.Setup> {
 }
 
 /**
- * Setup reports whether the language server is installed and who is signed
- * in. It starts the server to ask.
+ * Setup reports whether the language server is installed, who is signed
+ * in, and whether GitHub has a newer release. It starts the server to ask.
  */
 export function Setup(): $CancellablePromise<$models.Setup> {
     return $Call.ByID(2802203350);

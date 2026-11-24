@@ -12,11 +12,16 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
+	"strconv"
+	"strings"
 	"sync"
+	"time"
 	"unicode/utf16"
 
 	"github.com/LukasKH/tutortop/internal/decode"
 	"github.com/sourcegraph/jsonrpc2"
+	"golang.org/x/sync/singleflight"
 )
 
 // Browser opens URLs in the user's web browser, for GitHub's sign-in page.
@@ -35,6 +40,13 @@ type Service struct {
 	server     *server
 	signIn     *command // finishes the sign-in SignIn started
 	installing bool
+
+	// Separate from mu so Setup's GitHub lookup doesn't wait while running()
+	// starts and initializes the language server.
+	releaseMu sync.Mutex
+	latest    string             // the newest release's version, as last looked up or installed; "" if GitHub didn't answer
+	latestAt  time.Time          // when it was looked up
+	lookups   singleflight.Group // one GitHub lookup at a time, shared by concurrent Setups
 }
 
 // NewService keeps the language server in dir, which needn't exist yet.
@@ -48,23 +60,25 @@ func (s *Service) ServiceShutdown() error {
 	return nil
 }
 
-// Setup reports whether the language server is installed and who is signed
-// in. It starts the server to ask.
+// Setup reports whether the language server is installed, who is signed
+// in, and whether GitHub has a newer release. It starts the server to ask.
 func (s *Service) Setup(ctx context.Context) (Setup, error) {
 	version := installedVersion(s.dir)
 	if version == "" {
 		return Setup{}, nil
 	}
-	setup := Setup{Installed: true, Version: version}
-	srv, err := s.running()
+	// GitHub is asked about a newer release while the server starts and
+	// answers, so the lookup adds no wait of its own.
+	newerCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	update := make(chan string, 1)
+	go func() { update <- s.newer(newerCtx, version) }()
+	setup, err := s.status(ctx)
+	setup.Installed, setup.Version = true, version
 	if err != nil {
 		return setup, err
 	}
-	st, err := call[authStatus](ctx, srv, "checkStatus", struct{}{})
-	if err != nil {
-		return setup, err
-	}
-	setup.User, setup.Problem = st.describe()
+	setup.Update = <-update
 	return setup, nil
 }
 
@@ -108,6 +122,9 @@ func (s *Service) FinishSignIn(ctx context.Context) (Setup, error) {
 	if err != nil {
 		return Setup{}, err
 	}
+	// Forget the previous account's plan before signing in, so the new
+	// account's, which may come during sign-in, is kept.
+	srv.resetPlan()
 	if _, err := call[authStatus](ctx, srv, "workspace/executeCommand", cmd); err != nil {
 		return Setup{}, err
 	}
@@ -123,8 +140,11 @@ func (s *Service) SignOut(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	_, err = call[authStatus](ctx, srv, "signOut", struct{}{})
-	return err
+	if _, err := call[authStatus](ctx, srv, "signOut", struct{}{}); err != nil {
+		return err
+	}
+	srv.resetPlan()
+	return nil
 }
 
 // Complete asks Copilot how to go on at the cursor. Each suggestion is cut to
@@ -260,6 +280,65 @@ func (s *Service) running() (*server, error) {
 	return srv, nil
 }
 
+// status asks the running server who is signed in, and their plan.
+func (s *Service) status(ctx context.Context) (Setup, error) {
+	var setup Setup
+	srv, err := s.running()
+	if err != nil {
+		return setup, err
+	}
+	st, err := call[authStatus](ctx, srv, "checkStatus", struct{}{})
+	if err != nil {
+		return setup, err
+	}
+	setup.User, setup.Problem = st.describe()
+	if setup.User != "" && setup.Problem == "" {
+		setup.Plan = srv.awaitPlan(ctx, 2*time.Second)
+	}
+	return setup, nil
+}
+
+// newer returns the newest release's version if it's newer than the
+// installed one, else "". It asks GitHub at most every few hours. If it
+// can't, it offers no update, and waits a while before asking again, so being
+// offline doesn't slow every Setup.
+func (s *Service) newer(ctx context.Context, installed string) string {
+	s.releaseMu.Lock()
+	latest, asked := s.latest, s.latestAt
+	s.releaseMu.Unlock()
+	if time.Since(asked) > 6*time.Hour || latest == "" && time.Since(asked) > 10*time.Minute {
+		// Shared by concurrent callers, so it mustn't stop when one gives up.
+		lookup := s.lookups.DoChan("latest", func() (any, error) {
+			return s.lookUpLatest(context.WithoutCancel(ctx)), nil
+		})
+		select {
+		case r := <-lookup:
+			latest, _ = r.Val.(string) // always a string
+		case <-ctx.Done():
+			return ""
+		}
+	}
+	if !isNewer(latest, installed) {
+		return ""
+	}
+	return latest
+}
+
+// lookUpLatest asks GitHub for the newest release's version and keeps it;
+// "" if GitHub doesn't answer.
+func (s *Service) lookUpLatest(ctx context.Context) string {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	latest := ""
+	if rel, err := fetchRelease(ctx); err == nil {
+		latest = rel.Tag
+	}
+	s.releaseMu.Lock()
+	defer s.releaseMu.Unlock()
+	s.latest, s.latestAt = latest, time.Now()
+	return latest
+}
+
 // replace stops any running server and installs the latest one into s.dir,
 // preventing concurrent callers from restarting the old binary mid-install.
 func (s *Service) replace(ctx context.Context) error {
@@ -281,7 +360,16 @@ func (s *Service) replace(ctx context.Context) error {
 	if srv != nil {
 		srv.close()
 	}
-	return install(ctx, s.dir)
+	tag, err := install(ctx, s.dir)
+	if err != nil {
+		return err
+	}
+	// The installed release is the newest known, so an older one looked up
+	// before isn't offered as an update.
+	s.releaseMu.Lock()
+	s.latest, s.latestAt = tag, time.Now()
+	s.releaseMu.Unlock()
+	return nil
 }
 
 // stop stops the language server, if it's running.
@@ -305,6 +393,22 @@ type Setup struct {
 	// Problem says why a signed-in account gets no suggestions, such as
 	// having no Copilot plan.
 	Problem string `json:"problem,omitempty"`
+	// Plan is the signed-in account's plan, or nil until the server says.
+	Plan *Plan `json:"plan,omitempty"`
+	// Update is a newer release's version, which Install would bring; ""
+	// when the installed one is the latest, or GitHub couldn't be asked.
+	Update string `json:"update,omitempty"`
+}
+
+// Plan is a Copilot plan and its allowance of suggestions.
+type Plan struct {
+	Name string `json:"name"` // "Copilot Free", "Copilot Pro"
+	// Unlimited plans have no allowance. Otherwise Used of Allowance
+	// suggestions are spent until ResetDate (RFC 3339); 0 if not known.
+	Unlimited bool   `json:"unlimited"`
+	Allowance int    `json:"allowance,omitempty"`
+	Used      int    `json:"used,omitempty"`
+	ResetDate string `json:"resetDate,omitempty"`
 }
 
 // DeviceCode is what the learner enters on GitHub's sign-in page.
@@ -350,4 +454,25 @@ type Range struct {
 type Position struct {
 	Line      int `json:"line"`
 	Character int `json:"character"`
+}
+
+// isNewer reports whether version a comes after b, comparing their
+// dot-separated numbers, as in GitHub's release tags ("1.391.0"). A version
+// that isn't such numbers counts as older than any that is.
+func isNewer(a, b string) bool {
+	return slices.Compare(versionNumbers(a), versionNumbers(b)) > 0
+}
+
+// versionNumbers splits a version such as "1.391.0" into its numbers, or
+// returns nil if it isn't one.
+func versionNumbers(v string) []int {
+	var nums []int
+	for part := range strings.SplitSeq(strings.TrimPrefix(v, "v"), ".") {
+		n, err := strconv.Atoi(part)
+		if err != nil {
+			return nil
+		}
+		nums = append(nums, n)
+	}
+	return nums
 }

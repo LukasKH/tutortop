@@ -30,7 +30,9 @@ type process struct {
 	wmu sync.Mutex // one message per line on stdin, from any goroutine
 }
 
-func startProcess(ctx context.Context, cwd string, env []string, binary string, args ...string) (*process, error) {
+// startProcess starts binary, a path or a name on PATH, in cwd with env
+// added to ours.
+func startProcess(ctx context.Context, cwd, binary string, env []string, args ...string) (*process, error) {
 	path, err := exec.LookPath(binary)
 	if err != nil {
 		return nil, fmt.Errorf("%s isn't installed or isn't on PATH", binary)
