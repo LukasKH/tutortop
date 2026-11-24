@@ -382,7 +382,7 @@ export enum TaskShape {
     ShapeKata = "kata",
 
     /**
-     * one program grown over many tasks
+     * self-contained tasks building components of one project
      */
     ShapeProject = "project",
 };

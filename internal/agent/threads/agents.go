@@ -237,6 +237,9 @@ func (ag *Agents) loop(ctx context.Context, w *workspace.Workspace, ta *threadAg
 	}()
 	tr := newTranscript(w, ta.key.name)
 	cli, err := ag.open(ctx, w, ta, func(ev agent.Event) {
+		if ctx.Err() != nil {
+			return // ended: don't let a dying CLI clobber a retried writer's state
+		}
 		ta.watch.alive()
 		tr.handle(ev)
 	})
@@ -269,7 +272,9 @@ func (ag *Agents) loop(ctx context.Context, w *workspace.Workspace, ta *threadAg
 			return
 		case msg := <-ta.queue:
 			err := ta.cli.Prompt(ctx, msg)
-			tr.endTurn()
+			if ctx.Err() == nil {
+				tr.endTurn()
+			}
 			if ta.stopped.Swap(false) {
 				// After endTurn, so the notice follows the cut-off reply.
 				Post(w, workspace.ChatItem{Thread: ta.key.name, Role: workspace.RoleNotice, Text: "Stopped. Send a message to continue."})
@@ -372,8 +377,12 @@ func (ag *Agents) end(ta *threadAgent) {
 	if ag.agents[ta.key] == ta {
 		delete(ag.agents, ta.key)
 	}
+	wasBusy := ta.pending > 0
 	ta.close()
 	ag.setPending(ta, 0)
+	if wasBusy {
+		events.Emit(events.ThreadWorking, events.Working{Workspace: ta.key.ws, Thread: ta.key.name})
+	}
 }
 
 // A threadAgent is one thread's running agent: its CLI session and the

@@ -131,9 +131,13 @@ func TestStoppedWriterEnds(t *testing.T) {
 
 	queue(t, ag, w, writer, "write")
 	turn := fake.next(t)
+	turn.s.onEvent(agent.Event{Kind: agent.EventThinking, Text: "Drafting"})
 	ag.stop(w.ID, writer.String())
 	if !idle() || !turn.s.closed.Load() || busy.last(writer.String()) != "idle" {
 		t.Fatalf("after stop: idle %v, closed %v, last event %q", idle(), turn.s.closed.Load(), busy.last(writer.String()))
+	}
+	if w := busy.working(writer.String()); w.Thinking != "" || w.Preparing != "" {
+		t.Fatalf("working not cleared on stop: %+v", w)
 	}
 
 	fake.holdStart = make(chan struct{})
@@ -426,25 +430,38 @@ func failures(w *workspace.Workspace, thread string) (n int) {
 	return n
 }
 
-// busyEvents records the thread:busy events sent during a test.
+// busyEvents records the thread:busy and thread:working events sent during a test.
 type busyEvents struct {
-	mu     sync.Mutex
-	latest map[string]bool // by thread
+	mu      sync.Mutex
+	latest  map[string]bool           // by thread
+	current map[string]events.Working // by thread
 }
 
-// recordBusy records the thread:busy events until the test ends.
+// recordBusy records the thread:busy and thread:working events until the test ends.
 func recordBusy(t *testing.T) *busyEvents {
 	t.Helper()
-	b := &busyEvents{latest: map[string]bool{}}
+	b := &busyEvents{latest: map[string]bool{}, current: map[string]events.Working{}}
 	events.SetEmitter(func(_ string, data any) {
-		if e, ok := data.(events.Busy); ok {
+		switch e := data.(type) {
+		case events.Busy:
 			b.mu.Lock()
 			b.latest[e.Thread] = e.Busy
+			b.mu.Unlock()
+		case events.Working:
+			b.mu.Lock()
+			b.current[e.Thread] = e
 			b.mu.Unlock()
 		}
 	})
 	t.Cleanup(func() { events.SetEmitter(nil) })
 	return b
+}
+
+// working is the last thread:working state sent for a thread.
+func (b *busyEvents) working(thread string) events.Working {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.current[thread]
 }
 
 // last is what the last event for a thread said: "busy", "idle", or "" if none came.

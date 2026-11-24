@@ -177,7 +177,7 @@ type TaskShape string
 
 const (
 	ShapeKata    TaskShape = "kata"    // standalone function exercises
-	ShapeProject TaskShape = "project" // one program grown over many tasks
+	ShapeProject TaskShape = "project" // self-contained tasks building components of one project
 )
 
 func (s TaskShape) valid() bool {

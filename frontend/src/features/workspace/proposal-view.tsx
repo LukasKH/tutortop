@@ -155,7 +155,7 @@ export function ProposalView({ proposal, current, progress, mission, resources =
 
 const SHAPES: Partial<Record<TaskShape, string>> = {
   [TaskShape.ShapeKata]: "standalone exercises",
-  [TaskShape.ShapeProject]: "one program that grows task by task",
+  [TaskShape.ShapeProject]: "project components, one per task",
 } satisfies Record<Exclude<TaskShape, TaskShape.$zero>, string>;
 
 /** "new" or "renamed" beside an objective in a plan revision. */
