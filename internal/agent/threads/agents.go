@@ -99,16 +99,7 @@ func (ag *Agents) Send(w *workspace.Workspace, t workspace.Thread, m Message) {
 // is also kept on its threadAgent, so the objective's page shows it even
 // after the learner looks away; it goes when the writer does.
 func (ag *Agents) Show(wsID string, c events.SandboxCheck) {
-	ag.mu.Lock()
-	defer ag.mu.Unlock()
-	if ta := ag.agents[threadKey{wsID, c.Thread}]; ta != nil {
-		ta.watch.checking(c.Running)
-		if c.Kind == events.CheckTask {
-			ta.check = &c
-		}
-	}
-	ag.seq++
-	events.Emit(events.CheckStatus, events.Check{Workspace: wsID, Check: c, Seq: ag.seq})
+	ag.showFor(wsID, c, nil)
 }
 
 // State returns what the workspace's agents are doing: which threads are
@@ -302,10 +293,14 @@ func (ag *Agents) open(ctx context.Context, w *workspace.Workspace, ta *threadAg
 	}
 	// A writer starts fresh every time, so its conversation isn't kept.
 	resume := ta.thread.Kind != workspace.WriterKind
+	var checks mcp.Checks = ag
+	if ta.thread.Kind == workspace.WriterKind {
+		checks = writerChecks{ag: ag, ta: ta}
+	}
 	opts := agent.Options{
 		Cwd:          w.Dir,
 		MCPName:      mcp.Name,
-		MCPURL:       ag.mcp.URL(w, ta.thread, ag),
+		MCPURL:       ag.mcp.URL(w, ta.thread, checks),
 		Instructions: instructions(w, ta.thread),
 		Binary:       ta.cfg.Binary,
 		Model:        ta.cfg.Model,
@@ -358,13 +353,33 @@ func (ag *Agents) setPending(ta *threadAgent, n int) {
 	}
 }
 
+// showFor records and emits a sandbox check. When owner is non-nil (a
+// writer), checks from an ended writer are ignored so an unwinding tool call
+// can't overwrite a retried writer's state or watchdog.
+func (ag *Agents) showFor(wsID string, c events.SandboxCheck, owner *threadAgent) {
+	ag.mu.Lock()
+	defer ag.mu.Unlock()
+	ta := ag.agents[threadKey{wsID, c.Thread}]
+	if owner != nil && ta != owner {
+		return
+	}
+	if ta != nil {
+		ta.watch.checking(c.Running)
+		if c.Kind == events.CheckTask {
+			ta.check = &c
+		}
+	}
+	ag.seq++
+	events.Emit(events.CheckStatus, events.Check{Workspace: wsID, Check: c, Seq: ag.seq})
+}
+
 // stalled ends a writer its watchdog found stuck, and says why in its
 // thread, which the objective's page shows. Posting before end() under ag.mu
 // orders the notice ahead of busy:false so a quick retry clears it cleanly.
 func (ag *Agents) stalled(w *workspace.Workspace, ta *threadAgent) {
 	ag.mu.Lock()
 	defer ag.mu.Unlock()
-	if ag.agents[ta.key] != ta {
+	if ag.agents[ta.key] != ta || !ta.watch.expired() {
 		return
 	}
 	postFailure(w, ta.key.name, "The writer stopped making progress, so it was stopped.")
@@ -424,21 +439,37 @@ func (ta *threadAgent) close() {
 	})
 }
 
+// writerChecks scopes sandbox check updates to one writer instance so an
+// unwinding check from a stopped writer can't affect a retried writer.
+type writerChecks struct {
+	ag *Agents
+	ta *threadAgent
+}
+
+func (c writerChecks) Show(wsID string, check events.SandboxCheck) {
+	c.ag.showFor(wsID, check, c.ta)
+}
+
 // watchdog ends a writer that shows no sign of life for a while: no event
 // from its CLI and no sandbox check. A running check pauses it. Its methods do
 // nothing on a nil watchdog, so a chat's agent needs none.
 type watchdog struct {
 	after time.Duration
 
-	mu      sync.Mutex
-	timer   *time.Timer
-	paused  bool // a sandbox check is running
-	stopped bool
+	mu       sync.Mutex
+	timer    *time.Timer
+	deadline time.Time
+	paused   bool // a sandbox check is running
+	stopped  bool
 }
 
 // newWatchdog calls stalled once after passes without a sign of life.
 func newWatchdog(after time.Duration, stalled func()) *watchdog {
-	return &watchdog{after: after, timer: time.AfterFunc(after, stalled)}
+	return &watchdog{
+		after:    after,
+		deadline: time.Now().Add(after),
+		timer:    time.AfterFunc(after, stalled),
+	}
 }
 
 // alive starts the wait over, unless a check is running.
@@ -449,6 +480,7 @@ func (d *watchdog) alive() {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	if !d.paused && !d.stopped {
+		d.deadline = time.Now().Add(d.after)
 		d.timer.Reset(d.after)
 	}
 }
@@ -469,7 +501,20 @@ func (d *watchdog) checking(running bool) {
 		d.timer.Stop()
 		return
 	}
+	d.deadline = time.Now().Add(d.after)
 	d.timer.Reset(d.after)
+}
+
+// expired reports whether the watchdog is still active and past its deadline.
+// Rechecking this under ag.mu prevents a timer callback that raced with alive
+// or checking(true) from ending an active writer.
+func (d *watchdog) expired() bool {
+	if d == nil {
+		return false
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return !d.stopped && !d.paused && !time.Now().Before(d.deadline)
 }
 
 // stop stops the watchdog for good, as its writer ends.

@@ -69,8 +69,6 @@ func (t *threadTools) qualityGate(ctx context.Context, spec workspace.TaskSpec, 
 		HiddenTests: spec.HiddenTests,
 	})
 	status.Running, status.Passed = false, rep.Passed
-	if ctx.Err() == nil {
-		t.checks.Show(t.w.ID, status)
-	}
+	t.checks.Show(t.w.ID, status)
 	return rep, err
 }

@@ -80,6 +80,12 @@ func (s *Server) URL(w *workspace.Workspace, thread workspace.Thread, checks Che
 	defer s.mu.Unlock()
 	key := threadKey{w.ID, thread.String()}
 	token, ok := s.tokens[key]
+	if ok && thread.Kind == workspace.WriterKind {
+		// Each writer starts fresh; give it its own token and checks so a
+		// stopped writer's in-flight tool call can't affect a retry.
+		delete(s.servers, token)
+		ok = false
+	}
 	if !ok {
 		token = rand.Text()
 		s.tokens[key] = token

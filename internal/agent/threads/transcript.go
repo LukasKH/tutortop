@@ -107,12 +107,14 @@ func (t *transcript) handle(ev agent.Event) {
 	}
 }
 
-// close ends the transcript for good, clearing any live working state so a
-// dying CLI can't emit stale updates after its agent was stopped or retried.
+// close saves any streamed reply and ends the transcript for good, clearing
+// live working state so a dying CLI can't emit stale updates after its agent
+// was stopped or retried.
 func (t *transcript) close() {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.closed = true
+	t.endText()
 	t.showWorking("", "")
 }
 

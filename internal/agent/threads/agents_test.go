@@ -173,6 +173,39 @@ func TestStoppedWriterEnds(t *testing.T) {
 	}
 }
 
+// A stale watchdog callback that raced with alive() or a sandbox check does
+// not kill an active writer, and a stopped writer's late check status does
+// not clobber a retried writer.
+func TestWriterWatchdogAndChecksRaceSafely(t *testing.T) {
+	ag, fake, w := newHeldAgents(t)
+	ag.writerIdle = time.Minute
+	writer := workspace.WriterThread("go.errors")
+
+	queue(t, ag, w, writer, "write")
+	_ = fake.next(t)
+	ag.mu.Lock()
+	ta1 := ag.agents[threadKey{w.ID, writer.String()}]
+	ag.mu.Unlock()
+
+	// Simulates a timer callback acquiring ag.mu after alive() already reset the deadline.
+	ag.stalled(w, ta1)
+	if b, _, _ := ag.State(w.ID); !b[writer.String()] {
+		t.Fatal("stalled ended an active writer whose deadline hasn't passed")
+	}
+
+	// Stopping writer 1 and retrying starts writer 2; writer 1's check updates are ignored.
+	staleChecks := writerChecks{ag: ag, ta: ta1}
+	ag.stop(w.ID, writer.String())
+	queue(t, ag, w, writer, "write again")
+	second := fake.next(t)
+	staleChecks.Show(w.ID, events.SandboxCheck{Kind: events.CheckTask, Thread: writer.String(), Title: "Old check"})
+	if _, checks, _ := ag.State(w.ID); len(checks) != 0 {
+		t.Fatalf("stale writer check leaked onto retried writer: %+v", checks)
+	}
+	second.end(nil)
+	eventually(t, "retry done", func() bool { b, _, _ := ag.State(w.ID); return !b[writer.String()] })
+}
+
 // A writer's first message hands it its objective's sources: the module's
 // references and the learner's resources.
 func TestWriterGetsItsSources(t *testing.T) {

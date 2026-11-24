@@ -118,6 +118,33 @@ func TestTranscriptSavesOnlyWorkThatHappened(t *testing.T) {
 	}
 }
 
+// Closing a transcript (on shutdown or stop) saves streamed text received so
+// far, clears working state, and ignores any late events from a dying CLI.
+func TestTranscriptCloseSavesStreamedTextAndIgnoresLateEvents(t *testing.T) {
+	w := newTestWorkspace(t)
+	shown := captureWorking(t, w.ID)
+	tr := newTranscript(w, "plan")
+	tr.handle(agent.Event{Kind: agent.EventThinking, Text: "Thinking"})
+	tr.handle(agent.Event{Kind: agent.EventText, Text: "Partial reply"})
+	tr.handle(agent.Event{Kind: agent.EventThinking, Text: "More"})
+	tr.close()
+	tr.handle(agent.Event{Kind: agent.EventText, Text: " ignored"})
+	tr.handle(agent.Event{Kind: agent.EventThinking, Text: "ignored"})
+	tr.endTurn()
+
+	chat, err := w.Chat("plan")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(chat) != 1 || chat[0].Text != "Partial reply" {
+		t.Fatalf("chat = %+v, want only saved partial reply", chat)
+	}
+	got := shown()
+	if last := got[len(got)-1]; last.Thinking != "" || last.Preparing != "" {
+		t.Fatalf("last working = %+v, want cleared", last)
+	}
+}
+
 // captureWorking collects the workspace's thread:working events until the
 // test ends.
 func captureWorking(t *testing.T, wsID string) func() []events.Working {
