@@ -2,7 +2,7 @@
 # AUR package "tutortop-bin": installs the .deb from the GitHub release.
 # For a release: set pkgver, then run `updpkgsums` and `makepkg --printsrcinfo > .SRCINFO`.
 pkgname=tutortop-bin
-pkgver=0.2.0
+pkgver=0.2.2
 pkgrel=1
 pkgdesc="Learn anything you can check with a program, tutored by your own AI CLI"
 arch=('x86_64')

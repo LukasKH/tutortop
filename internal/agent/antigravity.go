@@ -396,7 +396,7 @@ func startAntigravityACP(ctx context.Context, binary, cwd string, client acp.Cli
 	defer cancel()
 	_, err = conn.Initialize(initCtx, acp.InitializeRequest{
 		ProtocolVersion: acp.ProtocolVersionNumber,
-		ClientInfo:      &acp.Implementation{Name: "tutortop", Title: acp.Ptr("Tutortop"), Version: "0.2.0"},
+		ClientInfo:      &acp.Implementation{Name: "tutortop", Title: acp.Ptr("Tutortop"), Version: "0.2.2"},
 	})
 	if err != nil {
 		return nil, nil, antigravityAbort(proc, conn, fmt.Errorf("starting Antigravity: %w", err))
