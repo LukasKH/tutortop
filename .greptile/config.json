@@ -1,0 +1,6 @@
+{
+  "strictness": 2,
+  "commentTypes": ["logic", "syntax", "style"],
+  "ignorePatterns": "frontend/bindings/\nfrontend/package-lock.json\ngo.sum",
+  "instructions": "Check changes against STYLEGUIDE.md. Focus on bugs, architectural boundary violations, and style rules not already enforced by CI linters."
+}

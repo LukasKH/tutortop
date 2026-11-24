@@ -1,0 +1,12 @@
+{
+  "files": [
+    {
+      "path": "STYLEGUIDE.md",
+      "description": "Tutortop Go, TypeScript/React, architecture boundary, and testing style guide"
+    },
+    {
+      "path": "AGENTS.md",
+      "description": "Repository conventions and coding guidelines"
+    }
+  ]
+}
