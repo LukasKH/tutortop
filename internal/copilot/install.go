@@ -23,27 +23,30 @@ import (
 const latestRelease = "https://api.github.com/repos/github/copilot-language-server-release/releases/latest"
 
 // install downloads the latest language server for this computer into dir,
-// replacing what's there.
-func install(ctx context.Context, dir string) error {
+// replacing what's there, and returns its version.
+func install(ctx context.Context, dir string) (string, error) {
 	rel, err := fetchRelease(ctx)
 	if err != nil {
-		return err
+		return "", err
 	}
 	name := assetName(runtime.GOOS, runtime.GOARCH, rel.Tag)
 	i := slices.IndexFunc(rel.Assets, func(a asset) bool { return a.Name == name })
 	if i < 0 {
-		return fmt.Errorf("GitHub has no Copilot language server for %s/%s", runtime.GOOS, runtime.GOARCH)
+		return "", fmt.Errorf("GitHub has no Copilot language server for %s/%s", runtime.GOOS, runtime.GOARCH)
 	}
 	parent := filepath.Dir(dir)
 	if err := os.MkdirAll(parent, 0o755); err != nil {
-		return err
+		return "", err
 	}
 	archive, err := download(ctx, rel.Assets[i], parent)
 	if err != nil {
-		return err
+		return "", err
 	}
 	defer func() { _ = os.Remove(archive) }() // a temporary file
-	return unpack(archive, dir, rel.Tag)
+	if err := unpack(archive, dir, rel.Tag); err != nil {
+		return "", err
+	}
+	return rel.Tag, nil
 }
 
 // installedVersion is the version of the language server in dir, or "" if

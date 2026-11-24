@@ -20,6 +20,14 @@ import * as agent$0 from "../agent/models.js";
 import * as $models from "./models.js";
 
 /**
+ * Check tries an agent's CLI: its version, its sign-in and its models. The
+ * models it finds replace the cached ones.
+ */
+export function Check(provider: string): $CancellablePromise<agent$0.Check> {
+    return $Call.ByID(3110782858, provider);
+}
+
+/**
  * Environment reports what's installed.
  */
 export function Environment(): $CancellablePromise<$models.Environment> {
@@ -36,7 +44,7 @@ export function Load(): $CancellablePromise<$models.Prefs> {
 
 /**
  * Models lists the models an agent offers, with their reasoning efforts.
- * Codex is asked live; answers are kept for a few minutes.
+ * Codex and Antigravity are asked live; answers are kept for a few minutes.
  */
 export function Models(provider: string): $CancellablePromise<agent$0.Model[] | null> {
     return $Call.ByID(2623897452, provider);

@@ -51,7 +51,7 @@ func startCodex(ctx context.Context, opts Options, onEvent func(Event)) (Session
 	permissions := "permissions.tutortop.filesystem={" + strings.Join(filesystem, ",") + "}"
 	s := &codexSession{policy: newPolicy(opts), effort: opts.Effort, onEvent: onEvent, filePaths: map[string][]string{}}
 	var err error
-	s.process, s.rpc, err = startCodexServer(ctx, opts.Cwd, s.notify, s.request,
+	s.process, s.rpc, err = startCodexServer(ctx, opts.Binary, opts.Cwd, s.notify, s.request,
 		"-c", `default_permissions="tutortop"`, "-c", permissions)
 	if err != nil {
 		return nil, err
@@ -62,7 +62,7 @@ func startCodex(ctx context.Context, opts Options, onEvent func(Event)) (Session
 		Account            any  `json:"account"`
 	}
 	if account, err := setupCall[accountResult](ctx, s.rpc, "account/read", map[string]any{}); err == nil && account.RequiresOpenaiAuth && account.Account == nil {
-		return nil, s.abort(fmt.Errorf("not signed in to Codex: run `codex login` in a terminal, then try again"))
+		return nil, s.abort(fmt.Errorf("not signed in to Codex: run `%s login` in a terminal, then try again", opts.Binary))
 	}
 
 	params := map[string]any{
@@ -309,12 +309,12 @@ func (it codexItem) paths() []string {
 }
 
 // startCodexServer starts `codex app-server` and completes its handshake.
-func startCodexServer(ctx context.Context, cwd string,
+func startCodexServer(ctx context.Context, binary, cwd string,
 	onNotify func(method string, params json.RawMessage),
 	onRequest func(method string, params json.RawMessage) (any, error),
 	args ...string,
 ) (*process, *rpcConn, error) {
-	proc, err := startProcess(ctx, cwd, nil, "codex", append([]string{"app-server"}, args...)...)
+	proc, err := startProcess(ctx, cwd, binary, nil, append([]string{"app-server"}, args...)...)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -360,17 +360,121 @@ func codexTool(it codexItem) (Tool, bool) {
 
 // codexModels asks a short-lived `codex app-server` for its model list, so
 // the list follows the learner's account and CLI version.
-func codexModels(ctx context.Context) ([]Model, error) {
+func codexModels(ctx context.Context, binary string) ([]Model, error) {
+	var models []Model
+	err := withCodexServer(ctx, binary, func(ctx context.Context, rpc *rpcConn) error {
+		var err error
+		models, err = codexModelList(ctx, rpc)
+		return err
+	})
+	return models, err
+}
+
+// codexInfo is what a short-lived `codex app-server` says.
+type codexInfo struct {
+	account string // "ChatGPT Plus", "API key"
+	limits  []Limit
+	models  []Model
+}
+
+// codexCheck asks a short-lived `codex app-server` for the account it's
+// signed in with, its usage limits and the models it offers.
+func codexCheck(ctx context.Context, binary string) (codexInfo, error) {
+	var info codexInfo
+	err := withCodexServer(ctx, binary, func(ctx context.Context, rpc *rpcConn) error {
+		var err error
+		if info.account, info.limits, err = codexAccount(ctx, rpc, binary); err != nil {
+			return err
+		}
+		info.models, err = codexModelList(ctx, rpc)
+		return err
+	})
+	return info, err
+}
+
+// withCodexServer starts a short-lived `codex app-server`, asks it what ask
+// wants to know, and stops it.
+func withCodexServer(ctx context.Context, binary string, ask func(ctx context.Context, rpc *rpcConn) error) error {
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	proc, rpc, err := startCodexServer(ctx, os.TempDir(), func(string, json.RawMessage) {},
+	proc, rpc, err := startCodexServer(ctx, binary, os.TempDir(), func(string, json.RawMessage) {},
 		func(string, json.RawMessage) (any, error) { return nil, errors.New("not supported") })
 	if err != nil {
-		return nil, err
+		return err
 	}
-	defer func() { _ = proc.Close() }() // the models are all we need from it
+	defer func() { _ = proc.Close() }() // the answers are all we need from it
+	return ask(ctx, rpc)
+}
 
-	var out []Model
+// codexAccount names the account Codex is signed in with, and how much of
+// its usage limits it has used. binary is named in the sign-in hint.
+func codexAccount(ctx context.Context, rpc *rpcConn, binary string) (string, []Limit, error) {
+	type accountResult struct {
+		RequiresOpenaiAuth bool `json:"requiresOpenaiAuth"`
+		Account            *struct {
+			Type     string `json:"type"`     // "chatgpt", "apiKey", "amazonBedrock", "gcp", ...
+			PlanType string `json:"planType"` // "free", "plus", "pro", ...
+		} `json:"account"`
+	}
+	a, err := rpc.Call[accountResult](ctx, "account/read", map[string]any{})
+	switch {
+	case err != nil:
+		return "", nil, err
+	case a.Account == nil && a.RequiresOpenaiAuth:
+		return "", nil, fmt.Errorf("not signed in to Codex: run `%s login` in a terminal, then check again", binary)
+	case a.Account == nil:
+		return "", nil, nil // a provider that needs no sign-in
+	case a.Account.Type != "chatgpt":
+		return codexAccountType(a.Account.Type), nil, nil
+	}
+	name := strings.TrimSpace("ChatGPT " + upperFirst(a.Account.PlanType))
+
+	type window struct {
+		UsedPercent        float64 `json:"usedPercent"`
+		WindowDurationMins int     `json:"windowDurationMins"`
+		ResetsAt           int64   `json:"resetsAt"` // Unix seconds
+	}
+	type limitsResult struct {
+		RateLimits struct {
+			Primary   *window `json:"primary"`
+			Secondary *window `json:"secondary"`
+		} `json:"rateLimits"`
+	}
+	// The limits are extra: an older Codex without the call still checks out.
+	var limits []Limit
+	if l, err := rpc.Call[limitsResult](ctx, "account/rateLimits/read", map[string]any{}); err == nil {
+		for _, w := range []*window{l.RateLimits.Primary, l.RateLimits.Secondary} {
+			if w == nil {
+				continue
+			}
+			limit := Limit{UsedPercent: w.UsedPercent, WindowMinutes: w.WindowDurationMins}
+			if w.ResetsAt > 0 { // null or missing when Codex doesn't say
+				limit.ResetsAt = time.Unix(w.ResetsAt, 0).UTC().Format(time.RFC3339)
+			}
+			limits = append(limits, limit)
+		}
+	}
+	return name, limits, nil
+}
+
+// codexAccountType names an account that isn't ChatGPT's, so has no plan
+// or usage limits.
+func codexAccountType(t string) string {
+	switch t {
+	case "apiKey":
+		return "API key"
+	case "amazonBedrock":
+		return "Amazon Bedrock"
+	case "gcp":
+		return "GCP"
+	}
+	return t
+}
+
+// codexModelList pages through the models the app-server offers, the
+// default first.
+func codexModelList(ctx context.Context, rpc *rpcConn) ([]Model, error) {
+	out := []Model{}
 	cursor := ""
 	for range 10 { // pages; a handful of models fits in one
 		params := map[string]any{}
@@ -379,7 +483,6 @@ func codexModels(ctx context.Context) ([]Model, error) {
 		}
 		type modelPage struct {
 			Data []struct {
-				ID                        string `json:"id"`
 				Model                     string `json:"model"`
 				DisplayName               string `json:"displayName"`
 				Description               string `json:"description"`
@@ -401,7 +504,13 @@ func codexModels(ctx context.Context) ([]Model, error) {
 			if m.Hidden {
 				continue
 			}
-			model := Model{ID: m.Model, Name: cmp.Or(m.DisplayName, m.Model), Description: m.Description, DefaultEffort: m.DefaultReasoningEffort}
+			model := Model{
+				ID:            m.Model,
+				Name:          cmp.Or(m.DisplayName, m.Model),
+				Description:   m.Description,
+				Efforts:       []Effort{},
+				DefaultEffort: m.DefaultReasoningEffort,
+			}
 			for _, e := range m.SupportedReasoningEfforts {
 				model.Efforts = append(model.Efforts, Effort{ID: e.ReasoningEffort, Description: e.Description})
 			}

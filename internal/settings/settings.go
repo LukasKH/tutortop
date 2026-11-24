@@ -3,6 +3,7 @@
 package settings
 
 import (
+	"cmp"
 	"fmt"
 	"os"
 	"os/exec"
@@ -25,6 +26,9 @@ type Prefs struct {
 	// Models holds the model and reasoning effort chosen for each agent, so
 	// switching agents and back keeps both choices.
 	Models map[string]ModelChoice `yaml:"models" json:"models"`
+	// Agents holds each agent's setup: whether it's offered, and which CLI
+	// to run. An agent missing here is on and found on PATH.
+	Agents map[string]AgentSetup `yaml:"agents,omitempty" json:"agents"`
 	// WorkspacesFolder holds the workspaces; "" means workspace.DefaultRoot.
 	// The app reads it at startup.
 	WorkspacesFolder string `yaml:"workspaces_folder,omitempty" json:"workspacesFolder,omitempty"`
@@ -34,11 +38,26 @@ type Prefs struct {
 	Copilot bool `yaml:"copilot,omitempty" json:"copilot"`
 }
 
+// binary is the CLI to run for an agent: the path set up for it, or its name.
+func (p Prefs) binary(provider agent.Provider) string {
+	return cmp.Or(p.Agents[string(provider.ID)].Path, provider.Binary)
+}
+
 // ModelChoice is an agent's model and reasoning effort. Empty fields use the
 // agent's own defaults.
 type ModelChoice struct {
 	Model  string `yaml:"model,omitempty" json:"model"`
 	Effort string `yaml:"effort,omitempty" json:"effort"`
+}
+
+// AgentSetup is how one agent is set up.
+type AgentSetup struct {
+	// Off leaves the agent out of the tutor picker. The agent in use can't
+	// be off.
+	Off bool `yaml:"off,omitempty" json:"off"`
+	// Path is the agent's CLI as a full path; "" finds agent.Provider.Binary
+	// on PATH.
+	Path string `yaml:"path,omitempty" json:"path"`
 }
 
 // Store keeps the Prefs in a settings.yaml file.
@@ -71,6 +90,19 @@ func (s *Store) Save(p Prefs) error {
 			delete(p.Models, id)
 		}
 	}
+	for id, a := range p.Agents {
+		switch {
+		case !knownProvider(id) || a == (AgentSetup{}):
+			delete(p.Agents, id)
+		case a.Off && id == p.Provider:
+			return fmt.Errorf("the tutor's agent can't be turned off; choose another agent first")
+		case a.Path != "" && !filepath.IsAbs(a.Path):
+			return fmt.Errorf("the agent's CLI needs a full path, not %q", a.Path)
+		case a.Path != "":
+			a.Path = filepath.Clean(a.Path)
+			p.Agents[id] = a
+		}
+	}
 	if p.WorkspacesFolder != "" {
 		if !filepath.IsAbs(p.WorkspacesFolder) {
 			return fmt.Errorf("the workspaces folder needs a full path, not %q", p.WorkspacesFolder)
@@ -100,17 +132,33 @@ func load(b []byte) Prefs {
 	if s.Models == nil {
 		s.Models = map[string]ModelChoice{}
 	}
+	if s.Agents == nil {
+		s.Agents = map[string]AgentSetup{}
+	}
 	if !knownProvider(s.Provider) {
-		s.Provider = installedProvider()
+		s.Provider = installedProvider(s)
+	}
+	// The tutor's agent can't be off; clearing a stale flag from a hand-edited
+	// file keeps later saves of unrelated settings from failing.
+	if a := s.Agents[s.Provider]; a.Off {
+		a.Off = false
+		if a == (AgentSetup{}) {
+			delete(s.Agents, s.Provider)
+		} else {
+			s.Agents[s.Provider] = a
+		}
 	}
 	return s
 }
 
-// installedProvider is the first agent whose CLI is installed, or the first
-// one listed if none is.
-func installedProvider() string {
+// installedProvider is the first enabled agent whose CLI is installed, or
+// the first one listed if none is.
+func installedProvider(s Prefs) string {
 	for _, p := range agent.Providers() {
-		if _, err := exec.LookPath(p.Binary); err == nil {
+		if s.Agents[string(p.ID)].Off {
+			continue
+		}
+		if _, err := exec.LookPath(s.binary(p)); err == nil {
 			return string(p.ID)
 		}
 	}

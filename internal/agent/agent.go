@@ -14,6 +14,7 @@
 package agent
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -34,6 +35,7 @@ func Start(ctx context.Context, providerID string, opts Options, onEvent func(Ev
 	if !ok {
 		return nil, fmt.Errorf("unknown agent provider %q", providerID)
 	}
+	opts.Binary = cmp.Or(opts.Binary, p.Binary)
 	switch p.ID {
 	case Claude:
 		return startClaude(ctx, opts, onEvent)
@@ -63,8 +65,11 @@ type Options struct {
 	// CLI can't resume it (deleted, made on another machine), start a fresh
 	// session instead of failing; the app saves the new ID.
 	ResumeID string
-	Model    string // a Model.ID; empty uses the CLI's default
-	Effort   string // a reasoning Effort.ID, e.g. "high"; empty uses the model's default
+	// Binary is the CLI to run, a path or a name on PATH; empty uses
+	// Provider.Binary.
+	Binary string
+	Model  string // a Model.ID; empty uses the CLI's default
+	Effort string // a reasoning Effort.ID, e.g. "high"; empty uses the model's default
 	// Subagents lets the agent hand work such as research to subagents.
 	// Nothing may outlive the turn, so the CLI must wait for each subagent
 	// before the turn goes on; an adapter whose CLI can't promise that, or
@@ -205,15 +210,17 @@ func Lookup(id string) (Provider, bool) {
 }
 
 // Models lists the models the provider's CLI can use, the default first.
-// The app caches the answer for a few minutes, so asking the CLI is fine.
-func (p Provider) Models(ctx context.Context) ([]Model, error) {
+// binary is the CLI to ask, as in Options.Binary. The app caches the answer
+// for a few minutes, so asking the CLI is fine.
+func (p Provider) Models(ctx context.Context, binary string) ([]Model, error) {
+	binary = cmp.Or(binary, p.Binary)
 	switch p.ID {
 	case Claude:
 		return claudeModels(ctx)
 	case Codex:
-		return codexModels(ctx)
+		return codexModels(ctx, binary)
 	case Antigravity:
-		return antigravityModels(ctx)
+		return antigravityModels(ctx, binary)
 	}
 	return nil, fmt.Errorf("agent provider %q has no adapter", p.ID)
 }

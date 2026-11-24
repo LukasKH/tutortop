@@ -325,7 +325,7 @@ func TestClaudePermissions(t *testing.T) {
 // own config folder is a temporary one, so resuming never sees the real one.
 func claudeOptions(t *testing.T) Options {
 	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
-	return Options{Cwd: t.TempDir(), MCPName: "tutortop", MCPURL: "http://127.0.0.1:1/mcp", Instructions: "Be a tutor."}
+	return Options{Cwd: t.TempDir(), MCPName: "tutortop", MCPURL: "http://127.0.0.1:1/mcp", Instructions: "Be a tutor.", Binary: "claude"}
 }
 
 // startFakeClaude starts the Claude adapter on a fake CLI, through the

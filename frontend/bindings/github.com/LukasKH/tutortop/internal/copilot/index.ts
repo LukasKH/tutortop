@@ -10,6 +10,7 @@ export type {
     Completion,
     CompletionRequest,
     DeviceCode,
+    Plan,
     Position,
     Range,
     Setup,

@@ -7,10 +7,10 @@ import * as threads from "@bindings/github.com/LukasKH/tutortop/internal/agent/t
 import * as settings from "@bindings/github.com/LukasKH/tutortop/internal/settings";
 import * as copilot from "@bindings/github.com/LukasKH/tutortop/internal/copilot";
 import type { WorkspaceSnapshot } from "@bindings/github.com/LukasKH/tutortop/internal/app";
-import type { Environment, Prefs, ProviderStatus } from "@bindings/github.com/LukasKH/tutortop/internal/settings";
-import type { Completion, DeviceCode, Setup, Suggestion } from "@bindings/github.com/LukasKH/tutortop/internal/copilot";
+import type { AgentSetup, Environment, Prefs, ProviderStatus } from "@bindings/github.com/LukasKH/tutortop/internal/settings";
+import type { Completion, DeviceCode, Plan, Setup, Suggestion } from "@bindings/github.com/LukasKH/tutortop/internal/copilot";
 import type { SandboxCheck } from "@bindings/github.com/LukasKH/tutortop/internal/events";
-import type { Model } from "@bindings/github.com/LukasKH/tutortop/internal/agent";
+import type { Check, Limit, Model } from "@bindings/github.com/LukasKH/tutortop/internal/agent";
 import type {
   Activity,
   ChatItem,
@@ -36,15 +36,19 @@ export { Status } from "@bindings/github.com/LukasKH/tutortop/internal/sandbox";
 
 export type {
   Activity,
+  AgentSetup,
   ChatItem,
+  Check,
   Completion,
   Curriculum,
   DeviceCode,
   Environment,
   LessonDetail,
   LessonStatus,
+  Limit,
   Model,
   Objective,
+  Plan,
   Progress,
   ProviderStatus,
   Question,
@@ -91,6 +95,7 @@ export const SettingsService = {
   Load: patiently(settings.Service.Load),
   Models: patiently(settings.Service.Models),
   Environment: patiently(settings.Service.Environment),
+  Check: patiently(settings.Service.Check),
 };
 
 export { Service as EditorService } from "@bindings/github.com/LukasKH/tutortop/internal/editor";

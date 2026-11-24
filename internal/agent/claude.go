@@ -72,7 +72,7 @@ func startClaude(ctx context.Context, opts Options, onEvent func(Event)) (Sessio
 		args = append(args, "--session-id", sessionID)
 	}
 
-	proc, err := startProcess(ctx, opts.Cwd, []string{
+	proc, err := startProcess(ctx, opts.Cwd, opts.Binary, []string{
 		// set_toolchain and create_task build images and run sandbox checks,
 		// which can take minutes (especially pulling a custom base image).
 		// Raise both total and idle timeouts so a slow pull isn't cut short.
@@ -82,7 +82,7 @@ func startClaude(ctx context.Context, opts Options, onEvent func(Event)) (Sessio
 		// done: Claude waits for subagents, and doesn't move a long MCP call
 		// such as create_task to the background either.
 		"CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1",
-	}, "claude", args...)
+	}, args...)
 	if err != nil {
 		return nil, err
 	}

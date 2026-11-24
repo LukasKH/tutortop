@@ -9,7 +9,7 @@ import (
 // The last line a CLI prints before it exits, such as its result or error,
 // must still reach a reader that's busy with the line before.
 func TestProcessKeepsOutputAfterExit(t *testing.T) {
-	p, err := startProcess(t.Context(), t.TempDir(), nil, "sh", "-c", `printf 'first\nlast\n'`)
+	p, err := startProcess(t.Context(), t.TempDir(), "sh", nil, "-c", `printf 'first\nlast\n'`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -26,7 +26,7 @@ func TestProcessKeepsOutputAfterExit(t *testing.T) {
 
 // Close returns, and the process stops, even when its output is never read.
 func TestProcessCloseUnread(t *testing.T) {
-	p, err := startProcess(t.Context(), t.TempDir(), nil, "sh", "-c", "yes")
+	p, err := startProcess(t.Context(), t.TempDir(), "sh", nil, "-c", "yes")
 	if err != nil {
 		t.Fatal(err)
 	}

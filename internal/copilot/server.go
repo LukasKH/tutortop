@@ -1,11 +1,13 @@
 package copilot
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"os/exec"
 	"sync"
 	"sync/atomic"
@@ -24,10 +26,13 @@ type server struct {
 	browser Browser
 	nextID  atomic.Uint64
 
-	mu      sync.Mutex
-	docs    map[string]*document // by URI
-	focused string               // URI last sent in textDocument/didFocus
-	message string               // what the server last said is wrong
+	mu        sync.Mutex
+	docs      map[string]*document // by URI
+	focused   string               // URI last sent in textDocument/didFocus
+	message   string               // what the server last said is wrong
+	plan      *Plan                // the plan, once the server has said
+	planReady chan struct{}        // closed once the plan comes; nil once it has
+	waited    bool                 // Setup has waited out the timeout for the plan
 }
 
 // start runs the language server at path and initializes it. It doesn't
@@ -46,7 +51,12 @@ func start(path string, browser Browser) (*server, error) {
 	if err := cmd.Start(); err != nil {
 		return nil, err
 	}
-	s := &server{cmd: cmd, browser: browser, docs: map[string]*document{}}
+	s := &server{
+		cmd:       cmd,
+		browser:   browser,
+		docs:      map[string]*document{},
+		planReady: make(chan struct{}),
+	}
 	stream := jsonrpc2.NewBufferedStream(stdio{stdout, stdin}, jsonrpc2.VSCodeObjectCodec{})
 	// Async, as answering showDocument mustn't hold up the call that caused it.
 	s.conn = jsonrpc2.NewConn(context.Background(), stream, jsonrpc2.AsyncHandler(jsonrpc2.HandlerWithError(s.handle)))
@@ -215,6 +225,12 @@ func (s *server) handle(_ context.Context, _ *jsonrpc2.Conn, req *jsonrpc2.Reque
 			message = p.Message
 		}
 		s.setNotice(message)
+	case "copilot/quotaChange":
+		// The plan and its allowances, sent once the server knows the
+		// account, and again as suggestions use them up.
+		if p, err := decode.JSON[quotaChange](params); err == nil {
+			s.setPlan(p.plan())
+		}
 	case "window/showMessage", "window/showMessageRequest":
 		// Account and billing news, such as a used-up monthly allowance.
 		p, err := decode.JSON[struct {
@@ -234,6 +250,54 @@ func (s *server) handle(_ context.Context, _ *jsonrpc2.Conn, req *jsonrpc2.Reque
 	}
 	// Anything else, such as registering capabilities, needs no answer.
 	return nil, nil
+}
+
+func (s *server) setPlan(p Plan) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.plan = &p
+	if s.planReady != nil {
+		close(s.planReady)
+		s.planReady = nil
+	}
+}
+
+// resetPlan forgets the plan, as the account changes, so the next awaitPlan
+// waits for the new account's.
+func (s *server) resetPlan() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.planReady != nil {
+		close(s.planReady) // wake any waiter from the previous account
+	}
+	s.plan = nil
+	s.waited = false
+	s.planReady = make(chan struct{})
+}
+
+// awaitPlan returns the plan once the server has said, or nil. The server
+// says soon after it knows a signed-in account, so callers wait up to d for
+// it, until one call has waited that long without it; later ones don't wait.
+func (s *server) awaitPlan(ctx context.Context, d time.Duration) *Plan {
+	s.mu.Lock()
+	p, ready, waited := s.plan, s.planReady, s.waited
+	s.mu.Unlock()
+	if p != nil || waited || ready == nil {
+		return p
+	}
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-ready:
+	case <-timer.C:
+	case <-ctx.Done():
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.planReady == ready && s.plan == nil && ctx.Err() == nil {
+		s.waited = true // timed out
+	}
+	return s.plan
 }
 
 // setNotice keeps what the server says is wrong; "" means nothing is.
@@ -290,6 +354,38 @@ type command struct {
 	Command   string `json:"command"`
 	Title     string `json:"title,omitempty"`
 	Arguments []any  `json:"arguments"`
+}
+
+// quotaChange is the copilot/quotaChange notification.
+type quotaChange struct {
+	CopilotPlan string `json:"copilotPlan"` // "free", "individual", "business", ...
+	Completions *struct {
+		Quota     float64 `json:"quota"`
+		Used      float64 `json:"used"`
+		Unlimited bool    `json:"unlimited"`
+		ResetDate string  `json:"resetDate"`
+	} `json:"completions"` // suggestions; chat has its own
+}
+
+func (q quotaChange) plan() Plan {
+	p := Plan{Name: cmp.Or(planNames[q.CopilotPlan], "Copilot")}
+	if c := q.Completions; c != nil {
+		p.Unlimited = c.Unlimited
+		if !c.Unlimited {
+			p.Allowance, p.Used, p.ResetDate = int(c.Quota), int(math.Round(c.Used)), c.ResetDate
+		}
+	}
+	return p
+}
+
+// planNames are GitHub's names for the plans the server reports.
+var planNames = map[string]string{
+	"free":           "Copilot Free",
+	"individual":     "Copilot Pro",
+	"individual_pro": "Copilot Pro+",
+	"individual_max": "Copilot Max",
+	"business":       "Copilot Business",
+	"enterprise":     "Copilot Enterprise",
 }
 
 // authStatus is the answer to checkStatus, signOut and finishing sign-in.

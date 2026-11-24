@@ -1,9 +1,14 @@
-import { createContext, use } from "react";
+import { tutorLabel, useEnvironment, useModels } from "@/lib/agents";
+import { useSettings } from "@/features/settings/use-settings";
 
-/** The configured tutor, e.g. "Claude Code · Opus · High", and a way to change it. */
-export type Tutor = { label: string; openSettings: () => void };
+/** The configured tutor: its agent, and its label, e.g. "Claude Code · Opus · High". Both are "" while the settings load. */
+export type Tutor = { agent: string; label: string };
 
-/** AppRoot, which owns the settings, provides the tutor to every screen. */
-export const TutorContext = createContext<Tutor>({ label: "", openSettings: () => {} });
-
-export const useTutor = () => use(TutorContext);
+export function useTutor(): Tutor {
+  const { settings } = useSettings();
+  const agent = settings?.agent ?? "";
+  // The label names the agent and model, which come with these lists.
+  const providers = useEnvironment()?.providers ?? [];
+  const models = useModels(agent);
+  return { agent, label: settings ? tutorLabel(settings, providers, models) : "" };
+}

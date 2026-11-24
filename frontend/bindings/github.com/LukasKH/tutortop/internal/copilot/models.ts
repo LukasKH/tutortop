@@ -37,6 +37,25 @@ export interface DeviceCode {
     "verificationUri": string;
 }
 
+/**
+ * Plan is a Copilot plan and its allowance of suggestions.
+ */
+export interface Plan {
+    /**
+     * "Copilot Free", "Copilot Pro"
+     */
+    "name": string;
+
+    /**
+     * Unlimited plans have no allowance. Otherwise Used of Allowance
+     * suggestions are spent until ResetDate (RFC 3339); 0 if not known.
+     */
+    "unlimited": boolean;
+    "allowance"?: number;
+    "used"?: number;
+    "resetDate"?: string;
+}
+
 export interface Position {
     "line": number;
     "character": number;
@@ -68,6 +87,17 @@ export interface Setup {
      * having no Copilot plan.
      */
     "problem"?: string;
+
+    /**
+     * Plan is the signed-in account's plan, or nil until the server says.
+     */
+    "plan"?: Plan | null;
+
+    /**
+     * Update is a newer release's version, which Install would bring; ""
+     * when the installed one is the latest, or GitHub couldn't be asked.
+     */
+    "update"?: string;
 }
 
 /**

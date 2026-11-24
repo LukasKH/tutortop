@@ -38,7 +38,7 @@ export function TaskPanel({ taskId, passed, moduleTitle, next }: Props) {
   const [activeTest, setActiveTest] = useState("");
   const editorLanguage = detail?.editorLanguage || "plaintext";
   const lspStatus = useLanguageServer(wsId, taskId, editorLanguage, !!detail?.hasLanguageServer);
-  const copilotOn = useSettings()?.copilot ?? false;
+  const copilotOn = useSettings().settings?.copilot ?? false;
 
   // Layout the learner can adjust; remembered across tasks and restarts.
   const [split, setSplit] = useStored("split", 0.45); // statement's share of the width
