@@ -5,7 +5,7 @@ type Listener = () => void;
 
 const noopUnsubscribe = () => {};
 
-export class WorkingStore {
+class WorkingStore {
   private byThread = new Map<string, Working | undefined>();
   private listeners = new Map<string, Set<Listener>>();
 
