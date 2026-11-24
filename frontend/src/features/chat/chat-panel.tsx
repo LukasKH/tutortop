@@ -1,11 +1,12 @@
 import { useLayoutEffect, useRef, type ReactNode } from "react";
-import { ChatRole, ChatStatus, type ChatItem, type SandboxCheck, type Working } from "@/lib/api";
+import { ChatRole, ChatStatus, type ChatItem, type SandboxCheck } from "@/lib/api";
 import { useTutor } from "@/features/settings/use-tutor";
 import { TutorPicker } from "@/features/settings/tutor-picker";
 import { AgentIcon } from "@/components/agent-icon";
 import type { OpenItem } from "@/features/workspace/open-item";
 import type { NewItem } from "@/features/workspace/use-open-item";
 import { useLiveWorkspace } from "@/features/workspace/use-workspace";
+import { useWorking } from "@/features/workspace/use-working";
 import type { Composer } from "@/features/chat/use-composer";
 import { Thinking } from "@/features/chat/thinking";
 import { Markdown } from "@/components/markdown";
@@ -32,8 +33,6 @@ type Props = {
   items: ChatItem[];
   /** The thread's tutor is working (isBusy, workspace-state.ts): "Thinking…" shows and hints wait. */
   busy: boolean;
-  /** What the tutor is working on between messages, shown in place of "Thinking…". */
-  working?: Working;
   /** Slots: the questions form (or a pointer to it) and the status line above the composer. */
   questions: ReactNode;
   status: ReactNode;
@@ -45,6 +44,7 @@ type Props = {
 
 export function ChatPanel({ composer: { draft, setDraft, inputRef }, ...p }: Props) {
   const tutor = useTutor();
+  const working = useWorking(p.thread);
   const listRef = useRef<HTMLDivElement>(null);
   const stickToBottom = useRef(true);
 
@@ -95,7 +95,7 @@ export function ChatPanel({ composer: { draft, setDraft, inputRef }, ...p }: Pro
             <Message key={item.id} item={item} />
           ))}
           {p.questions}
-          <Thinking items={p.items} busy={p.busy} working={p.working} />
+          <Thinking items={p.items} busy={p.busy} working={working} />
         </div>
         {p.hint && <HintPill level={p.hint.level} busy={p.busy} onHint={p.hint.onHint} />}
       </div>

@@ -16,7 +16,7 @@ type Statement struct {
 	Requirements []string  `json:"requirements" jsonschema:"2-6 exact rules the code must follow, each one checkable, e.g. 'The error message is exactly new note: empty title.' Specific enough to know what to write, without giving the code"`
 	Examples     []Example `json:"examples" jsonschema:"2-4 worked examples: an input, the exact output, and an explanation when it isn't obvious. Cover the normal case and at least one error or edge case"`
 	Constraints  []string  `json:"constraints,omitempty" jsonschema:"limits on the input and the edge cases the hidden tests check, described without giving away the solution, e.g. 'title may contain any Unicode whitespace'"`
-	Context      string    `json:"context" jsonschema:"one or two sentences: where this code is used in the learner's mission"`
+	Context      string    `json:"context" jsonschema:"one or two sentences: why this code matters for the learner's mission; name a part of their project only in a project-based track, otherwise say where code like this is used without inventing an app"`
 	Background   string    `json:"background,omitempty" jsonschema:"optional markdown: a short refresher on what this task needs that the objective's lesson didn't cover, with a worked example in a code block on a DIFFERENT problem. Leave out when the lesson covers it"`
 }
 

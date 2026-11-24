@@ -1,5 +1,5 @@
 import { createContext, use, useCallback, useEffect, useReducer } from "react";
-import { ChatService, WorkspaceService, AppEvents, errorText, useEvent, type ChatItem, type Working } from "@/lib/api";
+import { ChatService, WorkspaceService, AppEvents, errorText, useEvent, type ChatItem } from "@/lib/api";
 import type { UseOpenItemResult } from "@/features/workspace/use-open-item";
 import { initialWorkspace, isBusy, reduceWorkspace, tutorBusy, writingObjectives } from "@/features/workspace/workspace-state";
 
@@ -85,8 +85,6 @@ export type LiveWorkspace = {
   nav: UseOpenItemResult;
   /** The conversations by thread (useChatThreads). */
   threads: Record<string, ChatItem[]>;
-  /** What each thread's agent is working on between its messages (useChatThreads). */
-  working: Record<string, Working | undefined>;
   /** The open item's language, for colouring code (describeItem). */
   lang: string;
 };

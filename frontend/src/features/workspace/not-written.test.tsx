@@ -3,9 +3,10 @@ import { afterEach, expect, test, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { NotWritten } from "@/features/workspace/not-written";
 
-const { stopAgent, writeNow } = vi.hoisted(() => ({
+const { stopAgent, writeNow, currentWorking } = vi.hoisted(() => ({
   stopAgent: vi.fn(async (_ws: string, _thread: string) => {}),
   writeNow: vi.fn(async (_ws: string, _objective: string) => {}),
+  currentWorking: { value: undefined as { workspace: string; thread: string; thinking: string; preparing: string } | undefined },
 }));
 vi.mock("@/lib/api", async (original) => {
   const api = await original<typeof import("@/lib/api")>();
@@ -15,11 +16,13 @@ vi.mock("@/lib/api", async (original) => {
     WorkspaceService: { ...api.WorkspaceService, WriteObjectiveNow: writeNow },
   };
 });
-vi.mock("@/features/workspace/use-workspace", () => ({ useLiveWorkspace: () => ({ id: "ws", working: {} }) }));
+vi.mock("@/features/workspace/use-workspace", () => ({ useLiveWorkspace: () => ({ id: "ws" }) }));
+vi.mock("@/features/workspace/use-working", () => ({ useWorking: () => currentWorking.value }));
 
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  currentWorking.value = undefined;
 });
 
 function page(writing: boolean, failed = "") {
@@ -50,7 +53,17 @@ test("a writer at work can be stopped, then written again", async () => {
 });
 
 test("a writer stopped for making no progress says why", () => {
-  render(page(false, "The writer stopped making progress, so it was stopped. Try again."));
-  expect(screen.getByText("The writer stopped making progress, so it was stopped. Try again.")).toBeTruthy();
+  render(page(false, "The writer stopped making progress, so it was stopped."));
+  expect(screen.getByText("The writer stopped making progress, so it was stopped.")).toBeTruthy();
   expect(screen.getByRole("button", { name: "Try again" })).toBeTruthy();
+});
+
+test("live writer reasoning shows beneath the status, but duplicate preparing text is omitted", () => {
+  currentWorking.value = { workspace: "ws", thread: "write-a", thinking: "Checking Go 1.13 error docs", preparing: "" };
+  const { rerender } = render(page(true));
+  expect(screen.getByText("Checking Go 1.13 error docs")).toBeTruthy();
+
+  currentWorking.value = { workspace: "ws", thread: "write-a", thinking: "", preparing: "Writing the lesson" };
+  rerender(page(true));
+  expect(screen.getAllByText("Writing the lesson…")).toHaveLength(1);
 });

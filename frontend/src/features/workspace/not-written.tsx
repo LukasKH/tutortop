@@ -4,6 +4,7 @@ import { workingLine } from "@/lib/chat";
 import { writerThread } from "@/lib/workspace";
 import type { Part } from "@/features/workspace/open-item";
 import { useLiveWorkspace } from "@/features/workspace/use-workspace";
+import { useWorking } from "@/features/workspace/use-working";
 import { Spinner } from "@/components/ui/spinner";
 import { ErrorText } from "@/components/error-text";
 import { Page, PageHeader, PageIntro, ReadingPage } from "@/components/page";
@@ -31,8 +32,10 @@ type Props = {
  * seems stuck can be stopped and started again.
  */
 export function NotWritten({ objective, part, moduleTitle, writing, check, failed, other }: Props) {
-  const { id: wsId, working } = useLiveWorkspace();
+  const { id: wsId } = useLiveWorkspace();
+  const working = useWorking(writerThread(objective.id));
   const [starting, setStarting] = useState(false);
+  const [stopping, setStopping] = useState(false);
   const [error, setError] = useState("");
   // A writer that finishes while this page is still open didn't write this part.
   const [wasWriting, setWasWriting] = useState(writing);
@@ -42,17 +45,22 @@ export function NotWritten({ objective, part, moduleTitle, writing, check, faile
     setUnfinished(!writing);
   }
 
-  // What the writer is thinking or writing now, under the status.
-  const now = writing ? workingLine(working[writerThread(objective.id)]) : null;
+  const headline = status(part, check, !other);
+  // What the writer is thinking or writing now, under the status (omitted when it repeats the headline).
+  const candidate = writing ? workingLine(working) : null;
+  const now = candidate && candidate !== headline ? candidate : null;
   const name = objective.name || objective.title;
   const what = part === "lesson" ? "lesson" : "exercise";
 
   async function stop() {
     setError("");
+    setStopping(true);
     try {
       await ChatService.StopAgent(wsId, writerThread(objective.id));
     } catch (e) {
       setError(errorText(e));
+    } finally {
+      setStopping(false);
     }
   }
 
@@ -83,20 +91,16 @@ export function NotWritten({ objective, part, moduleTitle, writing, check, faile
           {writing || starting ? (
             <>
               <p className="flex flex-wrap items-center gap-2">
-                <Spinner className="size-3.5" aria-hidden /> {status(part, check, !other)}
+                <Spinner className="size-3.5" aria-hidden /> {headline}
               </p>
-              {now && (
-                <p className="truncate text-sm text-muted-foreground" role="status">
-                  {now}
-                </p>
-              )}
+              {now && <p className="truncate text-sm text-muted-foreground">{now}</p>}
               <p className="text-sm text-muted-foreground">
                 It opens here when it's ready. Writing runs in the background, so you can open something else meanwhile.
               </p>
               {writing && (
                 <div className="flex flex-wrap items-center gap-2">
-                  <Button variant="outline" onClick={stop}>
-                    Stop
+                  <Button variant="outline" onClick={stop} disabled={stopping}>
+                    {stopping ? "Stopping…" : "Stop"}
                   </Button>
                 </div>
               )}

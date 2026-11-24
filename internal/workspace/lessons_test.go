@@ -19,8 +19,17 @@ func TestValidateLesson(t *testing.T) {
 	}{
 		{"valid", func(*workspace.LessonSpec) {}, nil},
 		{"repeats the title", func(s *workspace.LessonSpec) { s.Body = "# Adding numbers\n\n" + s.Body }, []string{"body repeats the title"}},
+		{"has its own Sources heading", func(s *workspace.LessonSpec) { s.Body += "\n\n## Sources\n\n- [Go](https://go.dev/)" }, []string{"body has its own Sources"}},
 		{"answer out of range", func(s *workspace.LessonSpec) { s.Quiz[1].Answer = 3 }, []string{"question 2: answer must be an option index (0-2)"}},
 		{"no sources", func(s *workspace.LessonSpec) { s.Sources = nil }, []string{"sources needs the 1-8 pages"}},
+		{"too many sources", func(s *workspace.LessonSpec) {
+			s.Sources = make([]workspace.Source, 9)
+			for i := range s.Sources {
+				s.Sources[i] = workspace.Source{Title: "Page", URL: "https://go.dev/" + string(rune('a'+i))}
+			}
+		}, []string{"sources needs the 1-8 pages"}},
+		{"source without a title", func(s *workspace.LessonSpec) { s.Sources[0].Title = "  " }, []string{"needs a title"}},
+		{"duplicate source url", func(s *workspace.LessonSpec) { s.Sources = append(s.Sources, s.Sources[0]) }, []string{"duplicate source url"}},
 		{"source that isn't a web link", func(s *workspace.LessonSpec) { s.Sources[0].URL = "go.dev" }, []string{"needs a full http(s) url"}},
 	}
 	w := newWorkspace(t)

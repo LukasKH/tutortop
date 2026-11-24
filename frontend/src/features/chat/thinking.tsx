@@ -18,13 +18,20 @@ type Props = {
  */
 export function Thinking({ items, busy, working }: Props) {
   if (!showThinking(items, busy, working)) return null;
+  const label = workingLine(working) ?? "Thinking…";
   const line = (
-    <span className="flex min-w-0 items-center gap-2" role="status">
+    <span className="flex min-w-0 items-center gap-2">
       <Spinner className="size-[12px] flex-none" aria-hidden />
-      <span className="min-w-0 truncate">{workingLine(working) ?? "Thinking…"}</span>
+      <span className="min-w-0 truncate">{label}</span>
     </span>
   );
-  if (!working?.thinking) return <div className="flex min-w-0 text-sm text-muted-foreground">{line}</div>;
+  if (!working?.thinking.trim()) {
+    return (
+      <div className="flex min-w-0 text-sm text-muted-foreground" role="status">
+        {line}
+      </div>
+    );
+  }
   return (
     <details className="group min-w-0 text-sm text-muted-foreground">
       <summary className="flex w-fit max-w-full min-w-0 cursor-pointer list-none items-center gap-2 hover:text-soft-foreground [&::-webkit-details-marker]:hidden">

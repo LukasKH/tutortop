@@ -36,6 +36,7 @@ type transcript struct {
 	thread string
 
 	mu      sync.Mutex
+	closed  bool                           // agent ended: ignore late events from a dying CLI
 	current *workspace.ChatItem            // assistant message being streamed
 	tools   map[string]*workspace.ChatItem // running tool calls by id; nil if hidden
 	working events.Working                 // shown until the next message or tool call
@@ -53,6 +54,9 @@ func newTranscript(w *workspace.Workspace, thread string) *transcript {
 func (t *transcript) handle(ev agent.Event) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
+	if t.closed {
+		return
+	}
 	w := t.ws
 	switch ev.Kind {
 	case agent.EventWarning:
@@ -75,9 +79,13 @@ func (t *transcript) handle(ev agent.Event) {
 		t.showWorking("", "")
 		tool := ev.Tool
 		// A call's first event decides whether it shows; later ones only
-		// update its status.
+		// update its status. A call that arrives already failed was never
+		// shown, so there's nothing for the UI to drop.
 		item, seen := t.tools[tool.ID]
 		if !seen {
+			if tool.Status == agent.ToolFailed {
+				return
+			}
 			if label, show := toolLabel(tool); show {
 				item = &workspace.ChatItem{ID: uuid.New().String(), Thread: t.thread, Role: workspace.RoleTool, At: time.Now(), Text: label}
 			}
@@ -97,6 +105,15 @@ func (t *transcript) handle(ev agent.Event) {
 			_ = w.AppendChat(*item)
 		}
 	}
+}
+
+// close ends the transcript for good, clearing any live working state so a
+// dying CLI can't emit stale updates after its agent was stopped or retried.
+func (t *transcript) close() {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.closed = true
+	t.showWorking("", "")
 }
 
 // chatStatus is how a tool call's status shows in the chat.
@@ -128,6 +145,9 @@ func (t *transcript) endText() {
 func (t *transcript) endTurn() {
 	t.mu.Lock()
 	defer t.mu.Unlock()
+	if t.closed {
+		return
+	}
 	t.endText()
 	t.showWorking("", "")
 	for _, item := range t.tools {

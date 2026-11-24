@@ -67,6 +67,34 @@ func TestWriterKeepsToItsObjective(t *testing.T) {
 	}
 }
 
+// create_lesson checks that every URL in sources opens, not just body links.
+func TestCreateLessonChecksSourceLinks(t *testing.T) {
+	runner := sandbox.New()
+	server, err := mcp.Start(runner, mcptest.Links("https://go.dev/broken"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	tt := &tools{store: &workspace.Store{Root: t.TempDir(), PrivateRoot: t.TempDir()}, runner: runner, server: server}
+	w := tt.goWorkspace(t)
+	write := tt.caller(t, w, workspace.WriterThread("go.strings"))
+	lesson := workspace.LessonSpec{
+		ObjectiveID: "go.strings", Title: "Strings", Summary: "Work with strings.", Body: "Strings are bytes ([spec](https://go.dev/ref/spec)).\n\n```go\ns := \"hi\"\n```",
+		PrimarySource: workspace.Source{Title: "Go", URL: "https://go.dev/"},
+		Sources:       []workspace.Source{{Title: "Broken", URL: "https://go.dev/broken"}},
+		Quiz: []workspace.QuizQuestion{
+			{Question: "A?", Options: []string{"a", "b", "c"}, Answer: 0, Explanation: "A."},
+			{Question: "B?", Options: []string{"a", "b", "c"}, Answer: 1, Explanation: "B."},
+			{Question: "C?", Options: []string{"a", "b", "c"}, Answer: 2, Explanation: "C."},
+		},
+	}
+	if out, isErr := write("create_lesson", lesson); !isErr {
+		t.Fatalf("accepted lesson with broken source url: %s", out)
+	}
+	if lessons, _ := w.Lessons(); len(lessons) != 0 {
+		t.Fatalf("saved lesson with broken source url: %+v", lessons)
+	}
+}
+
 // TestSetToolchainEnablesALanguage sets up JavaScript the way the tutor would.
 func TestSetToolchainEnablesALanguage(t *testing.T) {
 	tt := newTools(t)

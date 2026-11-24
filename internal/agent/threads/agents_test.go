@@ -94,13 +94,21 @@ func TestWriterEndsAfterItsTurn(t *testing.T) {
 func TestStuckWriterIsEnded(t *testing.T) {
 	ag, fake, w := newHeldAgents(t)
 	busy := recordBusy(t)
-	ag.writerIdle = 50 * time.Millisecond
+	ag.writerIdle = 120 * time.Millisecond
 	writer := workspace.WriterThread("go.errors")
 
 	queue(t, ag, w, writer, "write")
 	stuck := fake.next(t)
+	// Activity from the CLI resets the watchdog and keeps the writer alive past writerIdle.
+	for range 6 {
+		stuck.s.onEvent(agent.Event{Kind: agent.EventThinking, Text: "."})
+		time.Sleep(ag.writerIdle / 4)
+	}
+	if b, _, _ := ag.State(w.ID); !b[writer.String()] {
+		t.Fatal("ended while receiving events")
+	}
 	ag.Show(w.ID, events.SandboxCheck{Kind: events.CheckTask, Thread: writer.String(), Title: "Wrap errors", Running: true})
-	time.Sleep(4 * ag.writerIdle)
+	time.Sleep(2 * ag.writerIdle)
 	if b, _, _ := ag.State(w.ID); !b[writer.String()] {
 		t.Fatal("ended during a sandbox check")
 	}
@@ -138,6 +146,11 @@ func TestStoppedWriterEnds(t *testing.T) {
 	}
 	if w := busy.working(writer.String()); w.Thinking != "" || w.Preparing != "" {
 		t.Fatalf("working not cleared on stop: %+v", w)
+	}
+	// Late events from the stopped CLI don't bring its working state back.
+	turn.s.onEvent(agent.Event{Kind: agent.EventThinking, Text: "late"})
+	if w := busy.working(writer.String()); w.Thinking != "" || w.Preparing != "" {
+		t.Fatalf("late event restored working after stop: %+v", w)
 	}
 
 	fake.holdStart = make(chan struct{})

@@ -209,7 +209,15 @@ func (ag *Agents) endAll() {
 // start starts a thread's agent. Call with ag.mu held.
 func (ag *Agents) start(w *workspace.Workspace, t workspace.Thread, cfg agentConfig) *threadAgent {
 	ctx, cancel := context.WithCancel(context.Background())
-	ta := &threadAgent{key: threadKey{w.ID, t.String()}, thread: t, cfg: cfg, queue: make(chan string, 32), cancel: cancel, ready: make(chan struct{})}
+	ta := &threadAgent{
+		key:    threadKey{w.ID, t.String()},
+		thread: t,
+		cfg:    cfg,
+		tr:     newTranscript(w, t.String()),
+		queue:  make(chan string, 32),
+		cancel: cancel,
+		ready:  make(chan struct{}),
+	}
 	if t.Kind == workspace.WriterKind {
 		ta.watch = newWatchdog(ag.writerIdle, func() { ag.stalled(w, ta) })
 	}
@@ -235,13 +243,9 @@ func (ag *Agents) loop(ctx context.Context, w *workspace.Workspace, ta *threadAg
 		ag.end(ta)
 		ag.mu.Unlock()
 	}()
-	tr := newTranscript(w, ta.key.name)
 	cli, err := ag.open(ctx, w, ta, func(ev agent.Event) {
-		if ctx.Err() != nil {
-			return // ended: don't let a dying CLI clobber a retried writer's state
-		}
 		ta.watch.alive()
-		tr.handle(ev)
+		ta.tr.handle(ev)
 	})
 	if err == nil {
 		ta.cli = cli
@@ -272,9 +276,7 @@ func (ag *Agents) loop(ctx context.Context, w *workspace.Workspace, ta *threadAg
 			return
 		case msg := <-ta.queue:
 			err := ta.cli.Prompt(ctx, msg)
-			if ctx.Err() == nil {
-				tr.endTurn()
-			}
+			ta.tr.endTurn()
 			if ta.stopped.Swap(false) {
 				// After endTurn, so the notice follows the cut-off reply.
 				Post(w, workspace.ChatItem{Thread: ta.key.name, Role: workspace.RoleNotice, Text: "Stopped. Send a message to continue."})
@@ -357,18 +359,16 @@ func (ag *Agents) setPending(ta *threadAgent, n int) {
 }
 
 // stalled ends a writer its watchdog found stuck, and says why in its
-// thread, which the objective's page shows. A CLI that hangs would otherwise
-// leave its objective showing as being written forever.
+// thread, which the objective's page shows. Posting before end() under ag.mu
+// orders the notice ahead of busy:false so a quick retry clears it cleanly.
 func (ag *Agents) stalled(w *workspace.Workspace, ta *threadAgent) {
 	ag.mu.Lock()
-	current := ag.agents[ta.key] == ta
-	if current {
-		ag.end(ta)
+	defer ag.mu.Unlock()
+	if ag.agents[ta.key] != ta {
+		return
 	}
-	ag.mu.Unlock()
-	if current {
-		postFailure(w, ta.key.name, "The writer stopped making progress, so it was stopped. Try again.")
-	}
+	postFailure(w, ta.key.name, "The writer stopped making progress, so it was stopped.")
+	ag.end(ta)
 }
 
 // end removes a thread's agent, closes its CLI and shows its thread idle,
@@ -377,12 +377,8 @@ func (ag *Agents) end(ta *threadAgent) {
 	if ag.agents[ta.key] == ta {
 		delete(ag.agents, ta.key)
 	}
-	wasBusy := ta.pending > 0
 	ta.close()
 	ag.setPending(ta, 0)
-	if wasBusy {
-		events.Emit(events.ThreadWorking, events.Working{Workspace: ta.key.ws, Thread: ta.key.name})
-	}
 }
 
 // A threadAgent is one thread's running agent: its CLI session and the
@@ -391,6 +387,7 @@ type threadAgent struct {
 	key     threadKey
 	thread  workspace.Thread
 	cfg     agentConfig // the agent, CLI, model and effort it was started with
+	tr      *transcript
 	queue   chan string
 	cancel  context.CancelFunc
 	once    sync.Once   // close runs once
@@ -415,11 +412,12 @@ func (ta *threadAgent) opened() bool {
 	}
 }
 
-// close closes the CLI, if it's open or opening.
+// close closes the CLI and its transcript, if it's open or opening.
 func (ta *threadAgent) close() {
 	ta.once.Do(func() {
 		ta.watch.stop()
 		ta.cancel()
+		ta.tr.close()
 		if ta.opened() {
 			_ = ta.cli.Close()
 		}

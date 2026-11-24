@@ -6,6 +6,7 @@ import { PLAN_THREAD } from "@/lib/workspace";
 import { describeItem } from "@/features/workspace/open-item";
 import { useChatPanel } from "@/features/workspace/use-chat-panel";
 import { useChatThreads } from "@/features/workspace/use-chat-threads";
+import { WorkingContext, useWorkingStore } from "@/features/workspace/use-working";
 import { centerOf, placeQuestions, useOpenItem, type Center } from "@/features/workspace/use-open-item";
 import { LiveWorkspaceContext, useLiveWorkspace, useWorkspace } from "@/features/workspace/use-workspace";
 import { Sidebar } from "@/features/workspace/sidebar";
@@ -36,7 +37,8 @@ export function WorkspaceView({ id, onBack }: Props) {
   const nav = useOpenItem(id, live);
   const chat = useChatPanel();
   const composer = useComposer();
-  const { threads, unread, working } = useChatThreads(id, nav.thread, { ready: live.ws !== null, visible: chat.open, onError: live.fail });
+  const { threads, unread } = useChatThreads(id, nav.thread, { ready: live.ws !== null, visible: chat.open, onError: live.fail });
+  const workingStore = useWorkingStore(id);
 
   const { ws, questions, fail } = live;
   if (!ws) {
@@ -71,89 +73,90 @@ export function WorkspaceView({ id, onBack }: Props) {
   }
 
   return (
-    <LiveWorkspaceContext value={{ id, live, nav, threads, working, lang: details.lang }}>
-      <div
-        // Curriculum rail, centre, chat panel (folded into a 44px rail when collapsed).
-        className={cn("relative grid h-full", setup ? "grid-cols-[236px_minmax(0,1fr)]" : "grid-cols-[236px_minmax(0,1fr)_var(--chat-w)]")}
-        style={setup ? undefined : ({ "--chat-w": chat.open ? `min(${chat.width}px, 50vw)` : "44px" } as CSSProperties)}
-      >
-        <Sidebar ws={ws} plan={planAttention} onBack={onBack} />
-        <main className="@container flex min-h-0 min-w-0 flex-col overflow-hidden bg-card">
-          {ws.proposal && view !== "proposal" && (
-            <button
-              className="flex flex-none justify-between gap-3 border-b bg-background px-4 py-[9px] text-sm text-soft-foreground"
-              onClick={() => nav.setView("proposal")}
-            >
-              <span>{ws.curriculum ? "Plan changes are waiting for review." : "A plan is waiting for review."}</span>
-              <b className="font-medium text-foreground">Review →</b>
-            </button>
-          )}
-          {live.error && (
-            <div className="flex-none border-b px-4 py-2 text-sm text-fail" role="alert">
-              {live.error}
-            </div>
-          )}
-          <CenterPane center={center} onAskTutor={askTutorAboutPlan} />
-        </main>
-        {setup ? null : chat.open ? (
-          <ChatPanel
-            thread={thread}
-            context={thread === PLAN_THREAD ? "Plan" : item?.kind === "lesson" ? "Lesson" : "Exercise"}
-            hint={
-              hintTask && {
-                level: Math.min(hintTask.hintLevel + 1, 4),
-                onHint: (level) => ChatService.RequestHint(id, hintTask.id, level).then(live.refresh).catch(fail),
+    <WorkingContext value={workingStore}>
+      <LiveWorkspaceContext value={{ id, live, nav, threads, lang: details.lang }}>
+        <div
+          // Curriculum rail, centre, chat panel (folded into a 44px rail when collapsed).
+          className={cn("relative grid h-full", setup ? "grid-cols-[236px_minmax(0,1fr)]" : "grid-cols-[236px_minmax(0,1fr)_var(--chat-w)]")}
+          style={setup ? undefined : ({ "--chat-w": chat.open ? `min(${chat.width}px, 50vw)` : "44px" } as CSSProperties)}
+        >
+          <Sidebar ws={ws} plan={planAttention} onBack={onBack} />
+          <main className="@container flex min-h-0 min-w-0 flex-col overflow-hidden bg-card">
+            {ws.proposal && view !== "proposal" && (
+              <button
+                className="flex flex-none justify-between gap-3 border-b bg-background px-4 py-[9px] text-sm text-soft-foreground"
+                onClick={() => nav.setView("proposal")}
+              >
+                <span>{ws.curriculum ? "Plan changes are waiting for review." : "A plan is waiting for review."}</span>
+                <b className="font-medium text-foreground">Review →</b>
+              </button>
+            )}
+            {live.error && (
+              <div className="flex-none border-b px-4 py-2 text-sm text-fail" role="alert">
+                {live.error}
+              </div>
+            )}
+            <CenterPane center={center} onAskTutor={askTutorAboutPlan} />
+          </main>
+          {setup ? null : chat.open ? (
+            <ChatPanel
+              thread={thread}
+              context={thread === PLAN_THREAD ? "Plan" : item?.kind === "lesson" ? "Lesson" : "Exercise"}
+              hint={
+                hintTask && {
+                  level: Math.min(hintTask.hintLevel + 1, 4),
+                  onHint: (level) => ChatService.RequestHint(id, hintTask.id, level).then(live.refresh).catch(fail),
+                }
               }
-            }
-            // The setup interview stays out of the chat panel.
-            items={thread === PLAN_THREAD ? afterSetup(threads[PLAN_THREAD] ?? []) : (threads[thread] ?? [])}
-            busy={threadBusy}
-            working={working[thread]}
-            questions={
-              questions && place.chat === thread ? (
-                <QuestionsForm
-                  key={JSON.stringify(questions)}
-                  layout="chat"
-                  form={questions}
-                  onAnswer={live.answerQuestions}
-                  onDismiss={live.dismissQuestions}
+              // The setup interview stays out of the chat panel.
+              items={thread === PLAN_THREAD ? afterSetup(threads[PLAN_THREAD] ?? []) : (threads[thread] ?? [])}
+              busy={threadBusy}
+              questions={
+                questions && place.chat === thread ? (
+                  <QuestionsForm
+                    key={JSON.stringify(questions)}
+                    layout="chat"
+                    form={questions}
+                    onAnswer={live.answerQuestions}
+                    onDismiss={live.dismissQuestions}
+                  />
+                ) : place.center ? (
+                  <div className="max-w-[88%] self-center text-center text-[12px] text-balance wrap-anywhere whitespace-pre-wrap text-muted-foreground">
+                    Questions are open in the main panel.
+                  </div>
+                ) : null
+              }
+              status={
+                <StatusLine
+                  check={live.toolchainCheck}
+                  newItem={nav.newItem}
+                  busy={threadBusy}
+                  onStop={() => ChatService.StopAgent(id, thread).catch(fail)}
+                  onOpen={nav.open}
                 />
-              ) : place.center ? (
-                <div className="max-w-[88%] self-center text-center text-[12px] text-balance wrap-anywhere whitespace-pre-wrap text-muted-foreground">
-                  Questions are open in the main panel.
-                </div>
-              ) : null
-            }
-            status={
-              <StatusLine
-                check={live.toolchainCheck}
-                newItem={nav.newItem}
-                busy={threadBusy}
-                onStop={() => ChatService.StopAgent(id, thread).catch(fail)}
-                onOpen={nav.open}
-              />
-            }
-            composer={composer}
-            onSend={(text) => ChatService.SendMessage(id, text, thread).catch(fail)}
-            onCollapse={() => chat.setOpen(false)}
-          />
-        ) : (
-          <ChatRail attention={Object.values(unread).some(Boolean) || place.chat !== null} busy={live.tutorBusy} onExpand={() => chat.setOpen(true)} />
-        )}
-        {!setup && (
-          // The handle sits on the chat panel's left border, in the shell, so one
-          // drag can fold the panel into its rail and pull it back out.
-          <Splitter
-            axis="x"
-            className="absolute inset-y-0 right-[calc(var(--chat-w)-1px)] bg-transparent hover:bg-transparent focus-visible:bg-transparent"
-            label="Resize the tutor panel (double-click to reset)"
-            onDrag={chat.drag}
-            onStep={chat.step}
-            onReset={chat.reset}
-          />
-        )}
-      </div>
-    </LiveWorkspaceContext>
+              }
+              composer={composer}
+              onSend={(text) => ChatService.SendMessage(id, text, thread).catch(fail)}
+              onCollapse={() => chat.setOpen(false)}
+            />
+          ) : (
+            <ChatRail attention={Object.values(unread).some(Boolean) || place.chat !== null} busy={live.tutorBusy} onExpand={() => chat.setOpen(true)} />
+          )}
+          {!setup && (
+            // The handle sits on the chat panel's left border, in the shell, so one
+            // drag can fold the panel into its rail and pull it back out.
+            <Splitter
+              axis="x"
+              className="absolute inset-y-0 right-[calc(var(--chat-w)-1px)] bg-transparent hover:bg-transparent focus-visible:bg-transparent"
+              label="Resize the tutor panel (double-click to reset)"
+              onDrag={chat.drag}
+              onStep={chat.step}
+              onReset={chat.reset}
+            />
+          )}
+        </div>
+      </LiveWorkspaceContext>
+    </WorkingContext>
   );
 }
 

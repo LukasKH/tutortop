@@ -34,6 +34,7 @@ test("thinking shows while the tutor works, unless a reply streams or a tool cal
   expect(showThinking([tool("a", ChatStatus.ChatRunning), item("reply"), item("n", { role: ChatRole.RoleNotice })], true)).toBe(true);
   // What the tutor works on after a reply shows; the backend clears it once the next message or tool call arrives.
   expect(showThinking([asked, item("reply")], true, working({ preparing: "Drafting your plan" }))).toBe(true);
+  expect(showThinking([asked, item("reply")], true, working({ thinking: "  \n\n" }))).toBe(false);
   expect(showThinking([asked, item("reply")], true, working({}))).toBe(false);
   expect(showThinking([asked], false, working({ thinking: "hmm" }))).toBe(false);
 });
@@ -44,6 +45,7 @@ test("the working line is the call being written, else the latest line of reason
   expect(workingLine(working({ thinking: "**Reading notes**", preparing: "Drafting your plan" }))).toBe("Drafting your plan…");
   expect(workingLine(working({ thinking: "**Reading notes**\n\nThe learner knows `go test`.\n\n" }))).toBe("The learner knows go test.");
   expect(workingLine(working({ thinking: "## Planning\n- **next** step" }))).toBe("next step");
+  expect(workingLine(working({ thinking: "Check syntax\n```go\n" }))).toBe("Check syntax");
   expect(workingLine(working({}))).toBeNull();
   expect(workingLine(undefined)).toBeNull();
 });

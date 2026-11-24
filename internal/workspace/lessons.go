@@ -136,6 +136,8 @@ func (w *Workspace) ValidateLesson(spec LessonSpec) error {
 			p.addf("body repeats the title (%q): start at the first section; the app shows the title and summary above the body", h)
 		case strings.EqualFold(strings.TrimSpace(strings.TrimLeft(h, "#")), "read next"):
 			p.addf("body has its own Read next: leave it out; the app shows primarySource in the lesson's Sources tab")
+		case strings.EqualFold(strings.TrimSpace(strings.TrimLeft(h, "#")), "sources"):
+			p.addf("body has its own Sources: leave it out; the app shows sources in the lesson's Sources tab")
 		}
 	}
 	if !strings.Contains(spec.Body, "](http") {
@@ -336,10 +338,16 @@ func checkSources(sources []Source, p *problems) {
 	if len(sources) == 0 || len(sources) > 8 {
 		p.addf("sources needs the 1-8 pages you based the lesson on")
 	}
+	seen := map[string]bool{}
 	for _, s := range sources {
 		if err := s.check(); err != "" {
 			p.addf("source %q: %s", s.Title, err)
+			continue
 		}
+		if seen[s.URL] {
+			p.addf("duplicate source url %q", s.URL)
+		}
+		seen[s.URL] = true
 	}
 }
 
