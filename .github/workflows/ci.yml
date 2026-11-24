@@ -16,9 +16,58 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # Decide which jobs need to run from the files changed in this PR or push,
+  # so doc, release-script, or single-side changes skip unrelated builds/tests.
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      go: ${{ steps.filter.outputs.go }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+      pre_commit: ${{ steps.filter.outputs.pre_commit }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - id: filter
+        env:
+          EVENT: ${{ github.event_name }}
+          FROM: ${{ github.event.pull_request.base.sha || github.event.before }}
+          TO: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          go=false
+          frontend=false
+          pre_commit=false
+          if [ -z "$FROM" ] || [ "$FROM" = "0000000000000000000000000000000000000000" ] || ! git cat-file -e "$FROM^{commit}" 2>/dev/null; then
+            go=true
+            frontend=true
+            pre_commit=true
+          else
+            if [ "$EVENT" = "pull_request" ]; then
+              files=$(git diff --name-only "$FROM...$TO")
+            else
+              files=$(git diff --name-only "$FROM..$TO")
+            fi
+            if printf '%s\n' "$files" | grep -Eq '^(internal/|main\.go$|go\.mod$|go\.sum$|\.github/workflows/ci\.yml$)'; then
+              go=true
+              pre_commit=true
+            fi
+            if printf '%s\n' "$files" | grep -Eq '^(frontend/|\.github/workflows/ci\.yml$)'; then
+              frontend=true
+              pre_commit=true
+            fi
+            if printf '%s\n' "$files" | grep -Eq '^(\.pre-commit-config\.yaml$|\.golangci\.yml$|commitlint\.config\.cjs$)'; then
+              pre_commit=true
+            fi
+          fi
+          printf 'go=%s\nfrontend=%s\npre_commit=%s\n' "$go" "$frontend" "$pre_commit" >> "$GITHUB_OUTPUT"
+
   # The pre-commit hooks, so a commit made with --no-verify can't skip them.
   # The Go tests run in the test job instead, beside the benchmarks.
   pre-commit:
+    needs: changes
+    if: needs.changes.outputs.pre_commit == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -70,6 +119,8 @@ jobs:
   # GitHub's Ubuntu runners have Docker, so the sandbox tests run here too.
   # Tests that talk to the real Claude Code, Codex and Antigravity CLIs need -tags live.
   test:
+    needs: changes
+    if: needs.changes.outputs.go == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -87,6 +138,8 @@ jobs:
         run: go test -run '^$' -bench . -benchtime 1x ./internal/app/
 
   frontend:
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     defaults:
@@ -105,3 +158,18 @@ jobs:
       # pre-commit job.
       - run: npm ci
       - run: npm run build
+
+  # Single status check for branch protection: passes when every needed job
+  # succeeded or was skipped, so docs-only PRs don't hang waiting for skipped jobs.
+  ci:
+    if: always()
+    needs: [changes, pre-commit, test, frontend]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check job outcomes
+        env:
+          RESULTS: ${{ join(needs.*.result, ',') }}
+        run: |
+          case ",$RESULTS," in
+            *,failure,*|*,cancelled,*) exit 1 ;;
+          esac
