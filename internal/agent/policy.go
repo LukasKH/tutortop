@@ -4,11 +4,13 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"slices"
 	"strings"
 )
 
 // The tutor may read and change files inside the learner's workspace, except
-// under tasks/, which the app manages through create_task. It may use
+// under tasks/, which the app manages through create_task, and the settings
+// for git and the agent CLIs (configPaths). It may use
 // Tutortop's MCP tools and the web, and, where Options.Subagents allows,
 // subagents that finish within the turn. It may not run commands, use other
 // MCP servers, or start background work that outlives a turn.
@@ -16,7 +18,8 @@ import (
 // An adapter enforces this in two layers:
 //
 //  1. It starts the CLI so the CLI refuses what it can by itself: no shell,
-//     no writes under tasks/ or outside the workspace, only our MCP server.
+//     no writes under tasks/, configPaths or outside the workspace, only our
+//     MCP server.
 //     Never a mode that approves everything.
 //  2. It answers every permission request the CLI still makes with
 //     [policy.allow], describing the call as a [Tool]. A request it can't
@@ -90,11 +93,22 @@ func (p policy) checkWrite(path string) error {
 	if !inside {
 		return fmt.Errorf("only files inside the learner's workspace can be changed (not %s)", path)
 	}
-	if rel == "tasks" || strings.HasPrefix(rel, "tasks"+string(filepath.Separator)) {
+	first, _, _ := strings.Cut(filepath.ToSlash(rel), "/")
+	if first == "tasks" {
 		return fmt.Errorf("tasks are managed by the app; use create_task instead of editing %s", rel)
+	}
+	// Folding case: on macOS and Windows .Claude is .claude.
+	if i := slices.IndexFunc(configPaths, func(c string) bool { return strings.EqualFold(c, first) }); i >= 0 {
+		return fmt.Errorf("%s holds settings for git or the agent, which can't be changed from a conversation", configPaths[i])
 	}
 	return nil
 }
+
+// configPaths are the workspace's settings for git and the agent CLIs. A
+// change there could get round the policy: a git hook or an agent's hook runs
+// a command, and an agent's project settings can add MCP servers or allow
+// tools.
+var configPaths = []string{".git", ".agents", ".claude", ".codex", ".gemini", ".mcp.json"}
 
 // workspaceRel returns path relative to the workspace, and whether it stays
 // inside the workspace. A relative path is taken as relative to it.

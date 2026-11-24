@@ -41,11 +41,14 @@ type codexSession struct {
 
 func startCodex(ctx context.Context, opts Options, onEvent func(Event)) (Session, error) {
 	// The tutor gets the same rights as with Claude: it can write in the
-	// workspace but not under tasks/ (the app manages those), and only read
-	// elsewhere. A narrower non-write entry carves a read-only hole into a
-	// writable folder; checked with `codex sandbox`.
-	permissions := fmt.Sprintf(`permissions.tutortop.filesystem={":root"="read",%q="write",%q="read"}`,
-		opts.Cwd, filepath.Join(opts.Cwd, "tasks"))
+	// workspace but not under tasks/ (the app manages those) or the settings
+	// in configPaths, and only read elsewhere. A narrower non-write entry
+	// carves a read-only hole into a writable folder; checked with `codex sandbox`.
+	filesystem := []string{`":root"="read"`, fmt.Sprintf(`%q="write"`, opts.Cwd)}
+	for _, rel := range append([]string{"tasks"}, configPaths...) {
+		filesystem = append(filesystem, fmt.Sprintf(`%q="read"`, filepath.Join(opts.Cwd, rel)))
+	}
+	permissions := "permissions.tutortop.filesystem={" + strings.Join(filesystem, ",") + "}"
 	s := &codexSession{policy: newPolicy(opts), effort: opts.Effort, onEvent: onEvent, filePaths: map[string][]string{}}
 	var err error
 	s.process, s.rpc, err = startCodexServer(ctx, opts.Cwd, s.notify, s.request,

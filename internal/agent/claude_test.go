@@ -31,8 +31,16 @@ func TestClaudeStart(t *testing.T) {
 					t.Errorf("%s %q, want %q", flag, got, want)
 				}
 			}
-			// The shell and tasks/ stay shut; Agent and Task only where subagents are off.
-			for tool, shut := range map[string]bool{"Bash": true, "Edit(./tasks/**)": true, "Agent": !subagents, "Task": !subagents} {
+			// The shell, tasks/ and the settings stay shut; Agent and Task only where subagents are off.
+			for tool, shut := range map[string]bool{
+				"Bash":               true,
+				"Edit(./tasks/**)":   true,
+				"Edit(./.claude/**)": true,
+				"Edit(./.git/**)":    true,
+				"Edit(./.mcp.json)":  true,
+				"Agent":              !subagents,
+				"Task":               !subagents,
+			} {
 				if slices.Contains(cli.Args, tool) != shut {
 					t.Errorf("%s disallowed = %v, want %v: %q", tool, !shut, shut, cli.Args)
 				}
