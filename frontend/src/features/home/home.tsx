@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { cn } from "@/lib/utils";
 import { ActivityPanel } from "@/features/home/activity-panel";
 import { WorkspaceService, errorText, type Activity, type Environment, type Summary } from "@/lib/api";
-import { checkEnvironment, useEnvironment } from "@/lib/agents";
+import { checkEnvironment, useCheckingEnvironment, useEnvironment } from "@/lib/agents";
 import { IDEAS, type Idea } from "@/features/home/ideas";
 import { SettingsIcon } from "lucide-react";
 import { Logo } from "@/components/logo";
@@ -28,6 +28,7 @@ type Draft = { title: string; icon: string };
 export function Home({ lastId, onOpen }: Props) {
   const { openSettings } = useSettings();
   const env = useEnvironment();
+  const checkingEnv = useCheckingEnvironment();
   const [workspaces, setWorkspaces] = useState<Summary[] | null>(null);
   const [creating, setCreating] = useState(false);
   const [draft, setDraft] = useState<Draft>({ title: "", icon: "" });
@@ -55,7 +56,6 @@ export function Home({ lastId, onOpen }: Props) {
     WorkspaceService.Activity()
       .then(setActivity)
       .catch(() => {});
-    checkEnvironment().catch((e) => setError(errorText(e)));
   }, []);
 
   return (
@@ -90,6 +90,16 @@ export function Home({ lastId, onOpen }: Props) {
           {env && !env.sandboxOk && (
             <p className="mb-5 text-sm text-soft-foreground" role="alert">
               Checks need Docker or Podman, and neither is available.{" "}
+              <Button
+                type="button"
+                variant="link"
+                size="sm"
+                className="h-auto px-0 text-sm"
+                disabled={checkingEnv}
+                onClick={() => checkEnvironment().catch((e) => setError(errorText(e)))}
+              >
+                {checkingEnv ? "Updating…" : "Update"}
+              </Button>
               {env.sandboxHint && <code className="mt-1.5 block whitespace-pre-wrap text-foreground">{env.sandboxHint}</code>}
             </p>
           )}

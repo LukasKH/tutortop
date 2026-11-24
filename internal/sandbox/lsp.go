@@ -59,28 +59,28 @@ func (r *Runner) StartLanguageServer(ctx context.Context, tc Toolchain, files Fi
 	// at least as much memory.
 	args := append([]string{"create", "-i", "--rm", "--name", name}, lockdownFlags(max(1024, tc.MemoryMB))...)
 	args = append(append(args, tc.Image), tc.LanguageServer...)
-	out, err := exec.CommandContext(ctx, string(r.Engine), args...).CombinedOutput()
+	out, err := r.command(ctx, args...).CombinedOutput()
 	if err != nil {
 		rebuilt, rebuildErr := r.rebuildIfMissing(ctx, tc, gen)
 		if rebuildErr != nil {
 			return nil, rebuildErr
 		}
 		if rebuilt {
-			out, err = exec.CommandContext(ctx, string(r.Engine), args...).CombinedOutput()
+			out, err = r.command(ctx, args...).CombinedOutput()
 		}
 	}
 	if err != nil {
 		return nil, errors.New("starting the language server: " + string(bytes.TrimSpace(out)))
 	}
-	remove := func() { _ = exec.Command(string(r.Engine), "rm", "-f", name).Run() }
-	cp := exec.CommandContext(ctx, string(r.Engine), "cp", "-a", "-", name+":/work")
+	remove := func() { _ = r.command(context.Background(), "rm", "-f", name).Run() }
+	cp := r.command(ctx, "cp", "-a", "-", name+":/work")
 	cp.Stdin = bytes.NewReader(archive)
 	if out, err := cp.CombinedOutput(); err != nil {
 		remove()
 		return nil, errors.New("copying files to the language server: " + string(bytes.TrimSpace(out)))
 	}
 
-	cmd := exec.Command(string(r.Engine), "start", "-a", "-i", name)
+	cmd := r.command(context.Background(), "start", "-a", "-i", name)
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		remove()

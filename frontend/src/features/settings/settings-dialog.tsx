@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Clipboard, Dialogs } from "@wailsio/runtime";
 import { CopilotService, errorText, type DeviceCode, type Plan, type Setup } from "@/lib/api";
-import { checkEnvironment, useEnvironment } from "@/lib/agents";
+import { checkEnvironment, useCheckingEnvironment, useEnvironment } from "@/lib/agents";
 import { useTutor } from "@/features/settings/use-tutor";
 import { useSettings } from "@/features/settings/use-settings";
 import { TutorPicker } from "@/features/settings/tutor-picker";
@@ -23,10 +23,7 @@ import { GraduationCap, HardDrive, Sparkles } from "lucide-react";
  */
 export function SettingsDialog({ onClose }: { onClose: () => void }) {
   const { settings, change } = useSettings();
-
-  useEffect(() => {
-    checkEnvironment().catch(() => {});
-  }, []);
+  const checkingEnv = useCheckingEnvironment();
 
   if (!settings) return null;
   return (
@@ -71,7 +68,20 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
               </p>
             </div>
             <div className={FIELD}>
-              <span className={FIELD_LABEL}>Agents</span>
+              <div className="flex items-center justify-between gap-2">
+                <span className={FIELD_LABEL}>Agents</span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  disabled={checkingEnv}
+                  onClick={() => checkEnvironment().catch(() => {})}
+                  title="Check for newly installed agent CLIs"
+                >
+                  {checkingEnv && <Spinner />}
+                  {checkingEnv ? "Updating…" : "Update"}
+                </Button>
+              </div>
               <AgentsSetting />
             </div>
           </TabsContent>

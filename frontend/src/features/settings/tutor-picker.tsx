@@ -1,8 +1,8 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { Check } from "lucide-react";
+import { Check, RefreshCw } from "lucide-react";
 import { RadioGroup as RadioGroupPrimitive, Tabs as TabsPrimitive } from "radix-ui";
 import { errorText, type Model, type Prefs, type ProviderStatus } from "@/lib/api";
-import { agentOn, checkEnvironment, currentModel, effortLabel, loadModels, useEnvironment, useModels } from "@/lib/agents";
+import { agentOn, checkEnvironment, currentModel, effortLabel, loadModels, useCheckingEnvironment, useEnvironment, useModels } from "@/lib/agents";
 import { cn } from "@/lib/utils";
 import { useSettings } from "@/features/settings/use-settings";
 import { AgentIcon } from "@/components/agent-icon";
@@ -42,13 +42,9 @@ export function TutorPicker({ children, side = "bottom", align = "start" }: Prop
 
 function Panel({ settings, onChange }: { settings: Prefs; onChange: (next: Prefs) => Promise<void> }) {
   const env = useEnvironment();
+  const checkingEnv = useCheckingEnvironment();
   const [shown, setShown] = useState(settings.agent);
   const [error, setError] = useState("");
-
-  // An agent installed since the last check shows up.
-  useEffect(() => {
-    checkEnvironment().catch(() => {});
-  }, []);
 
   // Until the first check of what's installed arrives, at least the chosen agent.
   // Agents turned off in Settings are left out.
@@ -62,30 +58,47 @@ function Panel({ settings, onChange }: { settings: Prefs; onChange: (next: Prefs
     onChange({ ...settings, agent, models: { ...settings.models, [agent]: { model, effort } } }).catch((e) => setError(errorText(e)));
   }
 
+  function refresh() {
+    setError("");
+    checkEnvironment().catch((e) => setError(errorText(e)));
+  }
+
   return (
     // Radix's primitives directly: ui/tabs and ui/radio-group draw underlined tabs and radio circles, not a rail and rows.
     <TabsPrimitive.Root orientation="vertical" value={shown} onValueChange={setShown} className="flex min-h-0 flex-1 flex-col">
       {/* 300px tall, shrinking (the columns scroll) when the window has less room. */}
       <div className="flex h-[300px] min-h-0 shrink">
-        <TabsPrimitive.List aria-label="Agent" className="flex w-12 flex-none flex-col items-center gap-1 border-r py-2">
-          {providers.map((p) => (
-            <TabsPrimitive.Trigger
-              key={p.id}
-              value={p.id}
-              aria-label={p.name}
-              title={p.installed ? [p.name, p.path].filter(Boolean).join("\n") : `${p.name} (not installed)`}
-              className={cn(
-                "relative flex size-8 items-center justify-center rounded-md text-muted-foreground outline-none hover:bg-accent hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-solid data-active:bg-accent data-active:text-foreground",
-                // The agent in use is marked with a bar on the left, like the selected tab.
-                p.id === settings.agent &&
-                  "text-foreground before:absolute before:top-1.5 before:bottom-1.5 before:-left-2 before:w-0.5 before:rounded-full before:bg-foreground",
-                !p.installed && "opacity-45",
-              )}
-            >
-              <AgentIcon id={p.id} size={18} />
-            </TabsPrimitive.Trigger>
-          ))}
-        </TabsPrimitive.List>
+        <div className="flex w-12 flex-none flex-col items-center border-r py-2">
+          <TabsPrimitive.List aria-label="Agent" className="flex flex-col items-center gap-1">
+            {providers.map((p) => (
+              <TabsPrimitive.Trigger
+                key={p.id}
+                value={p.id}
+                aria-label={p.name}
+                title={p.installed ? [p.name, p.path].filter(Boolean).join("\n") : `${p.name} (not installed)`}
+                className={cn(
+                  "relative flex size-8 items-center justify-center rounded-md text-muted-foreground outline-none hover:bg-accent hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-solid data-active:bg-accent data-active:text-foreground",
+                  // The agent in use is marked with a bar on the left, like the selected tab.
+                  p.id === settings.agent &&
+                    "text-foreground before:absolute before:top-1.5 before:bottom-1.5 before:-left-2 before:w-0.5 before:rounded-full before:bg-foreground",
+                  !p.installed && "opacity-45",
+                )}
+              >
+                <AgentIcon id={p.id} size={18} />
+              </TabsPrimitive.Trigger>
+            ))}
+          </TabsPrimitive.List>
+          <button
+            type="button"
+            disabled={checkingEnv}
+            onClick={refresh}
+            aria-label="Update installed agents"
+            title="Update installed agents"
+            className="mt-auto flex size-8 items-center justify-center rounded-md text-muted-foreground outline-none hover:bg-accent hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-solid disabled:opacity-50"
+          >
+            <RefreshCw size={15} aria-hidden="true" className={cn(checkingEnv && "animate-spin")} />
+          </button>
+        </div>
         {provider && (
           // Not a tab stop: Tab goes from the rail straight to the model list.
           <TabsPrimitive.Content value={provider.id} tabIndex={-1} className="flex min-w-0 flex-1 outline-none">

@@ -33,6 +33,7 @@ import (
 	"time"
 
 	"github.com/LukasKH/tutortop/internal/atomicfile"
+	"github.com/LukasKH/tutortop/internal/subproc"
 	"github.com/adrg/xdg"
 )
 
@@ -271,6 +272,7 @@ func (w *Workspace) commit(msg string) {
 
 func (w *Workspace) git(args ...string) {
 	cmd := exec.Command("git", args...)
+	subproc.HideWindow(cmd)
 	cmd.Dir = w.Dir
 	// The workspace is its own repo. Variables like GIT_DIR and GIT_INDEX_FILE,
 	// which git sets for hooks, would point the commands at another one.

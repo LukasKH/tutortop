@@ -52,7 +52,8 @@ linters:
         processes-only-where-they-belong:
           # Agent CLIs, the sandbox engine, the login shell, CLI detection, git
           # and Copilot's language server, which must reach GitHub and so
-          # can't run in the sandbox.
+          # can't run in the sandbox. internal/subproc only configures *exec.Cmd
+          # (e.g. hiding console windows on Windows) and never starts processes.
           files:
             - "$all"
             - "!$test"
@@ -61,6 +62,7 @@ linters:
             - "!**/internal/sandbox/**"
             - "!**/internal/shellpath/**"
             - "!**/internal/settings/**"
+            - "!**/internal/subproc/**"
             - "!**/internal/workspace/**"
           deny:
             - pkg: os/exec
