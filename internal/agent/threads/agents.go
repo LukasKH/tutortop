@@ -120,7 +120,8 @@ func (ag *Agents) Start(wsID string, c events.SandboxCheck) func(passed bool) {
 	ag.mu.Unlock()
 
 	return func(passed bool) {
-		c.Running, c.Passed = false, passed
+		done := c
+		done.Running, done.Passed = false, passed
 		ag.mu.Lock()
 		defer ag.mu.Unlock()
 		ta := ag.agents[key]
@@ -129,12 +130,12 @@ func (ag *Agents) Start(wsID string, c events.SandboxCheck) func(passed bool) {
 		}
 		if ta != nil {
 			ta.watch.resume()
-			if c.Kind == events.CheckTask {
-				ta.check = &c
+			if done.Kind == events.CheckTask {
+				ta.check = &done
 			}
 		}
 		ag.seq++
-		events.Emit(events.CheckStatus, events.Check{Workspace: wsID, Check: c, Seq: ag.seq})
+		events.Emit(events.CheckStatus, events.Check{Workspace: wsID, Check: done, Seq: ag.seq})
 	}
 }
 
