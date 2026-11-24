@@ -17,7 +17,7 @@ import (
 )
 
 func TestLive(t *testing.T) {
-	for _, provider := range []string{"claude", "codex"} {
+	for _, provider := range []string{"claude", "codex", "antigravity"} {
 		t.Run(provider, func(t *testing.T) {
 			url, called := probeMCP(t)
 			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)

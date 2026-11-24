@@ -68,8 +68,8 @@ func parse(out string) []string {
 	return filepath.SplitList(value)
 }
 
-// commonDirs are where the Claude Code and Codex installers, npm and Docker
-// Desktop put binaries, in case the shell lookup failed.
+// commonDirs are where the Claude Code, Codex and Antigravity installers, npm
+// and Docker Desktop put binaries, in case the shell lookup failed.
 func commonDirs(home string) []string {
 	dirs := []string{"/opt/homebrew/bin", "/usr/local/bin"}
 	if home != "" {

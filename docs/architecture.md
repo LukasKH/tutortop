@@ -8,7 +8,7 @@ Tutortop is a Go program with a React frontend, shipped as one desktop app by [W
    v  (generated bindings)         |
  internal/app            wiring, and the Workspace, Task and Lesson services
    |-- internal/agent/threads   each thread's running agent, the writers, the chats (Chat service)
-   |     '-- internal/agent     the learner's Claude Code or Codex CLI
+   |     '-- internal/agent     the learner's Claude Code, Codex or Antigravity CLI
    |-- internal/mcp             MCP server on 127.0.0.1, the tools the agent works through
    |-- internal/editor          the editor's language servers (Editor service)
    |-- internal/copilot         optional GitHub Copilot suggestions (Copilot service)
@@ -25,7 +25,7 @@ Each package is named after the part of the app it represents, so a name says wh
 - `main.go` gives the app the user's shell PATH, builds the services with `app.New`, registers each with Wails and opens the window.
 - `internal/app` wires the app together: `New` builds the pieces the services share and the services on them. It also holds the services for the workspaces, tasks and lessons (see [Calls from the frontend](#calls-from-the-frontend)). Nothing imports it.
 - `internal/agent/threads` runs each thread's agent (the chats' tutors and the background writers) as `threads.Agents` and `threads.Writers`, turns their replies into chat transcripts, holds the prompts that tell them what to do (`prompts/*.md`), and serves the chats (`threads.ChatService`).
-- `internal/agent` starts the Claude Code or Codex CLI, streams its output as text and tool events, and decides which tool calls to allow. The agent may change files in the workspace, except under `tasks/`, and may not run commands. [Adding an agent](agents.md) describes its contract.
+- `internal/agent` starts the Claude Code, Codex or Antigravity CLI, streams its output as text and tool events, and decides which tool calls to allow. The agent may change files in the workspace, except under `tasks/`, and may not run commands. [Adding an agent](agents.md) describes its contract.
 - `internal/mcp` serves the MCP tools agents change the app's state through, one server per thread, and checks the links they cite. It doesn't import the agents: it shows sandbox checks through `mcp.Checks`, which `threads.Agents` implements.
 - `internal/editor` serves the editor's language servers (`editor.Service`) and relays their messages.
 - `internal/copilot` installs GitHub's Copilot language server, signs in to GitHub and serves the editor its suggestions (`copilot.Service`). It's the only part besides the agents' CLIs that sends anything off the computer, and only once the learner turns it on.

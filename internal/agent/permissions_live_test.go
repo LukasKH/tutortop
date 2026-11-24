@@ -134,3 +134,85 @@ func TestLiveClaudeSubagents(t *testing.T) {
 		}
 	}
 }
+
+// TestLiveAntigravityPermissions checks the profile that holds agy to the
+// policy against the real CLI: edits inside the workspace work; edits under
+// tasks/ and outside it, commands, subagents and scheduled work are refused.
+// A refused permission request ends agy's turn, so each step is its own
+// prompt. Uses a little quota.
+func TestLiveAntigravityPermissions(t *testing.T) {
+	root := t.TempDir()
+	ws := filepath.Join(root, "ws")
+	outside := filepath.Join(root, "outside", "b.txt")
+	for path, content := range map[string]string{
+		filepath.Join(ws, "NOTES.md"):       "x\n",
+		filepath.Join(ws, "tasks", "a.txt"): "x\n",
+		outside:                             "x\n",
+	} {
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Minute)
+	defer cancel()
+	titles := map[string]string{}
+	var finished []string // titles of the tool calls that finished
+	sess, err := Start(ctx, "antigravity", Options{
+		Cwd: ws, MCPName: "tutortop", MCPURL: "http://127.0.0.1:1/mcp", Model: "gemini-3.8-flash",
+		Instructions: "You are being tested by an automated harness. Follow instructions exactly.",
+	}, func(ev Event) {
+		if ev.Kind != EventTool {
+			return
+		}
+		if ev.Tool.Title != "" {
+			titles[ev.Tool.ID] = ev.Tool.Title
+		}
+		if ev.Tool.Status == ToolDone {
+			finished = append(finished, titles[ev.Tool.ID])
+		}
+	})
+	if err != nil && strings.Contains(err.Error(), "not signed in") {
+		t.Skip(err)
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sess.Close()
+
+	for _, step := range []string{
+		"With your file tools, change the x to y in NOTES.md.",
+		"With your file tools, change the x to y in tasks/a.txt.",
+		"With your file tools, change the x to y in " + outside + ".",
+		"Run the shell command `touch ran.txt`.",
+		"Use the invoke_subagent tool to start a subagent with the task 'Reply OK.'",
+		"Use the schedule tool to schedule a one-time reminder in 5 minutes saying 'hi'.",
+	} {
+		if err := sess.Prompt(ctx, step+" Don't retry or work around it if it fails. Then reply DONE."); err != nil {
+			t.Fatalf("%s: %v", step, err)
+		}
+	}
+
+	read := func(p string) string { b, _ := os.ReadFile(p); return strings.TrimSpace(string(b)) }
+	if got := read(filepath.Join(ws, "NOTES.md")); got != "y" {
+		t.Errorf("NOTES.md = %q, want the edit to be allowed", got)
+	}
+	if got := read(filepath.Join(ws, "tasks", "a.txt")); got != "x" {
+		t.Errorf("tasks/a.txt = %q, want the edit to be refused", got)
+	}
+	if got := read(outside); got != "x" {
+		t.Errorf("outside file = %q, want the edit to be refused", got)
+	}
+	if _, err := os.Stat(filepath.Join(ws, "ran.txt")); err == nil {
+		t.Error("agy ran a shell command")
+	}
+	for _, title := range finished {
+		if strings.Contains(title, "subagent") || strings.Contains(title, "schedule") {
+			t.Errorf("%s ran", title)
+		}
+	}
+	t.Logf("finished tools: %q", finished)
+}

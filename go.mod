@@ -4,6 +4,7 @@ go 1.27
 
 require (
 	github.com/adrg/xdg v0.5.3
+	github.com/coder/acp-go-sdk v0.20.0
 	github.com/modelcontextprotocol/go-sdk v1.8.0
 	github.com/sourcegraph/jsonrpc2 v0.2.3
 	github.com/wailsapp/wails/v3 v3.0.0

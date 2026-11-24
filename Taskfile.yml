@@ -35,7 +35,7 @@ tasks:
       - go test -race -short -count=1 ./internal/...
 
   test:live:
-    summary: Runs the tests that talk to the real Claude Code and Codex CLIs (uses a little quota)
+    summary: Runs the tests that talk to the real Claude Code, Codex and Antigravity CLIs (uses a little quota)
     cmds:
       - go test -tags live -count=1 -v ./internal/agent/ ./internal/app/
 

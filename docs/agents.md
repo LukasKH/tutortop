@@ -1,12 +1,12 @@
 # Adding an agent
 
-`internal/agent` drives the learner's own coding-agent CLI: Claude Code over its stream-json stdio protocol, Codex over `codex app-server` JSON-RPC. Each CLI has an adapter. The adapter turns what the CLI prints into a few events and holds the tutor to Tutortop's tool policy. To add an agent (Gemini CLI, OpenCode, anything that speaks the Agent Client Protocol), the work is in this package, plus the few edits [outside it](#steps).
+`internal/agent` drives the learner's own coding-agent CLI: Claude Code over its stream-json stdio protocol, Codex over `codex app-server` JSON-RPC, Antigravity over the Agent Client Protocol (`agy acp`). Each CLI has an adapter. The adapter turns what the CLI prints into a few events and holds the tutor to Tutortop's tool policy. To add an agent (Gemini CLI, OpenCode, anything that speaks the Agent Client Protocol), the work is in this package, plus the few edits [outside it](#steps).
 
 The contract is in code. `agent.go` has the types and their doc comments, and `policy.go` has the tool policy. This page explains them and adds the steps.
 
 ## Steps
 
-An adapter is one file, like `claude.go` or `codex.go`, and an entry in a list:
+An adapter is one file, like `claude.go`, `codex.go` or `antigravity.go`, and an entry in a list:
 
 1. `internal/agent/<x>.go`: `startX(ctx, opts, onEvent) (Session, error)`, which starts the CLI and returns a `Session` that keeps [the contract](#the-contract).
 2. The same file: `xModels(ctx) ([]Model, error)`, which lists the models it offers, the CLI's default first, each with the reasoning efforts it takes. Claude's list is fixed, because the CLI takes aliases that follow each release. Codex's is asked live from the CLI. The app caches the answer for a few minutes.
@@ -97,7 +97,7 @@ Build the policy with `newPolicy(opts)` when the session starts.
 - makes the CLI exit with `cli.exit(t, code, stderr)`;
 - checks how the CLI was started through `cli.Args`, `cli.Env` and `cli.Dir`.
 
-`Start` and `Prompt` block, so run them with `async` and collect their result with `wait`. `eventLog` records events. Every wait times out, so a test that leaves the adapter hanging fails rather than stalling the run. `claude_test.go` and `codex_test.go` show the pattern. Start with their `startFakeClaude` and `startFakeCodex` helpers, which play the handshake.
+`Start` and `Prompt` block, so run them with `async` and collect their result with `wait`. `eventLog` records events. Every wait times out, so a test that leaves the adapter hanging fails rather than stalling the run. `claude_test.go`, `codex_test.go` and `antigravity_test.go` show the pattern. Start with their `startFakeClaude` and `startFakeCodex` helpers, which play the handshake; `antigravity_test.go` does the same for an ACP agent.
 
 Cover what can break:
 
@@ -117,7 +117,7 @@ The live tests (`//go:build live`, step 5) check the real CLI end to end, and `t
 
 ## An ACP agent
 
-The Agent Client Protocol is JSON-RPC over stdio. It maps onto this package closely, which is why `ToolKind` uses ACP's kinds. [`github.com/coder/acp-go-sdk`](https://github.com/coder/acp-go-sdk) is a maintained Go SDK generated from the ACP schema. Gemini CLI and OpenCode speak ACP natively. Zed's `claude-agent-acp` and `codex-acp` adapters need Node, and the app must not depend on Node.
+The Agent Client Protocol is JSON-RPC over stdio. It maps onto this package closely, which is why `ToolKind` uses ACP's kinds. [`github.com/coder/acp-go-sdk`](https://github.com/coder/acp-go-sdk) is a maintained Go SDK generated from the ACP schema. Antigravity (`antigravity.go`), Gemini CLI and OpenCode speak ACP natively. Zed's `claude-agent-acp` and `codex-acp` adapters need Node, and the app must not depend on Node.
 
 | This package | ACP |
 | --- | --- |
@@ -148,3 +148,16 @@ OpenCode reads its settings from `opencode.json`, and the `OPENCODE_CONFIG` envi
 - `permission` is the first layer of the policy: `"bash": "deny"`, `"task": "deny"` (no subagents), `"external_directory": "deny"`, and `edit` as `{"*": "allow", "tasks/**": "deny"}` (the last matching rule wins). Rules match MCP tools by name too.
 
 OpenCode merges this file with the user's own config, so their MCP servers can still load. `policy.allow` refuses those servers' tools, like anything else the config lets through to a permission request.
+
+### Antigravity's profile and policy
+
+`agy acp` runs with `--gemini-dir` set to Tutortop's own profile folder (`antigravity` in Tutortop's data folder), so the settings below don't change how agy works for the learner. agy keeps its sign-in in the system keyring, so a learner signed in to agy anywhere is signed in there too. When it isn't, `session/new` fails with ACP's `auth_required` (-32000), and `Start` returns the command to run: `agy acp --login --gemini-dir <profile>`.
+
+- `Instructions`: `initialize` advertises `_meta.antigravity.systemPrompt.append`, so `session/new` and `session/resume` carry `_meta: {"antigravity": {"systemPrompt": {"append": ...}}}`.
+- `ResumeID`: `session/resume`, which, unlike `session/load`, doesn't replay the old turns as updates. If it fails, a new session.
+- MCP tools: agy names them `mcp_<server>_<tool>` in the tool call's `name`, as in `mcp_tutortop_get_state`, and titles the call `Run mcp_tutortop_get_state`. The adapter takes `MCPServer`/`MCPTool` from the `mcp_<MCPName>_` prefix. A server name may hold underscores, so another server's tool can't be split reliably; it stays kind `other`, which the policy refuses.
+- The first layer of the policy is two files in the profile, which `setUpAntigravity` writes before each start. Over ACP, agy's default mode writes files anywhere, even under `tasks/` or outside the workspace, without asking, and it ignores `permissions.deny` rules in `settings.json`. `"toolPermission": "strict"` in `antigravity-cli/settings.json` makes it ask before every read, write, command and MCP call, so `RequestPermission` puts them through the policy. Subagents (`invoke_subagent` and the tools that manage them) and scheduled or background work (`schedule`, `manage_task`, `run_workflow`, `swarm`) never ask, even in strict mode, so a `PreToolUse` hook in `config/hooks.json` denies them, and `run_command` too. The session's mode stays `default`.
+- `Subagents`: off. agy starts a subagent without asking, and nothing promises that it finishes within the turn or that its tool calls reach the policy.
+- agy doesn't report over ACP when an MCP server fails to connect, so there's no warning to send.
+- A refused permission request, whether `reject_once` or an error, ends agy's turn at once, without a reply. A hook's denial doesn't: the model reads the reason and goes on.
+- agy stops an MCP tool call after 3 minutes. MCP progress notifications don't extend it, and neither does `timeoutSeconds` on the ACP server entry or its `_meta`. A `timeoutSeconds` in the profile's `config/mcp_config.json` does, but only for an entry with the same URL, and each thread has its own URL. So a `create_task` whose checks take longer fails in Antigravity.
