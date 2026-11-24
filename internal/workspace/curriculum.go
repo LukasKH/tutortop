@@ -124,7 +124,7 @@ func readCurriculum(p string) (*Curriculum, error) {
 
 type TaskDefaults struct {
 	Size  TaskSize  `yaml:"size" json:"size,omitempty" jsonschema:"small (~10 min), medium (~25 min) or large (~60 min)"`
-	Shape TaskShape `yaml:"shape" json:"shape,omitempty" jsonschema:"kata (standalone function exercises) or project (grow one program over many tasks)"`
+	Shape TaskShape `yaml:"shape" json:"shape,omitempty" jsonschema:"kata (a standalone exercise for each concept) or project (self-contained tasks that each build one component of a project the learner chose)"`
 }
 
 // validate fills the defaults and adds what's wrong to p.
