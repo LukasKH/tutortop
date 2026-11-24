@@ -68,7 +68,7 @@ jobs:
           done
 
   # GitHub's Ubuntu runners have Docker, so the sandbox tests run here too.
-  # Tests that talk to the real Claude Code and Codex CLIs need -tags live.
+  # Tests that talk to the real Claude Code, Codex and Antigravity CLIs need -tags live.
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 15

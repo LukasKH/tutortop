@@ -2,7 +2,7 @@
 
 A desktop app for learning anything you can check with a program. You write your own curriculum with an AI tutor, solve tasks in a built-in editor, and a sandboxed test runner decides whether you passed. The AI never grades you.
 
-Tutortop runs on the coding agent you already have: your own signed-in **Claude Code** or **Codex** CLI. No API keys, and nothing is sent anywhere except through that CLI, unless you turn on GitHub Copilot suggestions in Settings, which send the file you're editing to GitHub.
+Tutortop runs on the coding agent you already have: your own signed-in **Claude Code**, **Codex** or **Antigravity** CLI. No API keys, and nothing is sent anywhere except through that CLI, unless you turn on GitHub Copilot suggestions in Settings, which send the file you're editing to GitHub.
 
 ## How it works
 
@@ -46,14 +46,14 @@ Download the installer for your system from [Releases](https://github.com/LukasK
 Tutortop also needs two things it doesn't install for you. It shows what's missing on the home screen.
 
 - **A sandbox:** Docker or Podman. Tutortop uses whichever is installed, Docker first. On Windows and macOS that's Docker Desktop or Podman Desktop. On Linux, Docker must work without sudo: `sudo usermod -aG docker $USER`, then log out and in. The first check for each language builds a sandbox image, which takes a few minutes.
-- **A coding agent:** [Claude Code](https://docs.claude.com/en/docs/claude-code/setup) (`claude`) or [Codex](https://github.com/openai/codex) (`codex`), signed in.
+- **A coding agent:** [Claude Code](https://docs.claude.com/en/docs/claude-code/setup) (`claude`), [Codex](https://github.com/openai/codex) (`codex`) or the [Antigravity CLI](https://antigravity.google/docs/getting-started) (`agy`), signed in. Tutortop keeps its own Antigravity profile, so it doesn't change your agy settings; if agy asks you to sign in there, Tutortop shows the command to run.
 
 Git is optional. With it, every workspace keeps a history of its changes.
 
 ## Requirements for development
 
 - Go 1.27+, Node 26+, and the Wails v3 CLI (`wails3`); `mise install` gets the pinned versions. The code uses Go 1.27 features, so older Go won't build it: generic methods (`rpcConn.Call[T]`, `process.await[T]` in `internal/agent`) and the standard library's `uuid` package.
-- Docker or Podman, and Claude Code and/or Codex, as above
+- Docker or Podman, and at least one of Claude Code, Codex and Antigravity, as above
 
 ## Development
 
@@ -67,7 +67,7 @@ task format                  # format Go code and imports
 npm --prefix frontend run format  # format the frontend (Prettier, sorts Tailwind classes)
 npm --prefix frontend run lint    # lint the frontend (Oxlint, React hooks rules)
 npm --prefix frontend test        # frontend tests (Vitest)
-task test:live               # talks to the real Claude Code and Codex CLIs; uses a little quota
+task test:live               # talks to the real Claude Code, Codex and Antigravity CLIs; uses a little quota
 ```
 
 [docs/architecture.md](docs/architecture.md) explains how the Go backend, the frontend and Wails fit together, and [docs/GLOSSARY.md](docs/GLOSSARY.md) says what the code's words mean (thread, writer, sandbox check, …).

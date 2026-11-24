@@ -18,9 +18,19 @@ func TestCodexStart(t *testing.T) {
 	opts := codexOptions(t)
 	_, cli, _, thread := startFakeCodex(t, opts)
 
-	profile := fmt.Sprintf(`permissions.tutortop.filesystem={":root"="read",%q="write",%q="read"}`, opts.Cwd, filepath.Join(opts.Cwd, "tasks"))
-	if want := []string{"app-server", "-c", `default_permissions="tutortop"`, "-c", profile}; !slices.Equal(cli.Args, want) {
-		t.Errorf("args %q, want %q", cli.Args, want)
+	if want := []string{"app-server", "-c", `default_permissions="tutortop"`, "-c"}; len(cli.Args) != 5 || !slices.Equal(cli.Args[:4], want) {
+		t.Fatalf("args %q, want %q and the profile", cli.Args, want)
+	}
+	profile := cli.Args[4]
+	for _, entry := range []string{
+		`permissions.tutortop.filesystem={":root"="read",` + fmt.Sprintf(`%q="write"`, opts.Cwd),
+		fmt.Sprintf(`%q="read"`, filepath.Join(opts.Cwd, "tasks")),
+		fmt.Sprintf(`%q="read"`, filepath.Join(opts.Cwd, ".git")),
+		fmt.Sprintf(`%q="read"`, filepath.Join(opts.Cwd, ".codex")),
+	} {
+		if !strings.Contains(profile, entry) {
+			t.Errorf("profile %s lacks %s", profile, entry)
+		}
 	}
 	if got := thread.str("params.approvalPolicy"); got != "untrusted" {
 		t.Errorf("thread/start approvalPolicy = %q, want untrusted", got)

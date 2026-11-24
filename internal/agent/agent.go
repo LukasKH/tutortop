@@ -1,13 +1,14 @@
 // Package agent drives the learner's own, already signed-in coding agent CLI
-// (Claude Code or Codex) and turns its output into a small set of events,
-// while holding the tutor to Tutortop's tool policy.
+// (Claude Code, Codex or Antigravity) and turns its output into a small set
+// of events, while holding the tutor to Tutortop's tool policy.
 //
 // This file is the contract every adapter meets: [Start], [Session], [Event]
 // and [Tool], and [Provider] for the list of agents. policy.go says what the
 // tutor may do and how an adapter enforces it. Each CLI's adapter is one file
-// (claude.go, codex.go) built from the shared pieces in process.go (the CLI
-// process, newline-delimited JSON) and rpc.go (JSON-RPC). The fake CLI
-// in fakecli_test.go tests an adapter without the real CLI.
+// (claude.go, codex.go, antigravity.go) built from the shared pieces in
+// process.go (the CLI process, newline-delimited JSON) and rpc.go (JSON-RPC);
+// antigravity.go speaks the Agent Client Protocol through its SDK. The fake
+// CLI in fakecli_test.go tests an adapter without the real CLI.
 //
 // docs/agents.md explains how to add an agent.
 package agent
@@ -38,6 +39,8 @@ func Start(ctx context.Context, providerID string, opts Options, onEvent func(Ev
 		return startClaude(ctx, opts, onEvent)
 	case Codex:
 		return startCodex(ctx, opts, onEvent)
+	case Antigravity:
+		return startAntigravity(ctx, opts, onEvent)
 	}
 	return nil, fmt.Errorf("agent provider %q has no adapter", p.ID)
 }
@@ -176,8 +179,9 @@ type Provider struct {
 type ProviderID string
 
 const (
-	Claude ProviderID = "claude"
-	Codex  ProviderID = "codex"
+	Claude      ProviderID = "claude"
+	Codex       ProviderID = "codex"
+	Antigravity ProviderID = "antigravity"
 )
 
 // Providers lists the agents Tutortop can drive, in the order the app offers
@@ -186,6 +190,7 @@ func Providers() []Provider {
 	return []Provider{
 		{ID: Claude, Name: "Claude Code", Binary: "claude"},
 		{ID: Codex, Name: "Codex", Binary: "codex"},
+		{ID: Antigravity, Name: "Antigravity", Binary: "agy"},
 	}
 }
 
@@ -207,6 +212,8 @@ func (p Provider) Models(ctx context.Context) ([]Model, error) {
 		return claudeModels(ctx)
 	case Codex:
 		return codexModels(ctx)
+	case Antigravity:
+		return antigravityModels(ctx)
 	}
 	return nil, fmt.Errorf("agent provider %q has no adapter", p.ID)
 }

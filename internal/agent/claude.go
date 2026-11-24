@@ -445,6 +445,9 @@ func claudeProjectName(path string) string {
 // subagents (Agent, formerly Task) unless the session allows them.
 func claudeDisallowed(opts Options) []string {
 	tools := []string{"Bash", "BashOutput", "KillShell", "Edit(./tasks/**)"}
+	for _, c := range configPaths {
+		tools = append(tools, "Edit(./"+c+")", "Edit(./"+c+"/**)")
+	}
 	if !opts.Subagents {
 		tools = append(tools, "Agent", "Task")
 	}
