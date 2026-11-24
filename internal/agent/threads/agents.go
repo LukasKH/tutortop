@@ -27,10 +27,18 @@ type Agents struct {
 	mcp      *mcp.Server
 	cli      CLI
 
+	// writerIdle is how long a writer may show no sign of life before it's
+	// ended (watchdog). Tests shorten it.
+	writerIdle time.Duration
+
 	mu     sync.Mutex
 	agents map[threadKey]*threadAgent
 	seq    uint64 // numbers busy and check changes and snapshots in order
 }
+
+// writerIdleLimit is long enough for a model that thinks hard between tool calls;
+// a sandbox check, whose image build can take longer, pauses the watchdog.
+const writerIdleLimit = 10 * time.Minute
 
 var _ mcp.Checks = (*Agents)(nil)
 
@@ -38,7 +46,14 @@ var _ mcp.Checks = (*Agents)(nil)
 // settings, opening their CLI sessions with cli. Each thread's tools are
 // served by tools.
 func NewAgents(settingsStore *settings.Store, tools *mcp.Server, cli CLI) *Agents {
-	return &Agents{settings: settingsStore, mcp: tools, cli: cli, agents: map[threadKey]*threadAgent{}, seq: firstSeq()}
+	return &Agents{
+		settings:   settingsStore,
+		mcp:        tools,
+		cli:        cli,
+		writerIdle: writerIdleLimit,
+		agents:     map[threadKey]*threadAgent{},
+		seq:        firstSeq(),
+	}
 }
 
 // Message is one thing sent to the tutor. What the learner sees in the chat
@@ -86,8 +101,11 @@ func (ag *Agents) Send(w *workspace.Workspace, t workspace.Thread, m Message) {
 func (ag *Agents) Show(wsID string, c events.SandboxCheck) {
 	ag.mu.Lock()
 	defer ag.mu.Unlock()
-	if ta := ag.agents[threadKey{wsID, c.Thread}]; ta != nil && c.Kind == events.CheckTask {
-		ta.check = &c
+	if ta := ag.agents[threadKey{wsID, c.Thread}]; ta != nil {
+		ta.watch.checking(c.Running)
+		if c.Kind == events.CheckTask {
+			ta.check = &c
+		}
 	}
 	ag.seq++
 	events.Emit(events.CheckStatus, events.Check{Workspace: wsID, Check: c, Seq: ag.seq})
@@ -163,11 +181,16 @@ func (ag *Agents) queue(w *workspace.Workspace, t workspace.Thread, msg string) 
 
 // stop interrupts the current turn in a thread. Its agent posts a notice
 // once the cut-off reply is saved, and takes the next message as usual.
+// A writer has only the one turn, so stop ends it instead, even while its
+// CLI is still opening or doesn't answer an interrupt.
 func (ag *Agents) stop(wsID, thread string) {
 	ag.mu.Lock()
 	ta := ag.agents[threadKey{wsID, thread}]
+	if ta != nil && ta.thread.Kind == workspace.WriterKind {
+		ag.end(ta)
+	}
 	ag.mu.Unlock()
-	if ta == nil || !ta.opened() {
+	if ta == nil || ta.thread.Kind == workspace.WriterKind || !ta.opened() {
 		return
 	}
 	ta.stopped.Store(true)
@@ -187,6 +210,9 @@ func (ag *Agents) endAll() {
 func (ag *Agents) start(w *workspace.Workspace, t workspace.Thread, cfg agentConfig) *threadAgent {
 	ctx, cancel := context.WithCancel(context.Background())
 	ta := &threadAgent{key: threadKey{w.ID, t.String()}, thread: t, cfg: cfg, queue: make(chan string, 32), cancel: cancel, ready: make(chan struct{})}
+	if t.Kind == workspace.WriterKind {
+		ta.watch = newWatchdog(ag.writerIdle, func() { ag.stalled(w, ta) })
+	}
 	ag.agents[ta.key] = ta
 	go ag.loop(ctx, w, ta)
 	if t.Kind == workspace.PlanKind {
@@ -210,19 +236,27 @@ func (ag *Agents) loop(ctx context.Context, w *workspace.Workspace, ta *threadAg
 		ag.mu.Unlock()
 	}()
 	tr := newTranscript(w, ta.key.name)
-	cli, err := ag.open(ctx, w, ta, tr.handle)
+	cli, err := ag.open(ctx, w, ta, func(ev agent.Event) {
+		ta.watch.alive()
+		tr.handle(ev)
+	})
 	if err == nil {
 		ta.cli = cli
 	}
 	close(ta.ready)
+	if err == nil && ctx.Err() != nil {
+		// Ended while it opened, so close may have found no CLI to close.
+		// Closing twice is harmless.
+		_ = cli.Close()
+		return
+	}
 	if err != nil {
 		// The messages waiting for this start are dropped, and the failure
 		// is posted once. The agent leaves the agents before its thread
 		// shows idle, so the next message tries a new start.
-		cancelled := ctx.Err() != nil // the workspace was deleted or the app quit
+		cancelled := ctx.Err() != nil // ended: the workspace was deleted, the app quit, or a writer was stopped
 		ag.mu.Lock()
 		ag.end(ta)
-		ag.setPending(ta, 0)
 		ag.mu.Unlock()
 		if !cancelled {
 			postFailure(w, ta.key.name, err.Error())
@@ -291,6 +325,9 @@ func (ag *Agents) open(ctx context.Context, w *workspace.Workspace, ta *threadAg
 func (ag *Agents) answered(ta *threadAgent, exited bool) bool {
 	ag.mu.Lock()
 	defer ag.mu.Unlock()
+	if ag.agents[ta.key] != ta {
+		return true // already ended, and shown idle
+	}
 	n := ta.pending - 1
 	ended := exited || n == 0 && ta.thread.Kind == workspace.WriterKind
 	if ended {
@@ -314,12 +351,29 @@ func (ag *Agents) setPending(ta *threadAgent, n int) {
 	}
 }
 
-// end removes a thread's agent and closes its CLI. Call with ag.mu held.
+// stalled ends a writer its watchdog found stuck, and says why in its
+// thread, which the objective's page shows. A CLI that hangs would otherwise
+// leave its objective showing as being written forever.
+func (ag *Agents) stalled(w *workspace.Workspace, ta *threadAgent) {
+	ag.mu.Lock()
+	current := ag.agents[ta.key] == ta
+	if current {
+		ag.end(ta)
+	}
+	ag.mu.Unlock()
+	if current {
+		postFailure(w, ta.key.name, "The writer stopped making progress, so it was stopped. Try again.")
+	}
+}
+
+// end removes a thread's agent, closes its CLI and shows its thread idle,
+// however the agent ends. Call with ag.mu held.
 func (ag *Agents) end(ta *threadAgent) {
 	if ag.agents[ta.key] == ta {
 		delete(ag.agents, ta.key)
 	}
 	ta.close()
+	ag.setPending(ta, 0)
 }
 
 // A threadAgent is one thread's running agent: its CLI session and the
@@ -335,6 +389,7 @@ type threadAgent struct {
 
 	ready chan struct{} // closed once the CLI has opened, or failed to
 	cli   agent.Session // set before ready is closed; nil if it didn't open
+	watch *watchdog     // a writer's; nil for a chat's agent, which the learner watches and can stop
 
 	// Guarded by Agents.mu.
 	pending int                  // messages queued or being answered; the thread is busy while it's above 0
@@ -354,11 +409,71 @@ func (ta *threadAgent) opened() bool {
 // close closes the CLI, if it's open or opening.
 func (ta *threadAgent) close() {
 	ta.once.Do(func() {
+		ta.watch.stop()
 		ta.cancel()
 		if ta.opened() {
 			_ = ta.cli.Close()
 		}
 	})
+}
+
+// watchdog ends a writer that shows no sign of life for a while: no event
+// from its CLI and no sandbox check. A running check pauses it. Its methods do
+// nothing on a nil watchdog, so a chat's agent needs none.
+type watchdog struct {
+	after time.Duration
+
+	mu      sync.Mutex
+	timer   *time.Timer
+	paused  bool // a sandbox check is running
+	stopped bool
+}
+
+// newWatchdog calls stalled once after passes without a sign of life.
+func newWatchdog(after time.Duration, stalled func()) *watchdog {
+	return &watchdog{after: after, timer: time.AfterFunc(after, stalled)}
+}
+
+// alive starts the wait over, unless a check is running.
+func (d *watchdog) alive() {
+	if d == nil {
+		return
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if !d.paused && !d.stopped {
+		d.timer.Reset(d.after)
+	}
+}
+
+// checking pauses the wait while a sandbox check runs, and starts it over
+// once the check is done.
+func (d *watchdog) checking(running bool) {
+	if d == nil {
+		return
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.paused = running
+	if d.stopped {
+		return
+	}
+	if running {
+		d.timer.Stop()
+		return
+	}
+	d.timer.Reset(d.after)
+}
+
+// stop stops the watchdog for good, as its writer ends.
+func (d *watchdog) stop() {
+	if d == nil {
+		return
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.stopped = true
+	d.timer.Stop()
 }
 
 // threadKey names one thread of one workspace by the thread's name.

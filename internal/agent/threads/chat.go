@@ -122,5 +122,7 @@ func (s *ChatService) RequestHint(wsID, taskID string, level int) error {
 }
 
 // StopAgent interrupts the current turn in a thread. Its agent posts a
-// notice once the cut-off reply is saved.
+// notice once the cut-off reply is saved. A writer's thread ("write-" and
+// the objective's id) ends its writer instead, so a stuck one can be
+// stopped and written again.
 func (s *ChatService) StopAgent(wsID, thread string) { s.agents.stop(wsID, thread) }
