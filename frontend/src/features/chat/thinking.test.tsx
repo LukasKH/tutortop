@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, expect, test, vi } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, render, screen } from "@testing-library/react";
 import { ChatRole, type ChatItem, type Working } from "@/lib/api";
 import { WorkingContext, WorkingStore } from "@/features/workspace/use-working";
 import { Thinking } from "@/features/chat/thinking";
@@ -51,4 +51,17 @@ test("whitespace-only thinking falls back to plain Thinking… without an empty 
 test("nothing shows once the tutor is done", () => {
   const { container } = renderThinking([asked], false, working({ thinking: "hmm" }));
   expect(container.textContent).toBe("");
+});
+
+test("live working updates notify the scroll container without re-rendering parents", () => {
+  const store = new WorkingStore();
+  const onUpdate = vi.fn();
+  render(
+    <WorkingContext value={store}>
+      <Thinking thread="plan" items={[asked]} busy onUpdate={onUpdate} />
+    </WorkingContext>,
+  );
+  onUpdate.mockClear();
+  act(() => store.set("plan", working({ thinking: "Checking docs…" })));
+  expect(onUpdate).toHaveBeenCalledTimes(1);
 });

@@ -1,3 +1,4 @@
+import { useLayoutEffect } from "react";
 import { ChevronDownIcon } from "lucide-react";
 import type { ChatItem } from "@/lib/api";
 import { showThinking, workingLine } from "@/lib/chat";
@@ -10,6 +11,8 @@ type Props = {
   thread: string;
   items: ChatItem[];
   busy: boolean;
+  /** Called after live working updates render, so a scroll container can follow the bottom. */
+  onUpdate?: () => void;
 };
 
 /**
@@ -18,8 +21,11 @@ type Props = {
  * its reasoning, which unfolds in full. "Thinking…" when its agent says
  * neither.
  */
-export function Thinking({ thread, items, busy }: Props) {
+export function Thinking({ thread, items, busy, onUpdate }: Props) {
   const working = useWorking(thread);
+  useLayoutEffect(() => {
+    onUpdate?.();
+  }, [working, onUpdate]);
   if (!showThinking(items, busy, working)) return null;
   const label = workingLine(working) ?? "Thinking…";
   const line = (
@@ -36,7 +42,7 @@ export function Thinking({ thread, items, busy }: Props) {
     );
   }
   return (
-    <details className="group min-w-0 text-sm text-muted-foreground">
+    <details className="group min-w-0 text-sm text-muted-foreground" onToggle={() => onUpdate?.()}>
       <summary className="flex w-fit max-w-full min-w-0 cursor-pointer list-none items-center gap-2 hover:text-soft-foreground [&::-webkit-details-marker]:hidden">
         {line}
         <ChevronDownIcon size={12} className="flex-none -rotate-90 transition-transform group-open:rotate-0" aria-hidden />
