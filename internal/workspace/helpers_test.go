@@ -89,6 +89,7 @@ func lessonSpec(objective string) workspace.LessonSpec {
 		Summary:       "You'll add two numbers in Go.",
 		Body:          "## Adding\n\nUse `+`, as [the spec](https://go.dev/ref/spec#Arithmetic_operators) says:\n\n```go\n# not a heading inside code\nx := 1 + 2\n```\n", // the "#" line tests that headings inside code aren't read as headings
 		PrimarySource: workspace.Source{Title: "The Go spec", URL: "https://go.dev/ref/spec"},
+		Sources:       []workspace.Source{{Title: "Go spec: Arithmetic operators", URL: "https://go.dev/ref/spec#Arithmetic_operators"}},
 		Quiz: []workspace.QuizQuestion{
 			{Question: "What is 1 + 2?", Options: []string{"three", "four", "five"}, Answer: 0, Explanation: "One plus two is three."},
 			{Question: "What is 2 + 2?", Options: []string{"three", "four", "five"}, Answer: 1, Explanation: "Two plus two is four."},

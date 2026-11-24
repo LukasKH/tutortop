@@ -98,6 +98,7 @@ func main() {
 func registerEvents() {
 	application.RegisterEvent[events.Chat](string(events.ChatMessage))
 	application.RegisterEvent[events.Busy](string(events.ThreadBusy))
+	application.RegisterEvent[events.Working](string(events.ThreadWorking))
 	application.RegisterEvent[events.Check](string(events.CheckStatus))
 	application.RegisterEvent[events.Task](string(events.TaskPublished))
 	application.RegisterEvent[events.Lesson](string(events.LessonPublished))

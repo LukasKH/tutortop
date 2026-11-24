@@ -176,6 +176,10 @@ func (c *antigravityClient) SessionUpdate(_ context.Context, n acp.SessionNotifi
 		if t := u.AgentMessageChunk.Content.Text; t != nil {
 			c.onEvent(Event{Kind: EventText, Text: t.Text})
 		}
+	case u.AgentThoughtChunk != nil:
+		if t := u.AgentThoughtChunk.Content.Text; t != nil {
+			c.onEvent(Event{Kind: EventThinking, Text: t.Text})
+		}
 	case u.ToolCall != nil:
 		call := u.ToolCall
 		t := c.describe(call.ToolCallId, ptrValue(call.Name), call.Title, call.Kind, call.Locations)

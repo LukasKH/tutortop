@@ -9,6 +9,7 @@ export function workspace(over: Partial<WorkspaceSnapshot> = {}): WorkspaceSnaps
     title: "Go",
     icon: "",
     mission: "",
+    resources: "",
     curriculum: {
       language: "go",
       modules: [{ id: "m1", title: "Basics", objectives: ["a", "b", "c"].map((id) => ({ id, title: `Objective ${id}` })) }],

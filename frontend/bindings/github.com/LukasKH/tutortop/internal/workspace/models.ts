@@ -126,7 +126,7 @@ export enum ChatStatus {
     ChatDone = "done",
 
     /**
-     * a tool call that failed, or a notice about a problem
+     * a notice about a problem, or a tool call that failed (sent live, never saved)
      */
     ChatFailed = "failed",
 };
@@ -157,6 +157,11 @@ export interface LessonDetail {
     "summary": string;
     "body": string;
     "primarySource": Source;
+
+    /**
+     * what the lesson is based on; empty for lessons from before they were kept
+     */
+    "sources": Source[] | null;
     "quiz": QuizPrompt[] | null;
 
     /**
@@ -377,7 +382,7 @@ export enum TaskShape {
     ShapeKata = "kata",
 
     /**
-     * one program grown over many tasks
+     * self-contained tasks building components of one project
      */
     ShapeProject = "project",
 };

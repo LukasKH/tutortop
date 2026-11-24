@@ -9,6 +9,7 @@ import { Page, PageIntro, ReadingPage } from "@/components/page";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { usePending } from "@/hooks/use-pending";
+import { WithPlanSources } from "@/features/workspace/plan-sources";
 import {
   CurriculumTitle,
   ModuleItem,
@@ -26,9 +27,11 @@ type Props = {
   progress: Progress;
   /** The learner's mission, shown above a first plan so the two read together. */
   mission?: string;
+  /** RESOURCES.md, shown with the plan's references in the Sources tab. */
+  resources?: string;
 };
 
-export function ProposalView({ proposal, current, progress, mission }: Props) {
+export function ProposalView({ proposal, current, progress, mission, resources = "" }: Props) {
   const { id: wsId } = useLiveWorkspace();
   // The backend fills in defaults when it validates a proposal.
   const { size = TaskSize.SizeMedium, shape = TaskShape.ShapeKata } = proposal.taskDefaults ?? {};
@@ -54,65 +57,69 @@ export function ProposalView({ proposal, current, progress, mission }: Props) {
             : "Read your mission and the course plan, then approve it or ask for changes. Your first lesson and exercise follow."}
         </PageIntro>
 
-        {!current && mission?.trim() && <Markdown text={mission} className="prose mt-7 border-t pt-[22px]" />}
+        <div className="mt-7">
+          <WithPlanSources plan={proposal} resources={resources}>
+            {!current && mission?.trim() && <Markdown text={mission} className="prose mb-[22px] border-b pb-[22px]" />}
 
-        <section className="mt-[22px]">
-          {!current && <CurriculumTitle>Course plan</CurriculumTitle>}
-          <p className="mt-1.5 text-sm text-muted-foreground">
-            {[
-              ...(current
-                ? [`${added} added`, `${removed.length} removed`, `${kept} kept`, ...(moved.size ? [`${plural(moved.size, "module")} moved`] : [])]
-                : [`${plural(moduleCount, "module")}`, `${plural(after.size, "objective")}`]),
-              languageLabel(proposal.language),
-              `${size} tasks${TASK_MINUTES[size] ? ` of about ${TASK_MINUTES[size]} min` : ""}`,
-              SHAPES[shape] ?? shape,
-            ].join(" · ")}
-          </p>
-          <ModuleList className="mt-5">
-            {(proposal.modules ?? []).map((m) => (
-              <ModuleItem
-                key={m.id}
-                heading={
-                  <>
-                    {m.title}
-                    {moved.has(m.id) && <ModuleNote title="Its position in the plan changed">moved</ModuleNote>}
-                  </>
-                }
-              >
-                {(m.objectives ?? []).map((o) => {
-                  const isNew = !!current && !before.has(o.id);
-                  const renamed = !!current && before.has(o.id) && before.get(o.id) !== o.title;
-                  const done = objectives[o.id]?.status === ObjectiveStatus.ObjectivePassed;
-                  return (
-                    <ObjectiveItem key={o.id} done={done}>
-                      <span className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-                        <ObjectiveName>{o.name || o.title}</ObjectiveName>
-                        {o.language && o.language !== proposal.language && <ObjectiveNote>{languageLabel(o.language)}</ObjectiveNote>}
-                        {isNew && <Tag>new</Tag>}
-                        {renamed && <Tag title={`Was: ${before.get(o.id)}`}>renamed</Tag>}
-                      </span>
-                      {o.name && <ObjectiveNote>{o.title}</ObjectiveNote>}
+            <section>
+              {!current && <CurriculumTitle>Course plan</CurriculumTitle>}
+              <p className="mt-1.5 text-sm text-muted-foreground">
+                {[
+                  ...(current
+                    ? [`${added} added`, `${removed.length} removed`, `${kept} kept`, ...(moved.size ? [`${plural(moved.size, "module")} moved`] : [])]
+                    : [`${plural(moduleCount, "module")}`, `${plural(after.size, "objective")}`]),
+                  languageLabel(proposal.language),
+                  `${size} tasks${TASK_MINUTES[size] ? ` of about ${TASK_MINUTES[size]} min` : ""}`,
+                  SHAPES[shape] ?? shape,
+                ].join(" · ")}
+              </p>
+              <ModuleList className="mt-5">
+                {(proposal.modules ?? []).map((m) => (
+                  <ModuleItem
+                    key={m.id}
+                    heading={
+                      <>
+                        {m.title}
+                        {moved.has(m.id) && <ModuleNote title="Its position in the plan changed">moved</ModuleNote>}
+                      </>
+                    }
+                  >
+                    {(m.objectives ?? []).map((o) => {
+                      const isNew = !!current && !before.has(o.id);
+                      const renamed = !!current && before.has(o.id) && before.get(o.id) !== o.title;
+                      const done = objectives[o.id]?.status === ObjectiveStatus.ObjectivePassed;
+                      return (
+                        <ObjectiveItem key={o.id} done={done}>
+                          <span className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                            <ObjectiveName>{o.name || o.title}</ObjectiveName>
+                            {o.language && o.language !== proposal.language && <ObjectiveNote>{languageLabel(o.language)}</ObjectiveNote>}
+                            {isNew && <Tag>new</Tag>}
+                            {renamed && <Tag title={`Was: ${before.get(o.id)}`}>renamed</Tag>}
+                          </span>
+                          {o.name && <ObjectiveNote>{o.title}</ObjectiveNote>}
+                        </ObjectiveItem>
+                      );
+                    })}
+                  </ModuleItem>
+                ))}
+              </ModuleList>
+            </section>
+
+            {removed.length > 0 && (
+              <section className="mt-[22px]">
+                <ModuleHeading>Removed</ModuleHeading>
+                <ul>
+                  {removed.map(([id, title]) => (
+                    <ObjectiveItem key={id} done={objectives[id]?.status === ObjectiveStatus.ObjectivePassed}>
+                      <span className="text-muted-foreground line-through">{title}</span>
+                      {objectives[id]?.status === ObjectiveStatus.ObjectivePassed && <ObjectiveNote>Still counts all-time</ObjectiveNote>}
                     </ObjectiveItem>
-                  );
-                })}
-              </ModuleItem>
-            ))}
-          </ModuleList>
-        </section>
-
-        {removed.length > 0 && (
-          <section className="mt-[22px]">
-            <ModuleHeading>Removed</ModuleHeading>
-            <ul>
-              {removed.map(([id, title]) => (
-                <ObjectiveItem key={id} done={objectives[id]?.status === ObjectiveStatus.ObjectivePassed}>
-                  <span className="text-muted-foreground line-through">{title}</span>
-                  {objectives[id]?.status === ObjectiveStatus.ObjectivePassed && <ObjectiveNote>Still counts all-time</ObjectiveNote>}
-                </ObjectiveItem>
-              ))}
-            </ul>
-          </section>
-        )}
+                  ))}
+                </ul>
+              </section>
+            )}
+          </WithPlanSources>
+        </div>
       </ReadingPage>
 
       <footer className="flex-none border-t bg-card px-12 py-3.5">
@@ -148,7 +155,7 @@ export function ProposalView({ proposal, current, progress, mission }: Props) {
 
 const SHAPES: Partial<Record<TaskShape, string>> = {
   [TaskShape.ShapeKata]: "standalone exercises",
-  [TaskShape.ShapeProject]: "one program that grows task by task",
+  [TaskShape.ShapeProject]: "project components, one per task",
 } satisfies Record<Exclude<TaskShape, TaskShape.$zero>, string>;
 
 /** "new" or "renamed" beside an objective in a plan revision. */

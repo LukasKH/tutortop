@@ -1,4 +1,4 @@
-import { ChatStatus, CheckKind, type ChatItem, type Questions, type SandboxCheck, type WorkspaceSnapshot } from "@/lib/api";
+import { ChatRole, ChatStatus, CheckKind, type ChatItem, type Questions, type SandboxCheck, type WorkspaceSnapshot } from "@/lib/api";
 import { objectiveOfWriter } from "@/lib/workspace";
 
 /**
@@ -86,14 +86,19 @@ export function reduceWorkspace(s: LiveWorkspace, a: Action): LiveWorkspace {
         next.checkSeq = { ...s.checkSeq, [writing]: a.seq };
         if (a.busy) next.writeFailed = { ...s.writeFailed, [writing]: undefined };
       }
-      // A finished check is only news while the chat that ran it is still at work.
+      // A toolchain check is only news while the chat that ran it is still at work.
       const check = s.toolchainCheck;
-      if (!a.busy && check?.thread === a.thread && !check.running) next.toolchainCheck = null;
+      if (!a.busy && check?.thread === a.thread) next.toolchainCheck = null;
       return next;
     }
 
     case "check": {
-      if (a.check.kind === CheckKind.CheckToolchain) return { ...s, toolchainCheck: a.check };
+      if (a.check.kind === CheckKind.CheckToolchain) {
+        if (!a.check.running && !s.busy[a.check.thread]) {
+          return s.toolchainCheck?.thread === a.check.thread ? { ...s, toolchainCheck: null } : s;
+        }
+        return { ...s, toolchainCheck: a.check };
+      }
       // A task is checked by its objective's writer, and shows on the objective.
       const objective = objectiveOfWriter(a.check.thread);
       if (!objective) return s;
@@ -101,9 +106,10 @@ export function reduceWorkspace(s: LiveWorkspace, a: Action): LiveWorkspace {
     }
 
     case "chat": {
-      // Writers aren't chats; only their failures matter here.
+      // Writers aren't chats; only their failures matter here. A failed tool
+      // call isn't one: the writer recovers from it.
       const writing = objectiveOfWriter(a.item.thread);
-      if (!writing || a.item.status !== ChatStatus.ChatFailed) return s;
+      if (!writing || a.item.role === ChatRole.RoleTool || a.item.status !== ChatStatus.ChatFailed) return s;
       return { ...s, writeFailed: { ...s.writeFailed, [writing]: a.item.text } };
     }
 

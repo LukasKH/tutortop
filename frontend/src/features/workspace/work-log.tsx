@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 type Props = {
+  thread: string;
   /** One stretch of the planning conversation: what the tutor did since the learner last wrote. */
   items: ChatItem[];
   busy: boolean;
@@ -19,10 +20,10 @@ type Props = {
 
 /**
  * What the tutor is doing, for the centre of the page: a "Working for…"
- * line, its messages, and its tool calls folded into one summary line per
- * run (expand it to see each call).
+ * line, its messages, its tool calls folded into one summary line per run
+ * (expand it to see each call), and what it's thinking or writing now.
  */
-export function WorkLog({ items, busy, check, onStop }: Props) {
+export function WorkLog({ thread, items, busy, check, onStop }: Props) {
   // Before the first item arrives, the clock runs from when the work started.
   const { since, now } = useClock(busy);
   const start = items[0] ? Date.parse(items[0].at) : since;
@@ -50,7 +51,7 @@ export function WorkLog({ items, busy, check, onStop }: Props) {
           Setting up {check.title} in the sandbox. The first time can take a few minutes…
         </div>
       )}
-      {!check?.running && <Thinking items={shown} busy={busy} />}
+      {!check?.running && <Thinking thread={thread} items={shown} busy={busy} />}
     </section>
   );
 }
@@ -77,26 +78,20 @@ function Entry({ item }: { item: ChatItem }) {
   }
 }
 
+/** Failed calls never get here: upsertChat and mergeChat drop them. */
 function ToolGroup({ tools }: { tools: ChatItem[] }) {
   const running = tools.find((t) => t.status === ChatStatus.ChatRunning);
-  const failed = tools.filter((t) => t.status === ChatStatus.ChatFailed).length;
   return (
     <details className="group">
       <summary className="flex w-fit max-w-full min-w-0 cursor-pointer list-none items-center gap-2 text-sm text-muted-foreground hover:text-soft-foreground [&::-webkit-details-marker]:hidden">
-        <span className="grid w-3 flex-none place-items-center">{running ? <Spinner className="size-[11px]" /> : failed ? "✗" : "✓"}</span>
+        <span className="grid w-3 flex-none place-items-center">{running ? <Spinner className="size-[11px]" /> : "✓"}</span>
         <span className="min-w-0 truncate">{summarize(tools)}</span>
         <ChevronDownIcon size={12} className="flex-none -rotate-90 transition-transform group-open:rotate-0" />
       </summary>
       <ul className="mt-2 flex flex-col gap-0.5 pl-5">
         {tools.map((t) => (
-          <li
-            key={t.id}
-            className={cn("flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground", t.status === ChatStatus.ChatFailed && "text-fail")}
-            title={t.text}
-          >
-            <span className="grid w-3 flex-none place-items-center">
-              {t.status === ChatStatus.ChatRunning ? <Spinner className="size-[10px]" /> : t.status === ChatStatus.ChatFailed ? "✗" : "✓"}
-            </span>
+          <li key={t.id} className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground" title={t.text}>
+            <span className="grid w-3 flex-none place-items-center">{t.status === ChatStatus.ChatRunning ? <Spinner className="size-[10px]" /> : "✓"}</span>
             <span className="min-w-0 truncate">{t.text}</span>
           </li>
         ))}

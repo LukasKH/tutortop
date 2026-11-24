@@ -101,7 +101,7 @@ export type UseOpenItemResult = ReturnType<typeof useOpenItem>;
  */
 export type Center =
   | { kind: "setup"; questions: Questions | null }
-  | { kind: "proposal"; proposal: Curriculum; current: Curriculum | null; progress: Progress; mission: string }
+  | { kind: "proposal"; proposal: Curriculum; current: Curriculum | null; progress: Progress; mission: string; resources: string }
   | {
       kind: "plan";
       ws: WorkspaceSnapshot;
@@ -148,7 +148,14 @@ export type Center =
  * questions if placeQuestions put them here, else the open item.
  */
 export function centerOf(ws: WorkspaceSnapshot, view: CenterView, open: ItemDetails, centred: Questions | null): Center {
-  const review = (proposal: Curriculum): Center => ({ kind: "proposal", proposal, current: ws.curriculum, progress: ws.progress, mission: ws.mission });
+  const review = (proposal: Curriculum): Center => ({
+    kind: "proposal",
+    proposal,
+    current: ws.curriculum,
+    progress: ws.progress,
+    mission: ws.mission,
+    resources: ws.resources,
+  });
   if (!ws.curriculum) {
     if (view === "plan") return { kind: "plan", ws, canGoBack: true, canAskTutor: false };
     return ws.proposal ? review(ws.proposal) : { kind: "setup", questions: centred };

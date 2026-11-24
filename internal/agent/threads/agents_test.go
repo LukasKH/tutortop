@@ -4,7 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
+	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -43,6 +46,15 @@ func TestBusyFromStartUntilQueueIsDone(t *testing.T) {
 	}
 	second.end(nil)
 	eventually(t, "idle once answered", func() bool { return !busy() })
+
+	// An agent ended mid-turn shows idle too.
+	shown := recordBusy(t)
+	queue(t, ag, w, workspace.PlanThread, "three")
+	fake.next(t)
+	ag.EndWorkspace(w.ID)
+	if busy() || shown.last("plan") != "idle" {
+		t.Fatalf("after the workspace ended: busy %v, last event %q", busy(), shown.last("plan"))
+	}
 }
 
 // A writer starts fresh, isn't queued twice, keeps its sandbox check while
@@ -57,7 +69,7 @@ func TestWriterEndsAfterItsTurn(t *testing.T) {
 		t.Fatalf("writer resumed %q", turn.s.opts.ResumeID)
 	}
 	queue(t, ag, w, writer, "write again")
-	ag.Show(w.ID, events.SandboxCheck{Kind: events.CheckTask, Thread: writer.String(), Title: "Wrap errors", Running: true})
+	ag.StartCheck(w.ID, events.SandboxCheck{Kind: events.CheckTask, Thread: writer.String(), Title: "Wrap errors"})
 	if busy, checks, _ := ag.State(w.ID); !busy[writer.String()] || !checks["go.errors"].Running {
 		t.Fatalf("busy %v, checks %v", busy, checks)
 	}
@@ -74,6 +86,177 @@ func TestWriterEndsAfterItsTurn(t *testing.T) {
 	if again := fake.next(t); again.s == turn.s || again.text != "write" {
 		t.Fatalf("got %q on the first writer: %v", again.text, again.s == turn.s)
 	}
+}
+
+// A writer that shows no sign of life is ended and its thread shows idle,
+// with a failure on its objective, so it can be written again. A running
+// sandbox check doesn't count as stuck.
+func TestStuckWriterIsEnded(t *testing.T) {
+	ag, fake, w := newHeldAgents(t)
+	busy := recordBusy(t)
+	ag.writerIdle = 120 * time.Millisecond
+	writer := workspace.WriterThread("go.errors")
+
+	queue(t, ag, w, writer, "write")
+	stuck := fake.next(t)
+	// Activity from the CLI resets the watchdog and keeps the writer alive past writerIdle.
+	for range 6 {
+		stuck.s.onEvent(agent.Event{Kind: agent.EventThinking, Text: "."})
+		time.Sleep(ag.writerIdle / 4)
+	}
+	if b, _, _ := ag.State(w.ID); !b[writer.String()] {
+		t.Fatal("ended while receiving events")
+	}
+	first := ag.StartCheck(w.ID, events.SandboxCheck{Kind: events.CheckTask, Thread: writer.String(), Title: "Wrap errors"})
+	second := ag.StartCheck(w.ID, events.SandboxCheck{Kind: events.CheckTask, Thread: writer.String(), Title: "Wrap errors"})
+	time.Sleep(2 * ag.writerIdle)
+	first.Fail()
+	// A second overlapping check keeps the watchdog paused until it finishes too.
+	time.Sleep(2 * ag.writerIdle)
+	if b, _, _ := ag.State(w.ID); !b[writer.String()] {
+		t.Fatal("ended during a sandbox check")
+	}
+	second.Fail()
+	eventually(t, "stuck writer ended", func() bool {
+		b, _, _ := ag.State(w.ID)
+		return !b[writer.String()] && stuck.s.closed.Load() && busy.last(writer.String()) == "idle"
+	})
+	eventually(t, "failure shown", func() bool { return failures(w, writer.String()) == 1 })
+
+	ag.writerIdle = time.Minute
+	queue(t, ag, w, writer, "write")
+	again := fake.next(t)
+	if again.s == stuck.s {
+		t.Fatal("retried on the stuck writer")
+	}
+	again.end(nil)
+	eventually(t, "retry done", func() bool { b, _, _ := ag.State(w.ID); return !b[writer.String()] })
+}
+
+// Stopping a writer ends it at once, while it works or while its CLI is
+// still opening, without a failure; the next message starts a new one.
+func TestStoppedWriterEnds(t *testing.T) {
+	ag, fake, w := newHeldAgents(t)
+	busy := recordBusy(t)
+	writer := workspace.WriterThread("go.errors")
+	idle := func() bool { b, _, _ := ag.State(w.ID); return !b[writer.String()] }
+
+	queue(t, ag, w, writer, "write")
+	turn := fake.next(t)
+	turn.s.onEvent(agent.Event{Kind: agent.EventThinking, Text: "Drafting"})
+	ag.stop(w.ID, writer.String())
+	if !idle() || !turn.s.closed.Load() || busy.last(writer.String()) != "idle" {
+		t.Fatalf("after stop: idle %v, closed %v, last event %q", idle(), turn.s.closed.Load(), busy.last(writer.String()))
+	}
+	if w := busy.working(writer.String()); w.Thinking != "" || w.Preparing != "" {
+		t.Fatalf("working not cleared on stop: %+v", w)
+	}
+	// Late events from the stopped CLI don't bring its working state back.
+	turn.s.onEvent(agent.Event{Kind: agent.EventThinking, Text: "late"})
+	if w := busy.working(writer.String()); w.Thinking != "" || w.Preparing != "" {
+		t.Fatalf("late event restored working after stop: %+v", w)
+	}
+
+	fake.holdStart = make(chan struct{})
+	queue(t, ag, w, writer, "write")
+	ag.stop(w.ID, writer.String())
+	if !idle() {
+		t.Fatal("busy after stopping while opening")
+	}
+	close(fake.holdStart)
+
+	queue(t, ag, w, writer, "write")
+	again := fake.next(t)
+	if again.s == turn.s || again.text != "write" {
+		t.Fatalf("got %q on the stopped writer: %v", again.text, again.s == turn.s)
+	}
+	again.end(nil)
+	eventually(t, "idle", idle)
+	if n := failures(w, writer.String()); n != 0 {
+		t.Fatalf("%d failures shown for a stop", n)
+	}
+}
+
+// A stale watchdog callback that raced with alive() or a sandbox check does
+// not kill an active writer, and a stopped writer's late check status does
+// not clobber a retried writer.
+func TestWriterWatchdogAndChecksRaceSafely(t *testing.T) {
+	ag, fake, w := newHeldAgents(t)
+	ag.writerIdle = time.Minute
+	writer := workspace.WriterThread("go.errors")
+
+	queue(t, ag, w, writer, "write")
+	_ = fake.next(t)
+	ag.mu.Lock()
+	ta1 := ag.agents[threadKey{w.ID, writer.String()}]
+	ag.mu.Unlock()
+
+	// Simulates a timer callback acquiring ag.mu after alive() already reset the deadline.
+	ag.stalled(w, ta1)
+	if b, _, _ := ag.State(w.ID); !b[writer.String()] {
+		t.Fatal("stalled ended an active writer whose deadline hasn't passed")
+	}
+
+	// Stopping writer 1 while its check is running and retrying starts writer 2;
+	// writer 1's late finish call must not touch writer 2.
+	finishOld := ag.StartCheck(w.ID, events.SandboxCheck{Kind: events.CheckTask, Thread: writer.String(), Title: "Old check"})
+	ag.stop(w.ID, writer.String())
+	queue(t, ag, w, writer, "write again")
+	second := fake.next(t)
+	finishOld.Fail()
+	if _, checks, _ := ag.State(w.ID); len(checks) != 0 {
+		t.Fatalf("stale writer check leaked onto retried writer: %+v", checks)
+	}
+	second.end(nil)
+	eventually(t, "retry done", func() bool { b, _, _ := ag.State(w.ID); return !b[writer.String()] })
+
+	// A chat's toolchain check finishing after its agent ended still emits
+	// Running: false so the UI never stays stuck on a running check.
+	busy := recordBusy(t)
+	queue(t, ag, w, workspace.PlanThread, "setup rust")
+	planTurn := fake.next(t)
+	finishToolchain := ag.StartCheck(w.ID, events.SandboxCheck{Kind: events.CheckToolchain, Thread: workspace.PlanThread.String(), Title: "Rust"})
+	ag.EndWorkspace(w.ID)
+	planTurn.end(nil)
+	finishToolchain.Fail()
+	if c, ok := busy.check(workspace.PlanThread.String()); !ok || c.Running {
+		t.Fatalf("toolchain check after agent end = (%+v, %v), want Running: false", c, ok)
+	}
+}
+
+// A writer's first message hands it its objective's sources: the module's
+// references and the learner's resources.
+func TestWriterGetsItsSources(t *testing.T) {
+	ag, fake, w := newHeldAgents(t)
+	ref := workspace.Source{Title: "Go blog: Working with Errors", URL: "https://go.dev/blog/go1.13-errors"}
+	o := workspace.Objective{ID: "go.errors", Name: "Wrapping errors", Title: "Wrap errors"}
+	plan := workspace.Curriculum{
+		Language: "go",
+		Modules: []workspace.Module{{
+			ID:         "errors",
+			Title:      "Errors",
+			References: []workspace.Source{ref},
+			Objectives: []workspace.Objective{o},
+		}},
+	}
+	if err := w.Propose(plan); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.ApproveProposal(); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(w.Dir, "RESOURCES.md"), []byte("# Resources\n\n- [Effective Go](https://go.dev/doc/effective_go): idioms\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	NewWriters(ag).Write(w, o, "The learner just approved the plan.")
+	turn := fake.next(t)
+	for _, want := range []string{"[context]", "[" + ref.Title + "](" + ref.URL + ")", "[Effective Go](https://go.dev/doc/effective_go)", "Write for the objective “Wrap errors” (go.errors)"} {
+		if !strings.Contains(turn.text, want) {
+			t.Errorf("writer's message lacks %q:\n%s", want, turn.text)
+		}
+	}
+	turn.end(nil)
 }
 
 // New settings restart a thread's agent once it's idle, resuming its
@@ -170,17 +353,8 @@ func TestFailedAgentIsReplaced(t *testing.T) {
 	}
 	// One for the failed start, though two messages waited for it, and one
 	// for the crash.
-	failures := func() (n int) {
-		chat, _ := w.Chat("plan")
-		for _, c := range chat {
-			if c.Status == workspace.ChatFailed {
-				n++
-			}
-		}
-		return n
-	}
-	eventually(t, "failures shown", func() bool { return failures() >= 2 })
-	if n := failures(); n != 2 {
+	eventually(t, "failures shown", func() bool { return failures(w, "plan") >= 2 })
+	if n := failures(w, "plan"); n != 2 {
 		t.Fatalf("%d failures shown", n)
 	}
 }
@@ -308,6 +482,84 @@ func (s *heldSession) Cancel() {
 }
 
 func (s *heldSession) Close() error { s.closed.Store(true); return nil }
+
+// failures counts the failures shown in a thread's chat.
+func failures(w *workspace.Workspace, thread string) (n int) {
+	chat, _ := w.Chat(thread)
+	for _, c := range chat {
+		if c.Status == workspace.ChatFailed {
+			n++
+		}
+	}
+	return n
+}
+
+// busyEvents records the thread:busy, thread:working and check:status events
+// sent during a test.
+type busyEvents struct {
+	mu      sync.Mutex
+	latest  map[string]bool                // by thread
+	current map[string]events.Working      // by thread
+	checks  map[string]events.SandboxCheck // by thread
+}
+
+// recordBusy records the thread:busy, thread:working and check:status events
+// until the test ends.
+func recordBusy(t *testing.T) *busyEvents {
+	t.Helper()
+	b := &busyEvents{
+		latest:  map[string]bool{},
+		current: map[string]events.Working{},
+		checks:  map[string]events.SandboxCheck{},
+	}
+	events.SetEmitter(func(_ string, data any) {
+		switch e := data.(type) {
+		case events.Busy:
+			b.mu.Lock()
+			b.latest[e.Thread] = e.Busy
+			b.mu.Unlock()
+		case events.Working:
+			b.mu.Lock()
+			b.current[e.Thread] = e
+			b.mu.Unlock()
+		case events.Check:
+			b.mu.Lock()
+			b.checks[e.Check.Thread] = e.Check
+			b.mu.Unlock()
+		}
+	})
+	t.Cleanup(func() { events.SetEmitter(nil) })
+	return b
+}
+
+// check is the last check:status sent for a thread.
+func (b *busyEvents) check(thread string) (events.SandboxCheck, bool) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	c, ok := b.checks[thread]
+	return c, ok
+}
+
+// working is the last thread:working state sent for a thread.
+func (b *busyEvents) working(thread string) events.Working {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.current[thread]
+}
+
+// last is what the last event for a thread said: "busy", "idle", or "" if none came.
+func (b *busyEvents) last(thread string) string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	busy, ok := b.latest[thread]
+	switch {
+	case !ok:
+		return ""
+	case busy:
+		return "busy"
+	}
+	return "idle"
+}
 
 // eventually waits up to two seconds for cond to hold.
 func eventually(t *testing.T, what string, cond func() bool) {

@@ -20,6 +20,7 @@ declare module "@wailsio/runtime" {
             "questions:asked": events$0.Questions;
             "task:published": events$0.Task;
             "thread:busy": events$0.Busy;
+            "thread:working": events$0.Working;
             "workspace:changed": events$0.Workspace;
         }
     }

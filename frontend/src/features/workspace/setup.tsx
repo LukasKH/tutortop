@@ -53,7 +53,13 @@ export function Setup({ questions }: Props) {
       ) : (
         <>
           {(busy || recent.length > 0) && (
-            <WorkLog items={recent} busy={busy} check={live.toolchainCheck} onStop={() => ChatService.StopAgent(id, PLAN_THREAD).catch(live.fail)} />
+            <WorkLog
+              thread={PLAN_THREAD}
+              items={recent}
+              busy={busy}
+              check={live.toolchainCheck}
+              onStop={() => ChatService.StopAgent(id, PLAN_THREAD).catch(live.fail)}
+            />
           )}
           {!busy && items.length > 0 && <Reply onSend={(text) => ChatService.SendMessage(id, text, PLAN_THREAD)} />}
         </>

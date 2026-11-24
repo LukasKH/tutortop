@@ -16,6 +16,7 @@ type Name[Data any] string
 const (
 	ChatMessage        Name[Chat]      = "chat:message"
 	ThreadBusy         Name[Busy]      = "thread:busy"
+	ThreadWorking      Name[Working]   = "thread:working"
 	CheckStatus        Name[Check]     = "check:status"
 	TaskPublished      Name[Task]      = "task:published"
 	LessonPublished    Name[Lesson]    = "lesson:published"
@@ -63,6 +64,21 @@ type Busy struct {
 	Thread    string `json:"thread"`
 	Busy      bool   `json:"busy"`
 	Seq       uint64 `json:"seq"` // orders it among snapshots (app.WorkspaceSnapshot.Seq)
+}
+
+// Working is what a thread's agent is doing between its messages and tool
+// calls: its reasoning, or a long tool call it's writing. It's shown live and
+// never saved, and sent again empty once a message or tool call takes over,
+// or the turn ends.
+type Working struct {
+	Workspace string `json:"workspace"`
+	Thread    string `json:"thread"`
+	// Thinking is the end of the agent's reasoning since its last message or
+	// tool call, as far as its CLI shows it.
+	Thinking string `json:"thinking"`
+	// Preparing is the tool call it's writing, for the learner: "Drafting
+	// your plan".
+	Preparing string `json:"preparing"`
 }
 
 // Check tells how a sandbox check is going.

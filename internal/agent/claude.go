@@ -187,7 +187,7 @@ func (s *claudeSession) handle(l claudeLine) {
 			s.checkMCP(l)
 		}
 	case "stream_event":
-		s.streamText(l)
+		s.stream(l)
 	case "assistant":
 		s.toolsStarted(l)
 	case "user":
@@ -203,18 +203,38 @@ func (s *claudeSession) handle(l claudeLine) {
 	}
 }
 
-// streamText passes on a piece of the reply's text.
-func (s *claudeSession) streamText(l claudeLine) {
+// stream passes on the reply's text and reasoning as they're written, and
+// tool calls as the model starts writing them. The full call follows in an
+// assistant message once it's written.
+func (s *claudeSession) stream(l claudeLine) {
 	ev, err := decode.JSON[struct {
-		Type  string `json:"type"`
-		Delta struct {
-			Type string `json:"type"`
-			Text string `json:"text"`
+		Type         string      `json:"type"`
+		ContentBlock claudeBlock `json:"content_block"`
+		Delta        struct {
+			Type     string `json:"type"`
+			Text     string `json:"text"`
+			Thinking string `json:"thinking"`
 		} `json:"delta"`
 	}](l.Event)
-	// A subagent's text is its report to the tutor, not the reply.
-	if err == nil && l.ParentToolUseID == "" && ev.Type == "content_block_delta" && ev.Delta.Type == "text_delta" {
+	// A subagent's stream is its work for the tutor, not the tutor's own.
+	if err != nil || l.ParentToolUseID != "" {
+		return
+	}
+	switch {
+	case ev.Type == "content_block_start" && ev.ContentBlock.Type == "tool_use":
+		// Without its input, a call's title and paths aren't known yet.
+		t := claudeTool(ev.ContentBlock.Name, nil)
+		s.onEvent(Event{Kind: EventPreparing, Tool: Tool{
+			ID:        ev.ContentBlock.ID,
+			Kind:      t.Kind,
+			MCPServer: t.MCPServer,
+			MCPTool:   t.MCPTool,
+			Subagent:  t.Subagent,
+		}})
+	case ev.Type == "content_block_delta" && ev.Delta.Type == "text_delta":
 		s.onEvent(Event{Kind: EventText, Text: ev.Delta.Text})
+	case ev.Type == "content_block_delta" && ev.Delta.Type == "thinking_delta":
+		s.onEvent(Event{Kind: EventThinking, Text: ev.Delta.Thinking})
 	}
 }
 

@@ -62,7 +62,9 @@ export function SendMessage(wsID: string, text: string, thread: string): $Cancel
 
 /**
  * StopAgent interrupts the current turn in a thread. Its agent posts a
- * notice once the cut-off reply is saved.
+ * notice once the cut-off reply is saved. A writer's thread ("write-" and
+ * the objective's id) ends its writer instead, so a stuck one can be
+ * stopped and written again.
  */
 export function StopAgent(wsID: string, thread: string): $CancellablePromise<void> {
     return $Call.ByID(3019346811, wsID, thread);

@@ -48,8 +48,7 @@ func (t *threadTools) setToolchain(ctx context.Context, req *mcpsdk.CallToolRequ
 		return nil, nil, fmt.Errorf("%s is built in; use it directly", tc.Language)
 	}
 	defer keepAlive(ctx, req, "setting up "+tc.Name+" sandbox")()
-	check := events.SandboxCheck{Kind: events.CheckToolchain, Thread: t.thread.String(), Title: tc.Name, Running: true}
-	t.checks.Show(t.w.ID, check)
+	finish := t.checks.StartCheck(t.w.ID, events.SandboxCheck{Kind: events.CheckToolchain, Thread: t.thread.String(), Title: tc.Name})
 	report, err := t.checkToolchain(ctx, tc, in.Example)
 	var lspErr error
 	if err == nil && report == "" && len(tc.LanguageServer) > 0 {
@@ -57,8 +56,7 @@ func (t *threadTools) setToolchain(ctx context.Context, req *mcpsdk.CallToolRequ
 		maps.Copy(files, in.Example.Tests)
 		lspErr = t.runner.ProbeLanguageServer(ctx, tc, files)
 	}
-	check.Running, check.Passed = false, err == nil && report == ""
-	t.checks.Show(t.w.ID, check)
+	finish(err == nil && report == "")
 	if err != nil {
 		return nil, nil, sandboxProblem(err)
 	}

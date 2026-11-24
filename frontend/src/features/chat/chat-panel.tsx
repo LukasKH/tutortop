@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, type ReactNode } from "react";
+import { useCallback, useLayoutEffect, useRef, type ReactNode } from "react";
 import { ChatRole, ChatStatus, type ChatItem, type SandboxCheck } from "@/lib/api";
 import { useTutor } from "@/features/settings/use-tutor";
 import { TutorPicker } from "@/features/settings/tutor-picker";
@@ -46,16 +46,18 @@ export function ChatPanel({ composer: { draft, setDraft, inputRef }, ...p }: Pro
   const listRef = useRef<HTMLDivElement>(null);
   const stickToBottom = useRef(true);
 
+  const followBottom = useCallback(() => {
+    const el = listRef.current;
+    if (el && stickToBottom.current) el.scrollTop = el.scrollHeight;
+  }, []);
+
   // A different thread starts at its latest message.
   useLayoutEffect(() => {
     stickToBottom.current = true;
   }, [p.thread]);
 
   // Follow new content unless the learner scrolled up to read.
-  useLayoutEffect(() => {
-    const el = listRef.current;
-    if (el && stickToBottom.current) el.scrollTop = el.scrollHeight;
-  });
+  useLayoutEffect(followBottom);
 
   function onScroll() {
     const el = listRef.current!;
@@ -93,7 +95,7 @@ export function ChatPanel({ composer: { draft, setDraft, inputRef }, ...p }: Pro
             <Message key={item.id} item={item} />
           ))}
           {p.questions}
-          <Thinking items={p.items} busy={p.busy} />
+          <Thinking thread={p.thread} items={p.items} busy={p.busy} onUpdate={followBottom} />
         </div>
         {p.hint && <HintPill level={p.hint.level} busy={p.busy} onHint={p.hint.onHint} />}
       </div>
@@ -233,9 +235,7 @@ function Message({ item }: { item: ChatItem }) {
     case ChatRole.RoleTool:
       return (
         <div className="-my-2 flex items-center gap-1.5 text-xs text-muted-foreground" title={item.text}>
-          <span className="grid w-3 flex-none">
-            {item.status === ChatStatus.ChatRunning ? <Spinner className="size-[10px]" /> : item.status === ChatStatus.ChatFailed ? "✗" : "✓"}
-          </span>
+          <span className="grid w-3 flex-none">{item.status === ChatStatus.ChatRunning ? <Spinner className="size-[10px]" /> : "✓"}</span>
           <span className="min-w-0 truncate">{item.text}</span>
         </div>
       );

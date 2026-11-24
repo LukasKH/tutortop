@@ -46,6 +46,18 @@ func (c *Curriculum) Objective(id string) (Objective, string, bool) {
 	return Objective{}, "", false
 }
 
+// ModuleOf looks up the module that holds an objective.
+func (c *Curriculum) ModuleOf(objectiveID string) (Module, bool) {
+	for _, m := range c.Modules {
+		for _, o := range m.Objectives {
+			if o.ID == objectiveID {
+				return m, true
+			}
+		}
+	}
+	return Module{}, false
+}
+
 // validate fills defaults and reports every problem at once, so the agent can
 // fix them in one go. w reports whether a language is usable. Plans approved
 // before references existed lack them; they're only checked here, when the
@@ -124,7 +136,7 @@ func readCurriculum(p string) (*Curriculum, error) {
 
 type TaskDefaults struct {
 	Size  TaskSize  `yaml:"size" json:"size,omitempty" jsonschema:"small (~10 min), medium (~25 min) or large (~60 min)"`
-	Shape TaskShape `yaml:"shape" json:"shape,omitempty" jsonschema:"kata (standalone function exercises) or project (grow one program over many tasks)"`
+	Shape TaskShape `yaml:"shape" json:"shape,omitempty" jsonschema:"kata (a standalone exercise for each concept) or project (self-contained tasks that each build one component of a project the learner chose)"`
 }
 
 // validate fills the defaults and adds what's wrong to p.
@@ -165,7 +177,7 @@ type TaskShape string
 
 const (
 	ShapeKata    TaskShape = "kata"    // standalone function exercises
-	ShapeProject TaskShape = "project" // one program grown over many tasks
+	ShapeProject TaskShape = "project" // self-contained tasks building components of one project
 )
 
 func (s TaskShape) valid() bool {

@@ -9,7 +9,7 @@ import * as copilot from "@bindings/github.com/LukasKH/tutortop/internal/copilot
 import type { WorkspaceSnapshot } from "@bindings/github.com/LukasKH/tutortop/internal/app";
 import type { AgentSetup, Environment, Prefs, ProviderStatus } from "@bindings/github.com/LukasKH/tutortop/internal/settings";
 import type { Completion, DeviceCode, Plan, Setup, Suggestion } from "@bindings/github.com/LukasKH/tutortop/internal/copilot";
-import type { SandboxCheck } from "@bindings/github.com/LukasKH/tutortop/internal/events";
+import type { SandboxCheck, Working } from "@bindings/github.com/LukasKH/tutortop/internal/events";
 import type { Check, Limit, Model } from "@bindings/github.com/LukasKH/tutortop/internal/agent";
 import type {
   Activity,
@@ -64,6 +64,7 @@ export type {
   TaskDetail,
   TaskStatus,
   TestResult,
+  Working,
   WorkspaceSnapshot,
 };
 

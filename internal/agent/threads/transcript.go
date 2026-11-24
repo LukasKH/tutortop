@@ -11,6 +11,7 @@ import (
 	"github.com/LukasKH/tutortop/internal/agent"
 	"github.com/LukasKH/tutortop/internal/events"
 	"github.com/LukasKH/tutortop/internal/mcp"
+	"github.com/LukasKH/tutortop/internal/text"
 	"github.com/LukasKH/tutortop/internal/workspace"
 )
 
@@ -28,27 +29,46 @@ func postFailure(w *workspace.Workspace, thread, msg string) {
 
 // transcript turns one thread agent's events into chat items. Streaming
 // text is sent to the UI as it arrives and saved to the chat when complete.
+// What the agent does in between, thinking or writing a long tool call, is
+// only shown while it lasts.
 type transcript struct {
 	ws     *workspace.Workspace
 	thread string
 
 	mu      sync.Mutex
+	closed  bool                           // agent ended: ignore late events from a dying CLI
 	current *workspace.ChatItem            // assistant message being streamed
 	tools   map[string]*workspace.ChatItem // running tool calls by id; nil if hidden
+	working events.Working                 // shown until the next message or tool call
 }
 
 func newTranscript(w *workspace.Workspace, thread string) *transcript {
-	return &transcript{ws: w, thread: thread, tools: map[string]*workspace.ChatItem{}}
+	return &transcript{
+		ws:      w,
+		thread:  thread,
+		tools:   map[string]*workspace.ChatItem{},
+		working: events.Working{Workspace: w.ID, Thread: thread},
+	}
 }
 
 func (t *transcript) handle(ev agent.Event) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
+	if t.closed {
+		return
+	}
 	w := t.ws
 	switch ev.Kind {
 	case agent.EventWarning:
 		postFailure(w, t.thread, ev.Text)
+	case agent.EventThinking:
+		t.showWorking(text.Tail(t.working.Thinking+ev.Text, maxThinking), "")
+	case agent.EventPreparing:
+		if label := preparingLabel(ev.Tool); label != "" {
+			t.showWorking(t.working.Thinking, label)
+		}
 	case agent.EventText:
+		t.showWorking("", "")
 		if t.current == nil {
 			t.current = &workspace.ChatItem{ID: uuid.New().String(), Thread: t.thread, Role: workspace.RoleAssistant, At: time.Now()}
 		}
@@ -58,9 +78,10 @@ func (t *transcript) handle(ev agent.Event) {
 		t.endText()
 		tool := ev.Tool
 		// A call's first event decides whether it shows; later ones only
-		// update its status.
+		// update its status. A call that arrives already failed was never
+		// shown, so there's nothing for the UI to drop.
 		item, seen := t.tools[tool.ID]
-		if !seen {
+		if !seen && tool.Status != agent.ToolFailed {
 			if label, show := toolLabel(tool); show {
 				item = &workspace.ChatItem{ID: uuid.New().String(), Thread: t.thread, Role: workspace.RoleTool, At: time.Now(), Text: label}
 			}
@@ -69,15 +90,34 @@ func (t *transcript) handle(ev agent.Event) {
 		if tool.Status != agent.ToolRunning {
 			delete(t.tools, tool.ID)
 		}
+		// Keep preparing/thinking visible while a hidden call (such as
+		// propose_curriculum link checking) runs; clear once a visible call
+		// takes over or any call completes.
+		if item != nil || tool.Status != agent.ToolRunning {
+			t.showWorking("", "")
+		}
 		if item == nil {
 			return
 		}
 		item.Status = chatStatus[tool.Status]
 		events.Emit(events.ChatMessage, events.Chat{Workspace: w.ID, Item: *item})
-		if tool.Status != agent.ToolRunning {
+		// A failed call is the tutor's to recover from, not the learner's:
+		// the UI drops it, and it isn't saved.
+		if tool.Status == agent.ToolDone {
 			_ = w.AppendChat(*item)
 		}
 	}
+}
+
+// close saves any streamed reply and ends the transcript for good, clearing
+// live working state so a dying CLI can't emit stale updates after its agent
+// was stopped or retried.
+func (t *transcript) close() {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.closed = true
+	t.endText()
+	t.showWorking("", "")
 }
 
 // chatStatus is how a tool call's status shows in the chat.
@@ -85,6 +125,16 @@ var chatStatus = map[agent.ToolStatus]workspace.ChatStatus{
 	agent.ToolRunning: workspace.ChatRunning,
 	agent.ToolDone:    workspace.ChatDone,
 	agent.ToolFailed:  workspace.ChatFailed,
+}
+
+// showWorking shows what the agent is doing between messages and tool
+// calls, if it changed; empty strings clear it.
+func (t *transcript) showWorking(thinking, preparing string) {
+	if thinking == t.working.Thinking && preparing == t.working.Preparing {
+		return
+	}
+	t.working.Thinking, t.working.Preparing = thinking, preparing
+	events.Emit(events.ThreadWorking, t.working)
 }
 
 func (t *transcript) endText() {
@@ -99,7 +149,11 @@ func (t *transcript) endText() {
 func (t *transcript) endTurn() {
 	t.mu.Lock()
 	defer t.mu.Unlock()
+	if t.closed {
+		return
+	}
 	t.endText()
+	t.showWorking("", "")
 	for _, item := range t.tools {
 		if item != nil {
 			item.Status = workspace.ChatDone
@@ -111,24 +165,38 @@ func (t *transcript) endTurn() {
 }
 
 // toolLabel turns an agent tool call into a short line for the learner, or
-// hides it. The tutor reading files or keeping its todo list is noise;
-// changes to the learner's mission or plan are worth seeing. Our own tools
-// show as their entry in the tool table says (mcp.ChatLine).
+// hides it. The tutor reading files or keeping its todo list is noise, and
+// the policy refuses every shell command, so those only ever fail; changes to
+// the learner's mission or plan are worth seeing. Our own tools show as their
+// entry in the tool table says (mcp.ChatLine).
 func toolLabel(t agent.Tool) (string, bool) {
 	if t.MCPServer == mcp.Name {
 		return mcp.ChatLine(t.MCPTool)
 	}
 	switch t.Kind {
-	case agent.ToolRead, agent.ToolSearch, agent.ToolThink:
+	case agent.ToolRead, agent.ToolSearch, agent.ToolThink, agent.ToolExecute:
 		return "", false
 	case agent.ToolEdit:
 		if label := editLabel(t.Paths); label != "" {
 			return label, true
 		}
-	case agent.ToolExecute, agent.ToolFetch, agent.ToolOther:
+	case agent.ToolFetch, agent.ToolOther:
 		// They show as the agent titles them, below.
 	}
 	return t.Title, t.Title != ""
+}
+
+// preparingLabel is the line shown while the agent writes a tool call, or ""
+// for a call that's quick to write. Only its name is known yet: an edit's
+// file isn't.
+func preparingLabel(t agent.Tool) string {
+	if t.MCPServer == mcp.Name {
+		return mcp.PreparingLine(t.MCPTool)
+	}
+	if t.Kind == agent.ToolEdit {
+		return "Writing a file"
+	}
+	return ""
 }
 
 // editLabel is the line for an edit of one of the learner's own documents,
@@ -154,3 +222,8 @@ func editLabel(paths []string) string {
 }
 
 var learningRecord = regexp.MustCompile(`^\d{4}-.*\.md$`)
+
+// maxThinking is how much of the agent's latest reasoning the UI gets, in
+// bytes: enough to read, while long reasoning doesn't make every update
+// heavier.
+const maxThinking = 4000

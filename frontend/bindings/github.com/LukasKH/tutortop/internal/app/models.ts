@@ -17,6 +17,11 @@ export interface WorkspaceSnapshot {
     "title": string;
     "icon": string;
     "mission": string;
+
+    /**
+     * RESOURCES.md: the sources the plan and its lessons draw on
+     */
+    "resources": string;
     "curriculum": workspace$0.Curriculum | null;
     "proposal": workspace$0.Curriculum | null;
     "progress": workspace$0.Progress;

@@ -24,8 +24,9 @@ type LessonSpec struct {
 	ObjectiveID   string         `json:"objectiveId" jsonschema:"id of the curriculum objective this lesson teaches"`
 	Title         string         `json:"title"`
 	Summary       string         `json:"summary" jsonschema:"one sentence: what the learner will be able to do after this lesson"`
-	Body          string         `json:"body" jsonschema:"markdown: the theory, short enough to read in 5-10 minutes. Explain only the knowledge the objective's task needs, tied to the learner's mission, building from what they already know. Use small headings, worked examples in code blocks, a small picture for each idea (call tree, structure tree, diff or mermaid diagram), and cite sources with links for claims. Start at the first section: the app shows the title and summary above the body and primarySource below it, so don't repeat them. Don't solve the task."`
+	Body          string         `json:"body" jsonschema:"markdown: the theory, short enough to read in 5-10 minutes. Explain only the knowledge the objective's task needs, tied to the learner's mission, building from what they already know. Use small headings, worked examples in code blocks, a small picture for each idea (call tree, structure tree, diff or mermaid diagram), and cite sources with links for claims. Start at the first section: the app shows the title and summary above the body, and primarySource and sources in the lesson's Sources tab, so don't repeat them. Don't solve the task."`
 	PrimarySource Source         `json:"primarySource" jsonschema:"the single best high-trust resource to read or watch next on this topic"`
+	Sources       []Source       `json:"sources" jsonschema:"1-8 pages you read and based this lesson and its quiz on, most of them from the sources the app gave you; the learner sees them in the lesson's Sources tab. Title them so the learner knows what they'll find"`
 	Quiz          []QuizQuestion `json:"quiz" jsonschema:"3-5 questions that make the learner recall and apply the lesson (retrieval practice), not recognise wording"`
 }
 
@@ -33,6 +34,13 @@ type LessonSpec struct {
 func (s LessonSpec) markdown() string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "# %s\n\n%s\n\n%s\n\n", s.Title, strings.TrimSpace(s.Summary), strings.TrimSpace(s.Body))
+	if len(s.Sources) > 0 {
+		b.WriteString("## Sources\n\n")
+		for _, src := range s.Sources {
+			fmt.Fprintf(&b, "- [%s](%s)\n", src.Title, src.URL)
+		}
+		b.WriteString("\n")
+	}
 	fmt.Fprintf(&b, "## Read next\n\n[%s](%s)\n\n## Check yourself\n\n", s.PrimarySource.Title, s.PrimarySource.URL)
 	for i, q := range s.Quiz {
 		fmt.Fprintf(&b, "%d. %s\n", i+1, strings.TrimSpace(q.Question))
@@ -78,6 +86,7 @@ type LessonDetail struct {
 	Summary       string             `json:"summary"`
 	Body          string             `json:"body"`
 	PrimarySource Source             `json:"primarySource"`
+	Sources       []Source           `json:"sources"` // what the lesson is based on; empty for lessons from before they were kept
 	Quiz          []QuizPrompt       `json:"quiz"`
 	Results       map[int]QuizResult `json:"results"` // by question index
 }
@@ -126,7 +135,9 @@ func (w *Workspace) ValidateLesson(spec LessonSpec) error {
 		case strings.HasPrefix(h, "# "):
 			p.addf("body repeats the title (%q): start at the first section; the app shows the title and summary above the body", h)
 		case strings.EqualFold(strings.TrimSpace(strings.TrimLeft(h, "#")), "read next"):
-			p.addf("body has its own Read next: leave it out; the app shows primarySource under the lesson")
+			p.addf("body has its own Read next: leave it out; the app shows primarySource in the lesson's Sources tab")
+		case strings.EqualFold(strings.TrimSpace(strings.TrimLeft(h, "#")), "sources"):
+			p.addf("body has its own Sources: leave it out; the app shows sources in the lesson's Sources tab")
 		}
 	}
 	if !strings.Contains(spec.Body, "](http") {
@@ -138,6 +149,7 @@ func (w *Workspace) ValidateLesson(spec LessonSpec) error {
 	if spec.PrimarySource.check() != "" {
 		p.addf("primarySource needs a title and an http(s) url")
 	}
+	checkSources(spec.Sources, &p)
 	checkQuiz(spec.Quiz, &p)
 	return p.err("lesson")
 }
@@ -163,7 +175,13 @@ func (w *Workspace) SaveLesson(spec LessonSpec) (LessonInfo, error) {
 	if err := os.MkdirAll(w.private("lessons", info.ID), 0o755); err != nil {
 		return info, err
 	}
-	file := lessonFile{Summary: spec.Summary, Body: spec.Body, PrimarySource: spec.PrimarySource, Quiz: spec.Quiz}
+	file := lessonFile{
+		Summary:       spec.Summary,
+		Body:          spec.Body,
+		PrimarySource: spec.PrimarySource,
+		Sources:       spec.Sources,
+		Quiz:          spec.Quiz,
+	}
 	if err := writeYAML(w.private("lessons", info.ID, "lesson.yaml"), file); err != nil {
 		return info, err
 	}
@@ -215,7 +233,14 @@ func (w *Workspace) Lesson(id string) (LessonDetail, error) {
 	if err != nil {
 		return LessonDetail{}, err
 	}
-	d := LessonDetail{LessonStatus: LessonStatus{LessonInfo: info}, Summary: f.Summary, Body: f.Body, PrimarySource: f.PrimarySource, Results: map[int]QuizResult{}}
+	d := LessonDetail{
+		LessonStatus:  LessonStatus{LessonInfo: info},
+		Summary:       f.Summary,
+		Body:          f.Body,
+		PrimarySource: f.PrimarySource,
+		Sources:       append([]Source{}, f.Sources...), // [] in JSON, not null
+		Results:       map[int]QuizResult{},
+	}
 	results := w.history().quiz[id]
 	for i, q := range f.Quiz {
 		d.Quiz = append(d.Quiz, QuizPrompt{Question: q.Question, Options: q.Options})
@@ -308,6 +333,24 @@ func checkQuiz(quiz []QuizQuestion, p *problems) {
 	}
 }
 
+// checkSources checks the pages a lesson says it's based on.
+func checkSources(sources []Source, p *problems) {
+	if len(sources) == 0 || len(sources) > 8 {
+		p.addf("sources needs the 1-8 pages you based the lesson on")
+	}
+	seen := map[string]bool{}
+	for _, s := range sources {
+		if err := s.check(); err != "" {
+			p.addf("source %q: %s", s.Title, err)
+			continue
+		}
+		if seen[s.URL] {
+			p.addf("duplicate source url %q", s.URL)
+		}
+		seen[s.URL] = true
+	}
+}
+
 // headings lists the markdown headings in text, outside code blocks (where
 // a line starting with # is a comment, not a heading).
 func headings(md string) []string {
@@ -349,5 +392,6 @@ type lessonFile struct {
 	Summary       string         `yaml:"summary"`
 	Body          string         `yaml:"body"`
 	PrimarySource Source         `yaml:"primary_source"`
+	Sources       []Source       `yaml:"sources,omitempty"`
 	Quiz          []QuizQuestion `yaml:"quiz"`
 }

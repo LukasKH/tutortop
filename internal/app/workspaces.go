@@ -103,6 +103,7 @@ type WorkspaceSnapshot struct {
 	Title      string                   `json:"title"`
 	Icon       string                   `json:"icon"`
 	Mission    string                   `json:"mission"`
+	Resources  string                   `json:"resources"` // RESOURCES.md: the sources the plan and its lessons draw on
 	Curriculum *workspace.Curriculum    `json:"curriculum"`
 	Proposal   *workspace.Curriculum    `json:"proposal"`
 	Progress   workspace.Progress       `json:"progress"`
@@ -123,11 +124,12 @@ func (s *WorkspaceService) Workspace(id string) (WorkspaceSnapshot, error) {
 		return WorkspaceSnapshot{}, err
 	}
 	st := WorkspaceSnapshot{
-		ID:       w.ID,
-		Title:    w.Meta.Title,
-		Icon:     w.Meta.Icon,
-		Mission:  w.ReadDoc("MISSION.md"),
-		Progress: w.Progress(),
+		ID:        w.ID,
+		Title:     w.Meta.Title,
+		Icon:      w.Meta.Icon,
+		Mission:   w.ReadDoc("MISSION.md"),
+		Resources: w.ReadDoc("RESOURCES.md"),
+		Progress:  w.Progress(),
 	}
 	if st.Curriculum, err = w.Curriculum(); err != nil {
 		return st, err

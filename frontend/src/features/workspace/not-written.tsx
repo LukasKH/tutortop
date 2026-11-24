@@ -1,7 +1,10 @@
 import { useState } from "react";
-import { WorkspaceService, errorText, type Objective, type SandboxCheck } from "@/lib/api";
+import { ChatService, WorkspaceService, errorText, type Objective, type SandboxCheck } from "@/lib/api";
+import { workingLine } from "@/lib/chat";
+import { writerThread } from "@/lib/workspace";
 import type { Part } from "@/features/workspace/open-item";
 import { useLiveWorkspace } from "@/features/workspace/use-workspace";
+import { useWorking } from "@/features/workspace/use-working";
 import { Spinner } from "@/components/ui/spinner";
 import { ErrorText } from "@/components/error-text";
 import { Page, PageHeader, PageIntro, ReadingPage } from "@/components/page";
@@ -25,11 +28,13 @@ type Props = {
  * An objective's lesson or exercise that isn't written yet. The learner can
  * open any objective, so this has it written now, in the background: other
  * objectives can be written at the same time, and the tutor's chat stays
- * free. The page switches to the real thing when it arrives.
+ * free. The page switches to the real thing when it arrives. A writer that
+ * seems stuck can be stopped and started again.
  */
 export function NotWritten({ objective, part, moduleTitle, writing, check, failed, other }: Props) {
   const { id: wsId } = useLiveWorkspace();
   const [starting, setStarting] = useState(false);
+  const [stopping, setStopping] = useState(false);
   const [error, setError] = useState("");
   // A writer that finishes while this page is still open didn't write this part.
   const [wasWriting, setWasWriting] = useState(writing);
@@ -39,8 +44,21 @@ export function NotWritten({ objective, part, moduleTitle, writing, check, faile
     setUnfinished(!writing);
   }
 
+  const headline = status(part, check, !other);
   const name = objective.name || objective.title;
   const what = part === "lesson" ? "lesson" : "exercise";
+
+  async function stop() {
+    setError("");
+    setStopping(true);
+    try {
+      await ChatService.StopAgent(wsId, writerThread(objective.id));
+    } catch (e) {
+      setError(errorText(e));
+    } finally {
+      setStopping(false);
+    }
+  }
 
   async function write() {
     setError("");
@@ -69,11 +87,19 @@ export function NotWritten({ objective, part, moduleTitle, writing, check, faile
           {writing || starting ? (
             <>
               <p className="flex flex-wrap items-center gap-2">
-                <Spinner className="size-3.5" aria-hidden /> {status(part, check, !other)}
+                <Spinner className="size-3.5" aria-hidden /> {headline}
               </p>
+              {writing && <WriterWorking thread={writerThread(objective.id)} headline={headline} />}
               <p className="text-sm text-muted-foreground">
                 It opens here when it's ready. Writing runs in the background, so you can open something else meanwhile.
               </p>
+              {writing && (
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button variant="outline" onClick={stop} disabled={stopping}>
+                    {stopping ? "Stopping…" : "Stop"}
+                  </Button>
+                </div>
+              )}
             </>
           ) : (
             <>
@@ -88,6 +114,14 @@ export function NotWritten({ objective, part, moduleTitle, writing, check, faile
       </ReadingPage>
     </Page>
   );
+}
+
+/** What the writer is thinking or writing now, under the status (omitted when it repeats the headline). */
+function WriterWorking({ thread, headline }: { thread: string; headline: string }) {
+  const working = useWorking(thread);
+  const candidate = workingLine(working);
+  if (!candidate || candidate === headline) return null;
+  return <p className="truncate text-sm text-muted-foreground">{candidate}</p>;
 }
 
 /** What the writer is doing. It writes the lesson first, then the exercise. */
