@@ -33,7 +33,6 @@ type Props = {
  */
 export function NotWritten({ objective, part, moduleTitle, writing, check, failed, other }: Props) {
   const { id: wsId } = useLiveWorkspace();
-  const working = useWorking(writerThread(objective.id));
   const [starting, setStarting] = useState(false);
   const [stopping, setStopping] = useState(false);
   const [error, setError] = useState("");
@@ -46,9 +45,6 @@ export function NotWritten({ objective, part, moduleTitle, writing, check, faile
   }
 
   const headline = status(part, check, !other);
-  // What the writer is thinking or writing now, under the status (omitted when it repeats the headline).
-  const candidate = writing ? workingLine(working) : null;
-  const now = candidate && candidate !== headline ? candidate : null;
   const name = objective.name || objective.title;
   const what = part === "lesson" ? "lesson" : "exercise";
 
@@ -93,7 +89,7 @@ export function NotWritten({ objective, part, moduleTitle, writing, check, faile
               <p className="flex flex-wrap items-center gap-2">
                 <Spinner className="size-3.5" aria-hidden /> {headline}
               </p>
-              {now && <p className="truncate text-sm text-muted-foreground">{now}</p>}
+              {writing && <WriterWorking thread={writerThread(objective.id)} headline={headline} />}
               <p className="text-sm text-muted-foreground">
                 It opens here when it's ready. Writing runs in the background, so you can open something else meanwhile.
               </p>
@@ -118,6 +114,14 @@ export function NotWritten({ objective, part, moduleTitle, writing, check, faile
       </ReadingPage>
     </Page>
   );
+}
+
+/** What the writer is thinking or writing now, under the status (omitted when it repeats the headline). */
+function WriterWorking({ thread, headline }: { thread: string; headline: string }) {
+  const working = useWorking(thread);
+  const candidate = workingLine(working);
+  if (!candidate || candidate === headline) return null;
+  return <p className="truncate text-sm text-muted-foreground">{candidate}</p>;
 }
 
 /** What the writer is doing. It writes the lesson first, then the exercise. */

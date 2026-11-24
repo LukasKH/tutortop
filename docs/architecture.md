@@ -131,6 +131,7 @@ A feature's state and its backend calls live in hooks next to its components. Th
 | `use-workspace.ts` | the snapshot (`WorkspaceService.Workspace`), busy threads, writers' checks and failures, a chat's toolchain check, open questions, the last error | refetched on `workspace:changed`, `task:published` and `lesson:published`; `thread:busy`, `check:status`, writers' failures from `chat:message` and `questions:asked` update it directly |
 | `use-open-item.ts` | the open item, the centre's view (item, plan or proposal), the chat thread that goes with them, new work to point out | the learner, remembered per workspace; `task:published`, `lesson:published` and `curriculum:proposed` |
 | `use-chat-threads.ts` | conversations by thread, and which are unread | `ChatService.Chat` for the shown thread; chats' messages from `chat:message` |
+| `use-working.ts` | live reasoning and long tool calls being written, by thread | `thread:working`, cleared on `thread:busy`; kept in a store (`WorkingContext`) so leaf components subscribe without re-rendering containers |
 | `use-chat-panel.ts`, `chat/use-composer.ts` | the chat panel's width and whether it's folded; the message draft | the learner |
 
 #### How data flows
@@ -143,7 +144,7 @@ All files are in `features/workspace/` unless named otherwise.
 4. **Selectors.** Pure functions turn that state, and what the learner has open (`use-open-item.ts: useOpenItem`), into what each part shows: `isBusy`, `tutorBusy` and `writingObjectives` in `workspace-state.ts`; `describeItem` in `open-item.ts`; `placeQuestions` and `centerOf` in `use-open-item.ts`.
 5. **Components.** `workspace-view.tsx: WorkspaceView` calls them and hands their results to `Sidebar`, `CenterPane` and `ChatPanel` (or `ChatRail` when folded). They render them and call the services or the hooks' calls.
 
-Chat transcripts are kept apart from this: `use-chat-threads.ts: useChatThreads` loads `ChatService.Chat` for the shown thread and adds each `chat:message` to it. It drops writers' messages, and `useWorkspace` keeps only writers' failures, so each message goes to one of the two. It also keeps each thread's latest `thread:working`, writers' included, which `Thinking` (chats and the setup page's work log) and a not-written page show in place of a bare "Thinking…".
+Chat transcripts are kept apart from this: `use-chat-threads.ts: useChatThreads` loads `ChatService.Chat` for the shown thread and adds each `chat:message` to it. It drops writers' messages, and `useWorkspace` keeps only writers' failures, so each message goes to one of the two. Live `thread:working` updates (writers' included) live in `use-working.ts: useWorkingStore`, shared via `WorkingContext`, and leaf components (`Thinking` in chats and the setup work log, and `NotWritten`'s working line) subscribe to just their own thread with `useWorking`.
 
 The open item is an `OpenItem`: a task, a lesson, or an objective's lesson or exercise that isn't written yet (`open-item.ts`). `centerOf` decides what the centre shows and returns a `Center` that carries everything that page shows from the snapshot. `CenterPane` renders it, taking only busy threads, checks and the calls from `useWorkspace`. `placeQuestions` decides where the tutor's questions show: the centre, the chat of the thread that asked, and the count on "Your plan". Thread names (`plan`, a task id, `lesson-<id>`, `write-<objective>`) are the backend's and live in `lib/workspace.ts`. Only the hooks and the chat pass them around.
 
@@ -174,7 +175,7 @@ The open item is an `OpenItem`: a task, a lesson, or an objective's lesson or ex
 1. Listen with `useEvent(AppEvents.<Name>, ...)` in the hook that owns the state it changes, and ignore other workspaces' events (`workspace !== id`).
 2. If it only means the snapshot changed: `use-workspace.ts: useWorkspace` calls `refresh` on it, as for `workspace:changed`. Done.
 3. Otherwise, in `workspace-state.ts`: add a field to `LiveWorkspace` and `initialWorkspace`, an `Action`, and its case in `reduceWorkspace`. Dispatch the action from `useWorkspace`.
-4. If the snapshot also carries that state: have Go number the event from `Agents.seq` under `Agents.mu` (`internal/agent/threads/agents.go`), as `Show` does; keep each key's number in the state (like `busySeq`); merge the snapshot's value with `newer`, as the `snapshot` case does for `busy`, so an older snapshot doesn't undo it.
+4. If the snapshot also carries that state: have Go number the event from `Agents.seq` under `Agents.mu` (`internal/agent/threads/agents.go`), as `StartCheck` does; keep each key's number in the state (like `busySeq`); merge the snapshot's value with `newer`, as the `snapshot` case does for `busy`, so an older snapshot doesn't undo it.
 5. If components need it worked out (like busy), add a selector next to `isBusy` and return it from `useWorkspace`.
 6. `workspace-state.test.ts`: test the new case, and with step 4 an event arriving before an older snapshot.
 
@@ -207,7 +208,7 @@ Writers have no chat window. They write an objective's lesson and exercise in th
 | `Send(w, thread, Message)` | the services | posts a message in the thread's chat, then queues it |
 | `State(ws)` | `WorkspaceService.Workspace` | which threads are busy, the writers' checks, and the `seq` they were read at |
 | `EndWorkspace(ws)` | `WorkspaceService.DeleteWorkspace` | ends a deleted workspace's agents and drops their MCP servers |
-| `Show(ws, check)` | the MCP tools, as `mcp.Checks` | sends `check:status`, and keeps a writer's check while the writer lives |
+| `StartCheck(ws, check)` | the MCP tools, as `mcp.Checks` | sends `check:status`, pauses a writer's watchdog, and keeps its check while it lives |
 | `queue(w, thread, msg)` | `threads.Writers` | queues a message for the thread's agent, starting the agent if it has none |
 | `stop(ws, thread)`, `endAll()` | `threads.ChatService` | interrupts the thread's current turn; ends every agent as the app quits |
 

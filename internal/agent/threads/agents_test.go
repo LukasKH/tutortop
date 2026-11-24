@@ -69,7 +69,7 @@ func TestWriterEndsAfterItsTurn(t *testing.T) {
 		t.Fatalf("writer resumed %q", turn.s.opts.ResumeID)
 	}
 	queue(t, ag, w, writer, "write again")
-	ag.Start(w.ID, events.SandboxCheck{Kind: events.CheckTask, Thread: writer.String(), Title: "Wrap errors"})
+	ag.StartCheck(w.ID, events.SandboxCheck{Kind: events.CheckTask, Thread: writer.String(), Title: "Wrap errors"})
 	if busy, checks, _ := ag.State(w.ID); !busy[writer.String()] || !checks["go.errors"].Running {
 		t.Fatalf("busy %v, checks %v", busy, checks)
 	}
@@ -107,13 +107,16 @@ func TestStuckWriterIsEnded(t *testing.T) {
 	if b, _, _ := ag.State(w.ID); !b[writer.String()] {
 		t.Fatal("ended while receiving events")
 	}
-	finish := ag.Start(w.ID, events.SandboxCheck{Kind: events.CheckTask, Thread: writer.String(), Title: "Wrap errors"})
+	first := ag.StartCheck(w.ID, events.SandboxCheck{Kind: events.CheckTask, Thread: writer.String(), Title: "Wrap errors"})
+	second := ag.StartCheck(w.ID, events.SandboxCheck{Kind: events.CheckTask, Thread: writer.String(), Title: "Wrap errors"})
+	time.Sleep(2 * ag.writerIdle)
+	first.Fail()
+	// A second overlapping check keeps the watchdog paused until it finishes too.
 	time.Sleep(2 * ag.writerIdle)
 	if b, _, _ := ag.State(w.ID); !b[writer.String()] {
 		t.Fatal("ended during a sandbox check")
 	}
-	var passed bool
-	finish(passed)
+	second.Fail()
 	eventually(t, "stuck writer ended", func() bool {
 		b, _, _ := ag.State(w.ID)
 		return !b[writer.String()] && stuck.s.closed.Load() && busy.last(writer.String()) == "idle"
@@ -196,17 +199,29 @@ func TestWriterWatchdogAndChecksRaceSafely(t *testing.T) {
 
 	// Stopping writer 1 while its check is running and retrying starts writer 2;
 	// writer 1's late finish call must not touch writer 2.
-	finishOld := ag.Start(w.ID, events.SandboxCheck{Kind: events.CheckTask, Thread: writer.String(), Title: "Old check"})
+	finishOld := ag.StartCheck(w.ID, events.SandboxCheck{Kind: events.CheckTask, Thread: writer.String(), Title: "Old check"})
 	ag.stop(w.ID, writer.String())
 	queue(t, ag, w, writer, "write again")
 	second := fake.next(t)
-	var passed bool
-	finishOld(passed)
+	finishOld.Fail()
 	if _, checks, _ := ag.State(w.ID); len(checks) != 0 {
 		t.Fatalf("stale writer check leaked onto retried writer: %+v", checks)
 	}
 	second.end(nil)
 	eventually(t, "retry done", func() bool { b, _, _ := ag.State(w.ID); return !b[writer.String()] })
+
+	// A chat's toolchain check finishing after its agent ended still emits
+	// Running: false so the UI never stays stuck on a running check.
+	busy := recordBusy(t)
+	queue(t, ag, w, workspace.PlanThread, "setup rust")
+	planTurn := fake.next(t)
+	finishToolchain := ag.StartCheck(w.ID, events.SandboxCheck{Kind: events.CheckToolchain, Thread: workspace.PlanThread.String(), Title: "Rust"})
+	ag.EndWorkspace(w.ID)
+	planTurn.end(nil)
+	finishToolchain.Fail()
+	if c, ok := busy.check(workspace.PlanThread.String()); !ok || c.Running {
+		t.Fatalf("toolchain check after agent end = (%+v, %v), want Running: false", c, ok)
+	}
 }
 
 // A writer's first message hands it its objective's sources: the module's
@@ -479,17 +494,24 @@ func failures(w *workspace.Workspace, thread string) (n int) {
 	return n
 }
 
-// busyEvents records the thread:busy and thread:working events sent during a test.
+// busyEvents records the thread:busy, thread:working and check:status events
+// sent during a test.
 type busyEvents struct {
 	mu      sync.Mutex
-	latest  map[string]bool           // by thread
-	current map[string]events.Working // by thread
+	latest  map[string]bool                // by thread
+	current map[string]events.Working      // by thread
+	checks  map[string]events.SandboxCheck // by thread
 }
 
-// recordBusy records the thread:busy and thread:working events until the test ends.
+// recordBusy records the thread:busy, thread:working and check:status events
+// until the test ends.
 func recordBusy(t *testing.T) *busyEvents {
 	t.Helper()
-	b := &busyEvents{latest: map[string]bool{}, current: map[string]events.Working{}}
+	b := &busyEvents{
+		latest:  map[string]bool{},
+		current: map[string]events.Working{},
+		checks:  map[string]events.SandboxCheck{},
+	}
 	events.SetEmitter(func(_ string, data any) {
 		switch e := data.(type) {
 		case events.Busy:
@@ -500,10 +522,22 @@ func recordBusy(t *testing.T) *busyEvents {
 			b.mu.Lock()
 			b.current[e.Thread] = e
 			b.mu.Unlock()
+		case events.Check:
+			b.mu.Lock()
+			b.checks[e.Check.Thread] = e.Check
+			b.mu.Unlock()
 		}
 	})
 	t.Cleanup(func() { events.SetEmitter(nil) })
 	return b
+}
+
+// check is the last check:status sent for a thread.
+func (b *busyEvents) check(thread string) (events.SandboxCheck, bool) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	c, ok := b.checks[thread]
+	return c, ok
 }
 
 // working is the last thread:working state sent for a thread.

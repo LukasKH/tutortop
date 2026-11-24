@@ -86,14 +86,19 @@ export function reduceWorkspace(s: LiveWorkspace, a: Action): LiveWorkspace {
         next.checkSeq = { ...s.checkSeq, [writing]: a.seq };
         if (a.busy) next.writeFailed = { ...s.writeFailed, [writing]: undefined };
       }
-      // A finished check is only news while the chat that ran it is still at work.
+      // A toolchain check is only news while the chat that ran it is still at work.
       const check = s.toolchainCheck;
-      if (!a.busy && check?.thread === a.thread && !check.running) next.toolchainCheck = null;
+      if (!a.busy && check?.thread === a.thread) next.toolchainCheck = null;
       return next;
     }
 
     case "check": {
-      if (a.check.kind === CheckKind.CheckToolchain) return { ...s, toolchainCheck: a.check };
+      if (a.check.kind === CheckKind.CheckToolchain) {
+        if (!a.check.running && !s.busy[a.check.thread]) {
+          return s.toolchainCheck?.thread === a.check.thread ? { ...s, toolchainCheck: null } : s;
+        }
+        return { ...s, toolchainCheck: a.check };
+      }
       // A task is checked by its objective's writer, and shows on the objective.
       const objective = objectiveOfWriter(a.check.thread);
       if (!objective) return s;

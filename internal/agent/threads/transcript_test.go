@@ -30,6 +30,14 @@ func TestTranscriptShowsWorkingLive(t *testing.T) {
 		{Kind: agent.EventPreparing, Tool: agent.Tool{ID: "t1", Kind: agent.ToolOther, MCPServer: mcp.Name, MCPTool: "get_state"}},
 		{Kind: agent.EventPreparing, Tool: curriculum},
 		{Kind: agent.EventTool, Tool: running},
+	} {
+		tr.handle(ev)
+	}
+	// While a hidden MCP tool runs (e.g. checking links), its preparing label stays visible.
+	if got := shown(); len(got) == 0 || got[len(got)-1].Preparing != "Drafting your plan" {
+		t.Fatalf("working cleared while hidden tool still running: %+v", got)
+	}
+	for _, ev := range []agent.Event{
 		{Kind: agent.EventTool, Tool: agent.Tool{ID: "t2", Status: agent.ToolDone}},
 		{Kind: agent.EventThinking, Text: "Done"},
 		{Kind: agent.EventText, Text: "Here "},

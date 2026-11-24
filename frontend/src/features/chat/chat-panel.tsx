@@ -6,7 +6,6 @@ import { AgentIcon } from "@/components/agent-icon";
 import type { OpenItem } from "@/features/workspace/open-item";
 import type { NewItem } from "@/features/workspace/use-open-item";
 import { useLiveWorkspace } from "@/features/workspace/use-workspace";
-import { useWorking } from "@/features/workspace/use-working";
 import type { Composer } from "@/features/chat/use-composer";
 import { Thinking } from "@/features/chat/thinking";
 import { Markdown } from "@/components/markdown";
@@ -44,7 +43,6 @@ type Props = {
 
 export function ChatPanel({ composer: { draft, setDraft, inputRef }, ...p }: Props) {
   const tutor = useTutor();
-  const working = useWorking(p.thread);
   const listRef = useRef<HTMLDivElement>(null);
   const stickToBottom = useRef(true);
 
@@ -95,7 +93,7 @@ export function ChatPanel({ composer: { draft, setDraft, inputRef }, ...p }: Pro
             <Message key={item.id} item={item} />
           ))}
           {p.questions}
-          <Thinking items={p.items} busy={p.busy} working={working} />
+          <Thinking thread={p.thread} items={p.items} busy={p.busy} />
         </div>
         {p.hint && <HintPill level={p.hint.level} busy={p.busy} onHint={p.hint.onHint} />}
       </div>

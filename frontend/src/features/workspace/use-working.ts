@@ -1,9 +1,11 @@
-import { createContext, use, useEffect, useState, useSyncExternalStore } from "react";
+import { createContext, use, useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import { AppEvents, useEvent, type Working } from "@/lib/api";
 
 type Listener = () => void;
 
-class WorkingStore {
+const noopUnsubscribe = () => {};
+
+export class WorkingStore {
   private byThread = new Map<string, Working | undefined>();
   private listeners = new Map<string, Set<Listener>>();
 
@@ -65,8 +67,7 @@ export function useWorkingStore(id: string): WorkingStore {
 /** What one thread's agent is working on right now, if anything. */
 export function useWorking(thread: string): Working | undefined {
   const store = use(WorkingContext);
-  return useSyncExternalStore(
-    (cb) => (store ? store.subscribe(thread, cb) : () => {}),
-    () => store?.get(thread),
-  );
+  const subscribe = useCallback((cb: Listener) => (store ? store.subscribe(thread, cb) : noopUnsubscribe), [store, thread]);
+  const getSnapshot = useCallback(() => store?.get(thread), [store, thread]);
+  return useSyncExternalStore(subscribe, getSnapshot);
 }

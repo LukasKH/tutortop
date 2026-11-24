@@ -2,7 +2,6 @@ import { useState } from "react";
 import { ChatRole, ChatService, type Questions } from "@/lib/api";
 import { PLAN_THREAD } from "@/lib/workspace";
 import { useLiveWorkspace } from "@/features/workspace/use-workspace";
-import { useWorking } from "@/features/workspace/use-working";
 import { QuestionsForm } from "@/features/workspace/questions";
 import { AutoTextarea } from "@/components/auto-textarea";
 import { ErrorText } from "@/components/error-text";
@@ -23,7 +22,6 @@ type Props = {
  */
 export function Setup({ questions }: Props) {
   const { id, live, threads } = useLiveWorkspace();
-  const working = useWorking(PLAN_THREAD);
   const items = threads[PLAN_THREAD] ?? [];
   const busy = live.isBusy(PLAN_THREAD);
   // Only what happened since the learner last wrote is shown.
@@ -56,9 +54,9 @@ export function Setup({ questions }: Props) {
         <>
           {(busy || recent.length > 0) && (
             <WorkLog
+              thread={PLAN_THREAD}
               items={recent}
               busy={busy}
-              working={working}
               check={live.toolchainCheck}
               onStop={() => ChatService.StopAgent(id, PLAN_THREAD).catch(live.fail)}
             />

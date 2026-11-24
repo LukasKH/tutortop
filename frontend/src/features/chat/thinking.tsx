@@ -1,13 +1,15 @@
 import { ChevronDownIcon } from "lucide-react";
-import type { ChatItem, Working } from "@/lib/api";
+import type { ChatItem } from "@/lib/api";
 import { showThinking, workingLine } from "@/lib/chat";
+import { useWorking } from "@/features/workspace/use-working";
+import { Markdown } from "@/components/markdown";
 import { Spinner } from "@/components/ui/spinner";
 
 type Props = {
+  /** Thread whose live working state to subscribe to (useWorkingStore). */
+  thread: string;
   items: ChatItem[];
   busy: boolean;
-  /** What the tutor is working on between messages, if its agent says (useChatThreads). */
-  working?: Working;
 };
 
 /**
@@ -16,7 +18,8 @@ type Props = {
  * its reasoning, which unfolds in full. "Thinking…" when its agent says
  * neither.
  */
-export function Thinking({ items, busy, working }: Props) {
+export function Thinking({ thread, items, busy }: Props) {
+  const working = useWorking(thread);
   if (!showThinking(items, busy, working)) return null;
   const label = workingLine(working) ?? "Thinking…";
   const line = (
@@ -38,7 +41,10 @@ export function Thinking({ items, busy, working }: Props) {
         {line}
         <ChevronDownIcon size={12} className="flex-none -rotate-90 transition-transform group-open:rotate-0" aria-hidden />
       </summary>
-      <p className="mt-2 border-l-2 border-input pl-3 text-xs wrap-anywhere whitespace-pre-wrap">{working.thinking}</p>
+      <Markdown
+        text={working.thinking}
+        className="prose mt-2 border-l-2 border-input pl-3 text-xs text-muted-foreground [&_:is(h1,h2,h3)]:mt-2 [&_:is(h1,h2,h3)]:font-sans [&_:is(h1,h2,h3)]:text-xs [&_:is(h1,h2,h3)]:leading-normal [&_:is(h1,h2,h3)]:font-semibold [&_strong]:text-soft-foreground [&>*+*]:mt-1.5"
+      />
     </details>
   );
 }

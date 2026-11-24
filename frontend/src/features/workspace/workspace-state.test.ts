@@ -57,12 +57,13 @@ describe("writers", () => {
 
 describe("a chat's toolchain check", () => {
   const toolchain = (thread: string, running: boolean): SandboxCheck => ({ kind: CheckKind.CheckToolchain, thread, title: "Rust", running, passed: !running });
-  const checked = (c: SandboxCheck): Action => ({ type: "check", check: c, seq: 1 });
-  const idle = (thread: string): Action => ({ type: "busy", thread, busy: false, seq: 2 });
+  const busy = (thread: string, value: boolean): Action => ({ type: "busy", thread, busy: value, seq: value ? 1 : 3 });
+  const checked = (c: SandboxCheck): Action => ({ type: "check", check: c, seq: 2 });
 
-  test("a finished check clears once the thread that ran it stops; a running one, or another thread stopping, leaves it", () => {
-    expect(run(checked(toolchain("plan", false)), idle("plan")).toolchainCheck).toBeNull();
-    expect(run(checked(toolchain("plan", true)), idle("plan")).toolchainCheck?.running).toBe(true);
-    expect(run(checked(toolchain("lesson-l1", false)), idle("plan")).toolchainCheck?.thread).toBe("lesson-l1");
+  test("a check clears once the thread that ran it stops, even if still running; another thread stopping leaves it", () => {
+    expect(run(busy("plan", true), checked(toolchain("plan", false)), busy("plan", false)).toolchainCheck).toBeNull();
+    expect(run(busy("plan", true), checked(toolchain("plan", true)), busy("plan", false)).toolchainCheck).toBeNull();
+    expect(run(busy("lesson-l1", true), checked(toolchain("lesson-l1", false)), busy("plan", false)).toolchainCheck?.thread).toBe("lesson-l1");
+    expect(run(busy("plan", true), checked(toolchain("plan", true)), busy("plan", false), checked(toolchain("plan", false))).toolchainCheck).toBeNull();
   });
 });

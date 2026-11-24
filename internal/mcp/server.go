@@ -24,11 +24,20 @@ import (
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// Checks shows the learner how a sandbox check is going. Start reports the
-// check as running and returns a function that reports it finished.
+// Checks shows the learner how a sandbox check is going. StartCheck reports
+// the check as running and returns a Check that reports it finished.
 type Checks interface {
-	Start(wsID string, c events.SandboxCheck) (finish func(passed bool))
+	StartCheck(wsID string, c events.SandboxCheck) Check
 }
+
+// Check finishes a running sandbox check.
+type Check func(passed bool)
+
+// Pass reports that the check passed.
+func (finish Check) Pass() { finish(true) }
+
+// Fail reports that the check failed.
+func (finish Check) Fail() { finish(false) }
 
 // Name is the name agents know Tutortop's MCP server by.
 const Name = "tutortop"

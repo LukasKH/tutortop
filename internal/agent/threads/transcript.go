@@ -76,16 +76,12 @@ func (t *transcript) handle(ev agent.Event) {
 		events.Emit(events.ChatMessage, events.Chat{Workspace: w.ID, Item: *t.current})
 	case agent.EventTool:
 		t.endText()
-		t.showWorking("", "")
 		tool := ev.Tool
 		// A call's first event decides whether it shows; later ones only
 		// update its status. A call that arrives already failed was never
 		// shown, so there's nothing for the UI to drop.
 		item, seen := t.tools[tool.ID]
-		if !seen {
-			if tool.Status == agent.ToolFailed {
-				return
-			}
+		if !seen && tool.Status != agent.ToolFailed {
 			if label, show := toolLabel(tool); show {
 				item = &workspace.ChatItem{ID: uuid.New().String(), Thread: t.thread, Role: workspace.RoleTool, At: time.Now(), Text: label}
 			}
@@ -93,6 +89,12 @@ func (t *transcript) handle(ev agent.Event) {
 		}
 		if tool.Status != agent.ToolRunning {
 			delete(t.tools, tool.ID)
+		}
+		// Keep preparing/thinking visible while a hidden call (such as
+		// propose_curriculum link checking) runs; clear once a visible call
+		// takes over or any call completes.
+		if item != nil || tool.Status != agent.ToolRunning {
+			t.showWorking("", "")
 		}
 		if item == nil {
 			return

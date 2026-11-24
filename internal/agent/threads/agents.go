@@ -90,17 +90,17 @@ func (ag *Agents) Send(w *workspace.Workspace, t workspace.Thread, m Message) {
 }
 
 // The UI learns which threads are busy, and how writers' sandbox checks go,
-// from both snapshots (State) and events (setPending, Start). All three
+// from both snapshots (State) and events (setPending, StartCheck). All three
 // take the next number from ag.seq under ag.mu, so the numbers order them
 // exactly as they happened: the frontend keeps whichever is newer, and a
 // snapshot read before an event doesn't undo it.
 
-// Start tells the UI a sandbox check has started (mcp.Checks) and returns a
-// function that reports it finished. A writer's check is kept on its
+// StartCheck tells the UI a sandbox check has started (mcp.Checks) and
+// returns a Check that reports it finished. A writer's check is kept on its
 // threadAgent so the objective's page shows it even after the learner looks
 // away, and goes when the writer does; a finish call from an ended writer is
 // ignored so it can't overwrite a retry's check or watchdog.
-func (ag *Agents) Start(wsID string, c events.SandboxCheck) func(passed bool) {
+func (ag *Agents) StartCheck(wsID string, c events.SandboxCheck) mcp.Check {
 	key := threadKey{wsID, c.Thread}
 	c.Running = true
 	ag.mu.Lock()
@@ -110,7 +110,7 @@ func (ag *Agents) Start(wsID string, c events.SandboxCheck) func(passed bool) {
 		return func(bool) {} // writer already ended
 	}
 	if owner != nil {
-		owner.watch.pause()
+		owner.pauseWatch()
 		if c.Kind == events.CheckTask {
 			owner.check = &c
 		}
@@ -119,23 +119,26 @@ func (ag *Agents) Start(wsID string, c events.SandboxCheck) func(passed bool) {
 	events.Emit(events.CheckStatus, events.Check{Workspace: wsID, Check: c, Seq: ag.seq})
 	ag.mu.Unlock()
 
+	var once sync.Once
 	return func(passed bool) {
-		done := c
-		done.Running, done.Passed = false, passed
-		ag.mu.Lock()
-		defer ag.mu.Unlock()
-		ta := ag.agents[key]
-		if owner != nil && ta != owner {
-			return // writer ended or was retried: don't touch the new one
-		}
-		if ta != nil {
-			ta.watch.resume()
-			if done.Kind == events.CheckTask {
-				ta.check = &done
+		once.Do(func() {
+			done := c
+			done.Running, done.Passed = false, passed
+			ag.mu.Lock()
+			defer ag.mu.Unlock()
+			ta := ag.agents[key]
+			if done.Kind == events.CheckTask && ta != owner {
+				return // writer ended or was retried: don't touch the new one
 			}
-		}
-		ag.seq++
-		events.Emit(events.CheckStatus, events.Check{Workspace: wsID, Check: done, Seq: ag.seq})
+			if owner != nil && ta == owner {
+				ta.resumeWatch()
+				if done.Kind == events.CheckTask {
+					ta.check = &done
+				}
+			}
+			ag.seq++
+			events.Emit(events.CheckStatus, events.Check{Workspace: wsID, Check: done, Seq: ag.seq})
+		})
 	}
 }
 
@@ -247,7 +250,10 @@ func (ag *Agents) start(w *workspace.Workspace, t workspace.Thread, cfg agentCon
 		ready:  make(chan struct{}),
 	}
 	if t.Kind == workspace.WriterKind {
-		ta.watch = newWatchdog(ag.writerIdle, func() { ag.stalled(w, ta) })
+		ta.started = time.Now()
+		ta.idle = ag.writerIdle
+		ta.watchCh = make(chan struct{}, 1)
+		go ag.watchWriter(ctx, w, ta)
 	}
 	ag.agents[ta.key] = ta
 	go ag.loop(ctx, w, ta)
@@ -272,7 +278,7 @@ func (ag *Agents) loop(ctx context.Context, w *workspace.Workspace, ta *threadAg
 		ag.mu.Unlock()
 	}()
 	cli, err := ag.open(ctx, w, ta, func(ev agent.Event) {
-		ta.watch.alive()
+		ta.alive()
 		ta.tr.handle(ev)
 	})
 	if err == nil {
@@ -386,17 +392,49 @@ func (ag *Agents) setPending(ta *threadAgent, n int) {
 	}
 }
 
+// watchWriter ends a writer that shows no sign of life for ta.idle: no event
+// from its CLI and no running sandbox check.
+func (ag *Agents) watchWriter(ctx context.Context, w *workspace.Workspace, ta *threadAgent) {
+	t := time.NewTimer(ta.idle)
+	defer t.Stop()
+	rearm := func() {
+		if ta.checks.Load() > 0 {
+			t.Stop()
+			return
+		}
+		t.Reset(max(0, ta.idle-ta.idleTime()))
+	}
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ta.watchCh:
+			rearm()
+		case <-t.C:
+			if ag.stalled(w, ta) {
+				return
+			}
+			rearm()
+		}
+	}
+}
+
 // stalled ends a writer its watchdog found stuck, and says why in its
 // thread, which the objective's page shows. Posting before end() under ag.mu
 // orders the notice ahead of busy:false so a quick retry clears it cleanly.
-func (ag *Agents) stalled(w *workspace.Workspace, ta *threadAgent) {
+// It reports whether the writer is done (ended now or already gone).
+func (ag *Agents) stalled(w *workspace.Workspace, ta *threadAgent) bool {
 	ag.mu.Lock()
 	defer ag.mu.Unlock()
-	if ag.agents[ta.key] != ta || !ta.watch.expired() {
-		return
+	if ag.agents[ta.key] != ta {
+		return true
+	}
+	if ta.checks.Load() > 0 || ta.idleTime() < ta.idle {
+		return false // raced with alive() or a sandbox check
 	}
 	postFailure(w, ta.key.name, "The writer stopped making progress, so it was stopped.")
 	ag.end(ta)
+	return true
 }
 
 // end removes a thread's agent, closes its CLI and shows its thread idle,
@@ -423,7 +461,13 @@ type threadAgent struct {
 
 	ready chan struct{} // closed once the CLI has opened, or failed to
 	cli   agent.Session // set before ready is closed; nil if it didn't open
-	watch *watchdog     // a writer's; nil for a chat's agent, which the learner watches and can stop
+
+	// Writer watchdog state (watchCh is nil for chat agents, which the learner watches and can stop).
+	watchCh   chan struct{} // buffered(1): wakes watchWriter on activity or check changes
+	started   time.Time     // monotonic origin for lastAlive
+	idle      time.Duration // copied from Agents.writerIdle when the writer starts
+	lastAlive atomic.Int64  // time since started of the last sign of life
+	checks    atomic.Int32  // running sandbox checks pausing the watchdog
 
 	// Guarded by Agents.mu.
 	pending int                  // messages queued or being answered; the thread is busy while it's above 0
@@ -443,7 +487,6 @@ func (ta *threadAgent) opened() bool {
 // close closes the CLI and its transcript, if it's open or opening.
 func (ta *threadAgent) close() {
 	ta.once.Do(func() {
-		ta.watch.stop()
 		ta.cancel()
 		ta.tr.close()
 		if ta.opened() {
@@ -452,89 +495,43 @@ func (ta *threadAgent) close() {
 	})
 }
 
-// watchdog ends a writer that shows no sign of life for a while: no event
-// from its CLI and no sandbox check. A running check pauses it. Its methods do
-// nothing on a nil watchdog, so a chat's agent needs none.
-type watchdog struct {
-	after time.Duration
-
-	mu       sync.Mutex
-	timer    *time.Timer
-	deadline time.Time
-	paused   bool // a sandbox check is running
-	stopped  bool
-}
-
-// newWatchdog calls stalled once after passes without a sign of life.
-func newWatchdog(after time.Duration, stalled func()) *watchdog {
-	return &watchdog{
-		after:    after,
-		deadline: time.Now().Add(after),
-		timer:    time.AfterFunc(after, stalled),
-	}
-}
-
-// alive starts the wait over, unless a check is running.
-func (d *watchdog) alive() {
-	if d == nil {
+// alive records a sign of life from a writer's CLI.
+func (ta *threadAgent) alive() {
+	if ta.watchCh == nil {
 		return
 	}
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	if !d.paused && !d.stopped {
-		d.deadline = time.Now().Add(d.after)
-		d.timer.Reset(d.after)
-	}
+	ta.lastAlive.Store(int64(time.Since(ta.started)))
+	ta.pingWatch()
 }
 
-// pause pauses the wait while a sandbox check runs.
-func (d *watchdog) pause() {
-	if d == nil {
+// pauseWatch pauses a writer's watchdog while a sandbox check runs.
+func (ta *threadAgent) pauseWatch() {
+	if ta.watchCh == nil {
 		return
 	}
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	d.paused = true
-	if !d.stopped {
-		d.timer.Stop()
-	}
+	ta.checks.Add(1)
+	ta.pingWatch()
 }
 
-// resume starts the wait over once a sandbox check is done.
-func (d *watchdog) resume() {
-	if d == nil {
+// resumeWatch resumes a writer's watchdog once a sandbox check finishes.
+func (ta *threadAgent) resumeWatch() {
+	if ta.watchCh == nil {
 		return
 	}
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	d.paused = false
-	if !d.stopped {
-		d.deadline = time.Now().Add(d.after)
-		d.timer.Reset(d.after)
+	ta.lastAlive.Store(int64(time.Since(ta.started)))
+	ta.checks.Add(-1)
+	ta.pingWatch()
+}
+
+func (ta *threadAgent) pingWatch() {
+	select {
+	case ta.watchCh <- struct{}{}:
+	default:
 	}
 }
 
-// expired reports whether the watchdog is still active and past its deadline.
-// Rechecking this under ag.mu prevents a timer callback that raced with alive
-// or checking(true) from ending an active writer.
-func (d *watchdog) expired() bool {
-	if d == nil {
-		return false
-	}
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	return !d.stopped && !d.paused && !time.Now().Before(d.deadline)
-}
-
-// stop stops the watchdog for good, as its writer ends.
-func (d *watchdog) stop() {
-	if d == nil {
-		return
-	}
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	d.stopped = true
-	d.timer.Stop()
+func (ta *threadAgent) idleTime() time.Duration {
+	return time.Since(ta.started) - time.Duration(ta.lastAlive.Load())
 }
 
 // threadKey names one thread of one workspace by the thread's name.

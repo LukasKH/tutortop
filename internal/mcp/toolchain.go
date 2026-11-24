@@ -48,7 +48,7 @@ func (t *threadTools) setToolchain(ctx context.Context, req *mcpsdk.CallToolRequ
 		return nil, nil, fmt.Errorf("%s is built in; use it directly", tc.Language)
 	}
 	defer keepAlive(ctx, req, "setting up "+tc.Name+" sandbox")()
-	finish := t.checks.Start(t.w.ID, events.SandboxCheck{Kind: events.CheckToolchain, Thread: t.thread.String(), Title: tc.Name})
+	finish := t.checks.StartCheck(t.w.ID, events.SandboxCheck{Kind: events.CheckToolchain, Thread: t.thread.String(), Title: tc.Name})
 	report, err := t.checkToolchain(ctx, tc, in.Example)
 	var lspErr error
 	if err == nil && report == "" && len(tc.LanguageServer) > 0 {

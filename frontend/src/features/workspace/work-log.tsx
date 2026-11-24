@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { plural } from "@/lib/format";
-import { ChatRole, ChatStatus, type ChatItem, type SandboxCheck, type Working } from "@/lib/api";
+import { ChatRole, ChatStatus, type ChatItem, type SandboxCheck } from "@/lib/api";
 import { ChevronDownIcon } from "lucide-react";
 import { Thinking } from "@/features/chat/thinking";
 import { Spinner } from "@/components/ui/spinner";
@@ -9,11 +9,10 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 type Props = {
+  thread: string;
   /** One stretch of the planning conversation: what the tutor did since the learner last wrote. */
   items: ChatItem[];
   busy: boolean;
-  /** What the tutor is working on between messages: its reasoning, or a long tool call it's writing. */
-  working?: Working;
   /** The tutor's sandbox check of a language it sets up. */
   check?: SandboxCheck | null;
   onStop?: () => void;
@@ -24,7 +23,7 @@ type Props = {
  * line, its messages, its tool calls folded into one summary line per run
  * (expand it to see each call), and what it's thinking or writing now.
  */
-export function WorkLog({ items, busy, working, check, onStop }: Props) {
+export function WorkLog({ thread, items, busy, check, onStop }: Props) {
   // Before the first item arrives, the clock runs from when the work started.
   const { since, now } = useClock(busy);
   const start = items[0] ? Date.parse(items[0].at) : since;
@@ -52,7 +51,7 @@ export function WorkLog({ items, busy, working, check, onStop }: Props) {
           Setting up {check.title} in the sandbox. The first time can take a few minutes…
         </div>
       )}
-      {!check?.running && <Thinking items={shown} busy={busy} working={working} />}
+      {!check?.running && <Thinking thread={thread} items={shown} busy={busy} />}
     </section>
   );
 }

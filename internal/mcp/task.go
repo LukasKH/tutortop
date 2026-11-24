@@ -59,7 +59,7 @@ func (t *threadTools) createTask(ctx context.Context, req *mcpsdk.CallToolReques
 // qualityGate runs a task's quality gate, showing it on the objective's page
 // while it runs and after.
 func (t *threadTools) qualityGate(ctx context.Context, spec workspace.TaskSpec, tc sandbox.Toolchain) (sandbox.GateReport, error) {
-	finish := t.checks.Start(t.w.ID, events.SandboxCheck{Kind: events.CheckTask, Thread: t.thread.String(), Title: spec.Title})
+	finish := t.checks.StartCheck(t.w.ID, events.SandboxCheck{Kind: events.CheckTask, Thread: t.thread.String(), Title: spec.Title})
 	rep, err := t.runner.Gate(ctx, sandbox.GateInput{
 		Toolchain:   tc,
 		Starter:     spec.Starter,
