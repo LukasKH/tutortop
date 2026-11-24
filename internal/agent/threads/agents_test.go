@@ -69,7 +69,7 @@ func TestWriterEndsAfterItsTurn(t *testing.T) {
 		t.Fatalf("writer resumed %q", turn.s.opts.ResumeID)
 	}
 	queue(t, ag, w, writer, "write again")
-	ag.Show(w.ID, events.SandboxCheck{Kind: events.CheckTask, Thread: writer.String(), Title: "Wrap errors", Running: true})
+	ag.Start(w.ID, events.SandboxCheck{Kind: events.CheckTask, Thread: writer.String(), Title: "Wrap errors"})
 	if busy, checks, _ := ag.State(w.ID); !busy[writer.String()] || !checks["go.errors"].Running {
 		t.Fatalf("busy %v, checks %v", busy, checks)
 	}
@@ -107,12 +107,13 @@ func TestStuckWriterIsEnded(t *testing.T) {
 	if b, _, _ := ag.State(w.ID); !b[writer.String()] {
 		t.Fatal("ended while receiving events")
 	}
-	ag.Show(w.ID, events.SandboxCheck{Kind: events.CheckTask, Thread: writer.String(), Title: "Wrap errors", Running: true})
+	finish := ag.Start(w.ID, events.SandboxCheck{Kind: events.CheckTask, Thread: writer.String(), Title: "Wrap errors"})
 	time.Sleep(2 * ag.writerIdle)
 	if b, _, _ := ag.State(w.ID); !b[writer.String()] {
 		t.Fatal("ended during a sandbox check")
 	}
-	ag.Show(w.ID, events.SandboxCheck{Kind: events.CheckTask, Thread: writer.String(), Title: "Wrap errors"})
+	var passed bool
+	finish(passed)
 	eventually(t, "stuck writer ended", func() bool {
 		b, _, _ := ag.State(w.ID)
 		return !b[writer.String()] && stuck.s.closed.Load() && busy.last(writer.String()) == "idle"
@@ -193,12 +194,14 @@ func TestWriterWatchdogAndChecksRaceSafely(t *testing.T) {
 		t.Fatal("stalled ended an active writer whose deadline hasn't passed")
 	}
 
-	// Stopping writer 1 and retrying starts writer 2; writer 1's check updates are ignored.
-	staleChecks := writerChecks{ag: ag, ta: ta1}
+	// Stopping writer 1 while its check is running and retrying starts writer 2;
+	// writer 1's late finish call must not touch writer 2.
+	finishOld := ag.Start(w.ID, events.SandboxCheck{Kind: events.CheckTask, Thread: writer.String(), Title: "Old check"})
 	ag.stop(w.ID, writer.String())
 	queue(t, ag, w, writer, "write again")
 	second := fake.next(t)
-	staleChecks.Show(w.ID, events.SandboxCheck{Kind: events.CheckTask, Thread: writer.String(), Title: "Old check"})
+	var passed bool
+	finishOld(passed)
 	if _, checks, _ := ag.State(w.ID); len(checks) != 0 {
 		t.Fatalf("stale writer check leaked onto retried writer: %+v", checks)
 	}

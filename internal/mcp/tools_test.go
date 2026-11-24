@@ -205,7 +205,7 @@ func (tt *tools) caller(t *testing.T, w *workspace.Workspace, thread workspace.T
 // noChecks shows sandbox checks nowhere.
 type noChecks struct{}
 
-func (noChecks) Show(string, events.SandboxCheck) {}
+func (noChecks) Start(string, events.SandboxCheck) func(bool) { return func(bool) {} }
 
 // planned gives a workspace an approved curriculum with these objectives.
 func planned(t *testing.T, w *workspace.Workspace, objectives ...string) {

@@ -90,16 +90,52 @@ func (ag *Agents) Send(w *workspace.Workspace, t workspace.Thread, m Message) {
 }
 
 // The UI learns which threads are busy, and how writers' sandbox checks go,
-// from both snapshots (State) and events (setPending, Show). All three
+// from both snapshots (State) and events (setPending, Start). All three
 // take the next number from ag.seq under ag.mu, so the numbers order them
 // exactly as they happened: the frontend keeps whichever is newer, and a
 // snapshot read before an event doesn't undo it.
 
-// Show tells the UI how a sandbox check is going (mcp.Checks). A writer's
-// is also kept on its threadAgent, so the objective's page shows it even
-// after the learner looks away; it goes when the writer does.
-func (ag *Agents) Show(wsID string, c events.SandboxCheck) {
-	ag.showFor(wsID, c, nil)
+// Start tells the UI a sandbox check has started (mcp.Checks) and returns a
+// function that reports it finished. A writer's check is kept on its
+// threadAgent so the objective's page shows it even after the learner looks
+// away, and goes when the writer does; a finish call from an ended writer is
+// ignored so it can't overwrite a retry's check or watchdog.
+func (ag *Agents) Start(wsID string, c events.SandboxCheck) func(passed bool) {
+	key := threadKey{wsID, c.Thread}
+	c.Running = true
+	ag.mu.Lock()
+	owner := ag.agents[key]
+	if c.Kind == events.CheckTask && owner == nil {
+		ag.mu.Unlock()
+		return func(bool) {} // writer already ended
+	}
+	if owner != nil {
+		owner.watch.pause()
+		if c.Kind == events.CheckTask {
+			owner.check = &c
+		}
+	}
+	ag.seq++
+	events.Emit(events.CheckStatus, events.Check{Workspace: wsID, Check: c, Seq: ag.seq})
+	ag.mu.Unlock()
+
+	return func(passed bool) {
+		c.Running, c.Passed = false, passed
+		ag.mu.Lock()
+		defer ag.mu.Unlock()
+		ta := ag.agents[key]
+		if owner != nil && ta != owner {
+			return // writer ended or was retried: don't touch the new one
+		}
+		if ta != nil {
+			ta.watch.resume()
+			if c.Kind == events.CheckTask {
+				ta.check = &c
+			}
+		}
+		ag.seq++
+		events.Emit(events.CheckStatus, events.Check{Workspace: wsID, Check: c, Seq: ag.seq})
+	}
 }
 
 // State returns what the workspace's agents are doing: which threads are
@@ -293,14 +329,10 @@ func (ag *Agents) open(ctx context.Context, w *workspace.Workspace, ta *threadAg
 	}
 	// A writer starts fresh every time, so its conversation isn't kept.
 	resume := ta.thread.Kind != workspace.WriterKind
-	var checks mcp.Checks = ag
-	if ta.thread.Kind == workspace.WriterKind {
-		checks = writerChecks{ag: ag, ta: ta}
-	}
 	opts := agent.Options{
 		Cwd:          w.Dir,
 		MCPName:      mcp.Name,
-		MCPURL:       ag.mcp.URL(w, ta.thread, checks),
+		MCPURL:       ag.mcp.URL(w, ta.thread, ag),
 		Instructions: instructions(w, ta.thread),
 		Binary:       ta.cfg.Binary,
 		Model:        ta.cfg.Model,
@@ -351,26 +383,6 @@ func (ag *Agents) setPending(ta *threadAgent, n int) {
 		ag.seq++
 		events.Emit(events.ThreadBusy, events.Busy{Workspace: ta.key.ws, Thread: ta.key.name, Busy: busy, Seq: ag.seq})
 	}
-}
-
-// showFor records and emits a sandbox check. When owner is non-nil (a
-// writer), checks from an ended writer are ignored so an unwinding tool call
-// can't overwrite a retried writer's state or watchdog.
-func (ag *Agents) showFor(wsID string, c events.SandboxCheck, owner *threadAgent) {
-	ag.mu.Lock()
-	defer ag.mu.Unlock()
-	ta := ag.agents[threadKey{wsID, c.Thread}]
-	if owner != nil && ta != owner {
-		return
-	}
-	if ta != nil {
-		ta.watch.checking(c.Running)
-		if c.Kind == events.CheckTask {
-			ta.check = &c
-		}
-	}
-	ag.seq++
-	events.Emit(events.CheckStatus, events.Check{Workspace: wsID, Check: c, Seq: ag.seq})
 }
 
 // stalled ends a writer its watchdog found stuck, and says why in its
@@ -439,17 +451,6 @@ func (ta *threadAgent) close() {
 	})
 }
 
-// writerChecks scopes sandbox check updates to one writer instance so an
-// unwinding check from a stopped writer can't affect a retried writer.
-type writerChecks struct {
-	ag *Agents
-	ta *threadAgent
-}
-
-func (c writerChecks) Show(wsID string, check events.SandboxCheck) {
-	c.ag.showFor(wsID, check, c.ta)
-}
-
 // watchdog ends a writer that shows no sign of life for a while: no event
 // from its CLI and no sandbox check. A running check pauses it. Its methods do
 // nothing on a nil watchdog, so a chat's agent needs none.
@@ -485,24 +486,31 @@ func (d *watchdog) alive() {
 	}
 }
 
-// checking pauses the wait while a sandbox check runs, and starts it over
-// once the check is done.
-func (d *watchdog) checking(running bool) {
+// pause pauses the wait while a sandbox check runs.
+func (d *watchdog) pause() {
 	if d == nil {
 		return
 	}
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	d.paused = running
-	if d.stopped {
-		return
-	}
-	if running {
+	d.paused = true
+	if !d.stopped {
 		d.timer.Stop()
+	}
+}
+
+// resume starts the wait over once a sandbox check is done.
+func (d *watchdog) resume() {
+	if d == nil {
 		return
 	}
-	d.deadline = time.Now().Add(d.after)
-	d.timer.Reset(d.after)
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.paused = false
+	if !d.stopped {
+		d.deadline = time.Now().Add(d.after)
+		d.timer.Reset(d.after)
+	}
 }
 
 // expired reports whether the watchdog is still active and past its deadline.
