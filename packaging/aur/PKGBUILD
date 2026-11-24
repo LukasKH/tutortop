@@ -16,7 +16,7 @@ optdepends=(
 )
 provides=('tutortop')
 conflicts=('tutortop')
-source=("tutortop-${pkgver}.deb::${url}/releases/download/v${pkgver}/tutortop_${pkgver}_amd64.deb")
+source=("tutortop-${pkgver}.deb::${url}/releases/download/v${pkgver}/tutortop_amd64.deb")
 sha256sums=('SKIP')
 
 package() {

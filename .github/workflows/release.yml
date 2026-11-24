@@ -50,14 +50,16 @@ jobs:
       - name: Windows installer
         run: wails3 task windows:package ARCH=amd64
 
-      - name: Name files by version
+      # The names carry no version, so .../releases/latest/download/<name>
+      # always fetches the newest release. install.sh and install.ps1 rely on it.
+      - name: Name files
         run: |
           mkdir dist
-          mv bin/tutortop.deb "dist/tutortop_${VERSION}_amd64.deb"
-          mv bin/tutortop.rpm "dist/tutortop-${VERSION}-1.x86_64.rpm"
-          mv bin/tutortop.pkg.tar.zst "dist/tutortop-${VERSION}-1-x86_64.pkg.tar.zst"
-          mv bin/tutortop-amd64-installer.exe "dist/tutortop-${VERSION}-windows-x64-setup.exe"
-          for f in bin/*.AppImage; do [ -e "$f" ] && mv "$f" "dist/tutortop-${VERSION}-x86_64.AppImage"; done
+          mv bin/tutortop.deb dist/tutortop_amd64.deb
+          mv bin/tutortop.rpm dist/tutortop-x86_64.rpm
+          mv bin/tutortop.pkg.tar.zst dist/tutortop-x86_64.pkg.tar.zst
+          mv bin/tutortop-amd64-installer.exe dist/tutortop-windows-x64-setup.exe
+          for f in bin/*.AppImage; do [ -e "$f" ] && mv "$f" dist/tutortop-x86_64.AppImage; done
           ls -la dist
       - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
         with:
@@ -77,7 +79,7 @@ jobs:
           wails3 task darwin:package:universal
           wails3 task darwin:create:dmg
           mkdir dist
-          mv bin/*.dmg "dist/tutortop-${VERSION}-macos-universal.dmg"
+          mv bin/*.dmg dist/tutortop-macos-universal.dmg
           ls -la dist
       - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
         with:
