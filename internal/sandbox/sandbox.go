@@ -23,6 +23,7 @@ import (
 
 	"golang.org/x/sync/singleflight"
 
+	"github.com/LukasKH/tutortop/internal/subproc"
 	"github.com/LukasKH/tutortop/internal/text"
 )
 
@@ -55,7 +56,7 @@ func New() *Runner {
 func (r *Runner) Available(ctx context.Context) error {
 	// Works for both engines, and for Podman's `docker` shim: it fails when
 	// Docker's daemon or the Podman machine can't be reached.
-	out, err := exec.CommandContext(ctx, string(r.Engine), "version", "--format", "{{.Server.Version}}").CombinedOutput()
+	out, err := r.command(ctx, "version", "--format", "{{.Server.Version}}").CombinedOutput()
 	if err != nil {
 		return engineHint(r.Engine, strings.TrimSpace(string(out)), errors.Is(err, exec.ErrNotFound))
 	}
@@ -72,7 +73,7 @@ func (r *Runner) Prepare(ctx context.Context, tc Toolchain) error {
 // RemoveCache deletes the volumes that keep the toolchain caches of runs
 // that share cache (Job.Cache), as when its workspace is deleted.
 func (r *Runner) RemoveCache(ctx context.Context, cache string) error {
-	out, err := exec.CommandContext(ctx, string(r.Engine), "volume", "ls", "-q").Output()
+	out, err := r.command(ctx, "volume", "ls", "-q").Output()
 	if err != nil {
 		return err
 	}
@@ -86,7 +87,7 @@ func (r *Runner) RemoveCache(ctx context.Context, cache string) error {
 	if len(names) == 0 {
 		return nil
 	}
-	return exec.CommandContext(ctx, string(r.Engine), append([]string{"volume", "rm", "-f"}, names...)...).Run()
+	return r.command(ctx, append([]string{"volume", "rm", "-f"}, names...)...).Run()
 }
 
 // RemoveUnusedImages deletes the toolchain images that none of used needs:
@@ -94,13 +95,13 @@ func (r *Runner) RemoveCache(ctx context.Context, cache string) error {
 // and dropped, and of deleted workspaces. An image a container still runs on
 // stays until the next call.
 func (r *Runner) RemoveUnusedImages(ctx context.Context, used []Toolchain) error {
-	out, err := exec.CommandContext(ctx, string(r.Engine), "image", "ls", "--filter", "reference=tutortop-*", "--format", "{{.Repository}}:{{.Tag}}").Output()
+	out, err := r.command(ctx, "image", "ls", "--filter", "reference=tutortop-*", "--format", "{{.Repository}}:{{.Tag}}").Output()
 	if err != nil {
 		return err
 	}
 	for _, image := range unusedImages(strings.Fields(string(out)), used) {
 		// Fails only for an image in use, which the next call removes.
-		_ = exec.CommandContext(ctx, string(r.Engine), "image", "rm", image).Run()
+		_ = r.command(ctx, "image", "rm", image).Run()
 		r.mu.Lock()
 		delete(r.prepared, strings.TrimPrefix(image, podmanLocal))
 		r.mu.Unlock()
@@ -139,7 +140,7 @@ func (r *Runner) prepare(ctx context.Context, tc Toolchain) (uint64, error) {
 
 func (r *Runner) build(ctx context.Context, tc Toolchain) (uint64, error) {
 	if !r.hasImage(ctx, tc.Image) {
-		cmd := exec.CommandContext(ctx, string(r.Engine), "build", "-t", tc.Image, "-")
+		cmd := r.command(ctx, "build", "-t", tc.Image, "-")
 		cmd.Stdin = strings.NewReader(tc.Dockerfile)
 		if out, err := cmd.CombinedOutput(); err != nil {
 			return 0, fmt.Errorf("preparing the %s sandbox: %v\n%s", tc.Name, err, text.Tail(string(out), 1500))
@@ -182,7 +183,7 @@ func (r *Runner) rebuildIfMissing(ctx context.Context, tc Toolchain, seenGen uin
 }
 
 func (r *Runner) hasImage(ctx context.Context, image string) bool {
-	return exec.CommandContext(ctx, string(r.Engine), "image", "inspect", image).Run() == nil
+	return r.command(ctx, "image", "inspect", image).Run() == nil
 }
 
 // exec unpacks the files into a throwaway container and runs the script
@@ -201,16 +202,22 @@ func (r *Runner) exec(ctx context.Context, tc Toolchain, script string, files Fi
 		// keeps the image's warm cache and its owner.
 		args = append(args, "-v", volume+":"+tc.cache)
 	}
-	cmd := exec.CommandContext(ctx, string(r.Engine), append(args, tc.Image, "sh", "-c", "tar -xf - && "+script)...)
+	cmd := r.command(ctx, append(args, tc.Image, "sh", "-c", "tar -xf - && "+script)...)
 	// Killing the docker client doesn't stop the container, so remove it too.
 	cmd.Cancel = func() error {
-		_ = exec.Command(string(r.Engine), "rm", "-f", name).Run()
+		_ = r.command(context.Background(), "rm", "-f", name).Run()
 		return cmd.Process.Kill()
 	}
 	cmd.WaitDelay = 5 * time.Second
 	cmd.Stdin = bytes.NewReader(archive)
 	cmd.Stdout, cmd.Stderr = out, out
 	return cmd.Run()
+}
+
+func (r *Runner) command(ctx context.Context, args ...string) *exec.Cmd {
+	cmd := exec.CommandContext(ctx, string(r.Engine), args...)
+	subproc.HideWindow(cmd)
+	return cmd
 }
 
 func detectEngine() Engine {

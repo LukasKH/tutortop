@@ -12,6 +12,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/LukasKH/tutortop/internal/subproc"
 )
 
 // process is a long-running agent CLI with piped stdio. Adapters embed it:
@@ -39,6 +41,7 @@ func startProcess(ctx context.Context, cwd, binary string, env []string, args ..
 	}
 	ctx, cancel := context.WithCancel(ctx)
 	cmd := exec.CommandContext(ctx, path, args...)
+	subproc.HideWindow(cmd)
 	cmd.Dir = cwd
 	cmd.Env = append(os.Environ(), env...)
 	// Ask the CLI to stop first, so it can save its session. Windows has no

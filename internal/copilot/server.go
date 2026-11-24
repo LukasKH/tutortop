@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/LukasKH/tutortop/internal/decode"
+	"github.com/LukasKH/tutortop/internal/subproc"
 	"github.com/sourcegraph/jsonrpc2"
 )
 
@@ -40,6 +41,7 @@ type server struct {
 // stop a server that's still starting.
 func start(path string, browser Browser) (*server, error) {
 	cmd := exec.Command(path, "--stdio")
+	subproc.HideWindow(cmd)
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		return nil, err

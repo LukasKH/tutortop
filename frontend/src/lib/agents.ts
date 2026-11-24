@@ -10,20 +10,31 @@ export function useEnvironment(): Environment | null {
   return useSyncExternalStore(subscribe, () => store.env);
 }
 
+/** Whether checkEnvironment is currently running. */
+export function useCheckingEnvironment(): boolean {
+  return useSyncExternalStore(subscribe, () => store.checkingEnv);
+}
+
 /** Checks what's installed again. It checks the sandbox too, which takes a few seconds, so useEnvironment keeps the last answer meanwhile. */
 export async function checkEnvironment(): Promise<Environment> {
   const seq = ++envSeq;
-  const env = await SettingsService.Environment();
-  if (seq !== envSeq) return store.env ?? env;
-  // Models and checks from a CLI that has moved since may not be the new CLI's.
-  const moved = (store.env?.providers ?? []).filter((p) => env.providers?.find((n) => n.id === p.id)?.path !== p.path).map((p) => p.id);
-  const nextChecking = moved.length === 0 ? store.checking : { ...store.checking };
-  for (const a of moved) {
-    checking.delete(a);
-    nextChecking[a] = false;
+  update({ checkingEnv: true });
+  try {
+    const env = await SettingsService.Environment();
+    if (seq !== envSeq) return store.env ?? env;
+    // Models and checks from a CLI that has moved since may not be the new CLI's.
+    const moved = (store.env?.providers ?? []).filter((p) => env.providers?.find((n) => n.id === p.id)?.path !== p.path).map((p) => p.id);
+    const nextChecking = moved.length === 0 ? store.checking : { ...store.checking };
+    for (const a of moved) {
+      checking.delete(a);
+      nextChecking[a] = false;
+    }
+    update({ env, checkingEnv: false, models: withoutModels(store.models, moved), checking: nextChecking });
+    return env;
+  } catch (e) {
+    if (seq === envSeq) update({ checkingEnv: false });
+    throw e;
   }
-  update({ env, models: withoutModels(store.models, moved), checking: nextChecking });
-  return env;
 }
 
 let envSeq = 0;
@@ -151,10 +162,11 @@ function providerName(providers: ProviderStatus[], id: string): string {
 // changed in place, so a hook sees a new value.
 let store: {
   env: Environment | null;
+  checkingEnv: boolean;
   models: Record<string, Model[]>;
   checks: Record<string, Checked>;
   checking: Record<string, boolean>;
-} = { env: null, models: {}, checks: {}, checking: {} };
+} = { env: null, checkingEnv: false, models: {}, checks: {}, checking: {} };
 const listeners = new Set<() => void>();
 
 function subscribe(listener: () => void) {

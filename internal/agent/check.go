@@ -12,6 +12,7 @@ import (
 	"unicode"
 
 	"github.com/LukasKH/tutortop/internal/decode"
+	"github.com/LukasKH/tutortop/internal/subproc"
 	"github.com/LukasKH/tutortop/internal/text"
 )
 
@@ -98,6 +99,7 @@ func output(ctx context.Context, binary string, args ...string) (string, error) 
 	defer cancel()
 	var stdout, stderr bytes.Buffer
 	cmd := exec.CommandContext(ctx, binary, args...)
+	subproc.HideWindow(cmd)
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	err := cmd.Run()
 	if err != nil {
