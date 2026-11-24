@@ -118,7 +118,10 @@ describe("centerOf", () => {
 
   test("before the first plan: the setup page, then the proposal, or the plan page if chosen", () => {
     expect(center(setup, "item", null, questions).kind).toBe("setup");
-    expect(center({ ...setup, proposal: workspace().curriculum }, "item", null, null).kind).toBe("proposal");
+    expect(center({ ...setup, proposal: workspace().curriculum, resources: "# Resources" }, "item", null, null)).toMatchObject({
+      kind: "proposal",
+      resources: "# Resources", // for its Sources tab
+    });
     expect(center(setup, "plan", null, null)).toMatchObject({ kind: "plan", canGoBack: true, canAskTutor: false });
   });
 

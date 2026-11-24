@@ -457,6 +457,7 @@ func wordsLesson(objective string) workspace.LessonSpec {
 		Summary:       "You'll split a sentence into words and join them back.",
 		Body:          "## Splitting\n\nSplit on runs of spaces ([docs](https://go.dev/doc/)):\n\n```\n\"a  b\" -> [\"a\", \"b\"]\n```\n",
 		PrimarySource: workspace.Source{Title: "Docs", URL: "https://go.dev/doc/"},
+		Sources:       []workspace.Source{{Title: "Docs", URL: "https://go.dev/doc/"}},
 		Quiz: []workspace.QuizQuestion{
 			{Question: "How many words are in \"hi\"?", Options: options, Answer: 0, Explanation: "One word."},
 			{Question: "How many words are in \"a  b\"?", Options: options, Answer: 1, Explanation: "Runs of spaces split once."},

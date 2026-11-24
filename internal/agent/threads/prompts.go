@@ -79,8 +79,8 @@ func builtinNames() string {
 }
 
 // contextFor describes what the learner has open in the thread: a task's
-// code and last check, or how a lesson's quiz went. The plan and writers get
-// none.
+// code and last check, or how a lesson's quiz went. A writer gets the sources
+// for its objective. The plan gets none.
 func contextFor(w *workspace.Workspace, t workspace.Thread) string {
 	switch t.Kind {
 	case workspace.TaskKind:
@@ -91,7 +91,9 @@ func contextFor(w *workspace.Workspace, t workspace.Thread) string {
 		return taskContext(w, t.ID, &last)
 	case workspace.LessonKind:
 		return lessonContext(w, t.ID)
-	case workspace.PlanKind, workspace.WriterKind:
+	case workspace.WriterKind:
+		return writerContext(w, t.ID)
+	case workspace.PlanKind:
 	}
 	return ""
 }
@@ -141,6 +143,40 @@ func lessonContext(w *workspace.Workspace, id string) string {
 		if r, ok := d.Results[i]; ok && !r.Correct {
 			fmt.Fprintf(&b, "- Got question %d wrong: %q, picked %q.\n", i+1, text.Truncate(q.Question, 300), q.Options[r.Choice])
 		}
+	}
+	b.WriteString("[/context]\n\n")
+	return b.String()
+}
+
+// maxResources caps how much of RESOURCES.md a writer's message carries.
+const maxResources = 8000
+
+// writerContext hands a writer the sources the plan gathered for its
+// objective: the module's references and the learner's RESOURCES.md. They're
+// in the message itself, so the lesson and the exercise start from them
+// rather than from what the writer remembers to look up.
+func writerContext(w *workspace.Workspace, objectiveID string) string {
+	var refs []workspace.Source
+	var module string
+	if c, err := w.Curriculum(); err == nil && c != nil {
+		if m, ok := c.ModuleOf(objectiveID); ok {
+			refs, module = m.References, m.Title
+		}
+	}
+	resources := strings.TrimSpace(w.ReadDoc("RESOURCES.md"))
+	if len(refs) == 0 && resources == "" {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("[context]\nSources for this objective, gathered with the plan. Base the lesson and the exercise on them.\n")
+	if len(refs) > 0 {
+		fmt.Fprintf(&b, "The module %q is based on:\n", module)
+		for _, r := range refs {
+			fmt.Fprintf(&b, "- [%s](%s)\n", r.Title, r.URL)
+		}
+	}
+	if resources != "" {
+		fmt.Fprintf(&b, "The learner's resources:\n%s\n", text.Truncate(resources, maxResources))
 	}
 	b.WriteString("[/context]\n\n")
 	return b.String()

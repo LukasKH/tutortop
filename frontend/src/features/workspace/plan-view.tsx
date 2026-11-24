@@ -8,6 +8,7 @@ import { ErrorText } from "@/components/error-text";
 import { ReadingPage } from "@/components/page";
 import { Button } from "@/components/ui/button";
 import { usePending } from "@/hooks/use-pending";
+import { WithPlanSources } from "@/features/workspace/plan-sources";
 import { CurriculumTitle, ModuleItem, ModuleList, ModuleNote, ObjectiveItem, ObjectiveName, ObjectiveNote } from "@/features/workspace/curriculum-list";
 
 type Props = {
@@ -56,44 +57,46 @@ export function PlanView({ ws, onClose, onAskTutor }: Props) {
           ? "Edit your mission yourself, or ask the tutor to change it or the curriculum. You review the tutor's changes before they apply."
           : "Edit your mission yourself. Your tutor builds the course plan from it."}
       </p>
-      {ws.mission.trim() ? (
-        <Markdown text={ws.mission} className="prose" />
-      ) : (
-        <div className="prose">
-          <h1>Mission</h1>
-          <p className="text-muted-foreground">The tutor writes your mission after the first questions.</p>
-        </div>
-      )}
-      {ws.curriculum && (
-        <section className="mt-9">
-          <CurriculumTitle>Curriculum</CurriculumTitle>
-          <ModuleList>
-            {modules.map((m) => {
-              const objs = m.objectives ?? [];
-              return (
-                <ModuleItem
-                  key={m.id}
-                  heading={
-                    <>
-                      {m.title}{" "}
-                      <ModuleNote className="font-mono tabular-nums">
-                        {objs.filter((o) => passed(o.id)).length}/{objs.length}
-                      </ModuleNote>
-                    </>
-                  }
-                >
-                  {objs.map((o) => (
-                    <ObjectiveItem key={o.id} done={passed(o.id)}>
-                      <ObjectiveName>{o.name || o.title}</ObjectiveName>
-                      {o.name && <ObjectiveNote>{o.title}</ObjectiveNote>}
-                    </ObjectiveItem>
-                  ))}
-                </ModuleItem>
-              );
-            })}
-          </ModuleList>
-        </section>
-      )}
+      <WithPlanSources plan={ws.curriculum} resources={ws.resources}>
+        {ws.mission.trim() ? (
+          <Markdown text={ws.mission} className="prose" />
+        ) : (
+          <div className="prose">
+            <h1>Mission</h1>
+            <p className="text-muted-foreground">The tutor writes your mission after the first questions.</p>
+          </div>
+        )}
+        {ws.curriculum && (
+          <section className="mt-9">
+            <CurriculumTitle>Curriculum</CurriculumTitle>
+            <ModuleList>
+              {modules.map((m) => {
+                const objs = m.objectives ?? [];
+                return (
+                  <ModuleItem
+                    key={m.id}
+                    heading={
+                      <>
+                        {m.title}{" "}
+                        <ModuleNote className="font-mono tabular-nums">
+                          {objs.filter((o) => passed(o.id)).length}/{objs.length}
+                        </ModuleNote>
+                      </>
+                    }
+                  >
+                    {objs.map((o) => (
+                      <ObjectiveItem key={o.id} done={passed(o.id)}>
+                        <ObjectiveName>{o.name || o.title}</ObjectiveName>
+                        {o.name && <ObjectiveNote>{o.title}</ObjectiveNote>}
+                      </ObjectiveItem>
+                    ))}
+                  </ModuleItem>
+                );
+              })}
+            </ModuleList>
+          </section>
+        )}
+      </WithPlanSources>
     </ReadingPage>
   );
 }

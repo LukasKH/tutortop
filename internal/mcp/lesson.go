@@ -23,7 +23,11 @@ func (t *threadTools) createLesson(ctx context.Context, _ *mcpsdk.CallToolReques
 	if err := t.w.ValidateLesson(spec); err != nil {
 		return nil, nil, fixAndRetry(createLessonTool, err)
 	}
-	if err := t.links.check(ctx, createLessonTool, append(markdownLinks(spec.Body), spec.PrimarySource.URL)); err != nil {
+	links := append(markdownLinks(spec.Body), spec.PrimarySource.URL)
+	for _, s := range spec.Sources {
+		links = append(links, s.URL)
+	}
+	if err := t.links.check(ctx, createLessonTool, links); err != nil {
 		return nil, nil, err
 	}
 	info, err := t.w.SaveLesson(spec)

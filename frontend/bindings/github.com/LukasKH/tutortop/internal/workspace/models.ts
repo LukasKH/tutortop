@@ -157,6 +157,11 @@ export interface LessonDetail {
     "summary": string;
     "body": string;
     "primarySource": Source;
+
+    /**
+     * what the lesson is based on; empty for lessons from before they were kept
+     */
+    "sources": Source[] | null;
     "quiz": QuizPrompt[] | null;
 
     /**

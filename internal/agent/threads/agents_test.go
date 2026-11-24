@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -152,6 +154,41 @@ func TestStoppedWriterEnds(t *testing.T) {
 	if n := failures(w, writer.String()); n != 0 {
 		t.Fatalf("%d failures shown for a stop", n)
 	}
+}
+
+// A writer's first message hands it its objective's sources: the module's
+// references and the learner's resources.
+func TestWriterGetsItsSources(t *testing.T) {
+	ag, fake, w := newHeldAgents(t)
+	ref := workspace.Source{Title: "Go blog: Working with Errors", URL: "https://go.dev/blog/go1.13-errors"}
+	o := workspace.Objective{ID: "go.errors", Name: "Wrapping errors", Title: "Wrap errors"}
+	plan := workspace.Curriculum{
+		Language: "go",
+		Modules: []workspace.Module{{
+			ID:         "errors",
+			Title:      "Errors",
+			References: []workspace.Source{ref},
+			Objectives: []workspace.Objective{o},
+		}},
+	}
+	if err := w.Propose(plan); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.ApproveProposal(); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(w.Dir, "RESOURCES.md"), []byte("# Resources\n\n- [Effective Go](https://go.dev/doc/effective_go): idioms\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	NewWriters(ag).Write(w, o, "The learner just approved the plan.")
+	turn := fake.next(t)
+	for _, want := range []string{"[context]", "[" + ref.Title + "](" + ref.URL + ")", "[Effective Go](https://go.dev/doc/effective_go)", "Write for the objective “Wrap errors” (go.errors)"} {
+		if !strings.Contains(turn.text, want) {
+			t.Errorf("writer's message lacks %q:\n%s", want, turn.text)
+		}
+	}
+	turn.end(nil)
 }
 
 // New settings restart a thread's agent once it's idle, resuming its

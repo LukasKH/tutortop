@@ -1,6 +1,11 @@
 package workspace_test
 
 import (
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"slices"
+	"strings"
 	"testing"
 
 	"github.com/LukasKH/tutortop/internal/workspace"
@@ -15,6 +20,8 @@ func TestValidateLesson(t *testing.T) {
 		{"valid", func(*workspace.LessonSpec) {}, nil},
 		{"repeats the title", func(s *workspace.LessonSpec) { s.Body = "# Adding numbers\n\n" + s.Body }, []string{"body repeats the title"}},
 		{"answer out of range", func(s *workspace.LessonSpec) { s.Quiz[1].Answer = 3 }, []string{"question 2: answer must be an option index (0-2)"}},
+		{"no sources", func(s *workspace.LessonSpec) { s.Sources = nil }, []string{"sources needs the 1-8 pages"}},
+		{"source that isn't a web link", func(s *workspace.LessonSpec) { s.Sources[0].URL = "go.dev" }, []string{"needs a full http(s) url"}},
 	}
 	w := newWorkspace(t)
 	approve(t, w, "a", "b")
@@ -80,5 +87,42 @@ func TestAnswerQuiz(t *testing.T) {
 	}
 	if s := statuses[0]; s.Answered != 3 || s.Correct != 2 || !s.Done() {
 		t.Errorf("status: answered %d, correct %d, done %v", s.Answered, s.Correct, s.Done())
+	}
+}
+
+// A lesson keeps the sources it's based on, for its Sources tab and its
+// README. Lessons saved before sources were kept still open, with none.
+func TestLessonSources(t *testing.T) {
+	w := newWorkspace(t)
+	approve(t, w, "a", "b")
+	spec := lessonSpec("a")
+	l := addLesson(t, w, "a")
+
+	d, err := w.Lesson(l.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(d.Sources, spec.Sources) {
+		t.Errorf("sources = %+v, want %+v", d.Sources, spec.Sources)
+	}
+	readme, err := os.ReadFile(filepath.Join(w.Dir, "lessons", l.ID, "README.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "## Sources\n\n- [" + spec.Sources[0].Title + "](" + spec.Sources[0].URL + ")"; !strings.Contains(string(readme), want) {
+		t.Errorf("README.md lacks %q:\n%s", want, readme)
+	}
+
+	old := addLesson(t, w, "b")
+	before := "summary: Old.\nbody: Old.\nprimary_source:\n  title: Go\n  url: https://go.dev/\nquiz: []\n"
+	if err := os.WriteFile(filepath.Join(w.PrivateDir, "lessons", old.ID, "lesson.yaml"), []byte(before), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	d, err = w.Lesson(old.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := json.Marshal(d.Sources); string(b) != "[]" || d.PrimarySource.URL != "https://go.dev/" {
+		t.Errorf("old lesson: sources %s, primary source %+v", b, d.PrimarySource)
 	}
 }

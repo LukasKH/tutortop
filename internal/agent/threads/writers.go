@@ -40,12 +40,13 @@ func (wr *Writers) KeepReady(w *workspace.Workspace, why string) {
 }
 
 // Write starts a writer for one objective, unless one is already at work on
-// it. why tells the writer what prompted it. Like a chat message, it doesn't
-// wait for the start; a failure is posted in the writer's thread, which the
+// it. why tells the writer what prompted it, and the message carries the
+// objective's sources (writerContext). Like a chat message, it doesn't wait
+// for the start; a failure is posted in the writer's thread, which the
 // objective's page shows.
 func (wr *Writers) Write(w *workspace.Workspace, o workspace.Objective, why string) {
 	t := workspace.WriterThread(o.ID)
-	msg := fmt.Sprintf("[app] Write for the objective “%s” (%s). %s", o.Title, o.ID, why)
+	msg := contextFor(w, t) + fmt.Sprintf("[app] Write for the objective “%s” (%s). %s", o.Title, o.ID, why)
 	if err := wr.agents.queue(w, t, msg); err != nil {
 		postFailure(w, t.String(), err.Error())
 	}

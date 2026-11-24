@@ -171,7 +171,9 @@ function CenterPane({ center, onAskTutor }: CenterProps) {
       return <Setup questions={center.questions} />;
 
     case "proposal":
-      return <ProposalView proposal={center.proposal} current={center.current} progress={center.progress} mission={center.mission} />;
+      return (
+        <ProposalView proposal={center.proposal} current={center.current} progress={center.progress} mission={center.mission} resources={center.resources} />
+      );
 
     case "plan":
       return (

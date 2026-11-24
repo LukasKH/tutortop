@@ -48,6 +48,7 @@ func TestWriterKeepsToItsObjective(t *testing.T) {
 	lesson := workspace.LessonSpec{
 		ObjectiveID: "go.strings", Title: "Strings", Summary: "Work with strings.", Body: "Strings are bytes ([spec](https://go.dev/ref/spec)).\n\n```go\ns := \"hi\"\n```",
 		PrimarySource: workspace.Source{Title: "Go", URL: "https://go.dev/"},
+		Sources:       []workspace.Source{{Title: "Go spec", URL: "https://go.dev/ref/spec"}},
 		Quiz: []workspace.QuizQuestion{
 			{Question: "A?", Options: []string{"a", "b", "c"}, Answer: 0, Explanation: "A."},
 			{Question: "B?", Options: []string{"a", "b", "c"}, Answer: 1, Explanation: "B."},

@@ -46,6 +46,18 @@ func (c *Curriculum) Objective(id string) (Objective, string, bool) {
 	return Objective{}, "", false
 }
 
+// ModuleOf looks up the module that holds an objective.
+func (c *Curriculum) ModuleOf(objectiveID string) (Module, bool) {
+	for _, m := range c.Modules {
+		for _, o := range m.Objectives {
+			if o.ID == objectiveID {
+				return m, true
+			}
+		}
+	}
+	return Module{}, false
+}
+
 // validate fills defaults and reports every problem at once, so the agent can
 // fix them in one go. w reports whether a language is usable. Plans approved
 // before references existed lack them; they're only checked here, when the
