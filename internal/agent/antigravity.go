@@ -47,7 +47,7 @@ func startAntigravity(ctx context.Context, opts Options, onEvent func(Event)) (S
 	ctx, cancel := context.WithTimeout(ctx, time.Minute)
 	defer cancel()
 	if err := s.open(ctx, opts); err != nil {
-		return nil, proc.abort(err)
+		return nil, antigravityAbort(proc, conn, err)
 	}
 	return s, nil
 }
@@ -77,6 +77,7 @@ func (s *antigravitySession) Cancel() {
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
+		// If agy is gone, there's no turn to cancel, and Prompt reports the exit.
 		_ = s.conn.Cancel(ctx, acp.CancelNotification{SessionId: s.id})
 	}()
 }
@@ -91,14 +92,20 @@ func (s *antigravitySession) open(ctx context.Context, opts Options) error {
 		return err
 	}
 	servers := []acp.McpServer{{Http: &acp.McpServerHttpInline{
-		Type: "http", Name: opts.MCPName, Url: opts.MCPURL, Headers: []acp.HttpHeader{},
+		Type:    "http",
+		Name:    opts.MCPName,
+		Url:     opts.MCPURL,
+		Headers: []acp.HttpHeader{},
 	}}}
 
 	var options []acp.SessionConfigOption
 	if opts.ResumeID != "" {
 		// session/resume, unlike session/load, doesn't replay the old turns.
 		res, err := s.conn.ResumeSession(ctx, acp.ResumeSessionRequest{
-			Meta: meta, SessionId: acp.SessionId(opts.ResumeID), Cwd: opts.Cwd, McpServers: servers,
+			Meta:       meta,
+			SessionId:  acp.SessionId(opts.ResumeID),
+			Cwd:        opts.Cwd,
+			McpServers: servers,
 		})
 		if err == nil {
 			s.id, options = acp.SessionId(opts.ResumeID), res.ConfigOptions
@@ -121,7 +128,9 @@ func (s *antigravitySession) open(ctx context.Context, opts Options) error {
 			continue
 		}
 		_, err := s.conn.SetSessionConfigOption(ctx, acp.SetSessionConfigOptionRequest{ValueId: &acp.SetSessionConfigOptionValueId{
-			SessionId: s.id, ConfigId: option.Id, Value: acp.SessionConfigValueId(choice.value),
+			SessionId: s.id,
+			ConfigId:  option.Id,
+			Value:     acp.SessionConfigValueId(choice.value),
 		}})
 		if err != nil {
 			return fmt.Errorf("choosing the %s %q in Antigravity: %s", strings.ToLower(option.Name), choice.value, antigravityReason(err))
@@ -130,19 +139,18 @@ func (s *antigravitySession) open(ctx context.Context, opts Options) error {
 	return nil
 }
 
-// failed explains a request agy didn't answer: the process exited, ctx
-// ended, or agy reported an error.
+// failed explains a prompt agy didn't answer: ctx ended, agy is gone, or
+// agy reported an error.
 func (s *antigravitySession) failed(ctx context.Context, err error) error {
-	select {
-	case <-s.conn.Done():
-		// agy's output ends once it has exited or Close stopped it, so this
-		// doesn't wait long.
-		<-s.done
-		return s.exitError()
-	default:
-	}
 	if ctx.Err() != nil {
 		return ctx.Err()
+	}
+	if antigravityGone(s.process, s.conn) {
+		// Without its connection the session can't go on, even if agy
+		// still runs (its output overflowed the SDK, say).
+		_ = s.Close()
+		<-s.done
+		return s.exitError()
 	}
 	return fmt.Errorf("turn failed in Antigravity: %s", antigravityReason(err))
 }
@@ -292,29 +300,32 @@ func (c *antigravityClient) report(t Tool) {
 // describe turns what agy says about a tool call into a Tool. agy names an
 // MCP tool mcp_<server>_<tool>, so our server's tools start with
 // mcp_<MCPName>_. Server names may hold underscores, so another server's
-// tool can't be split reliably; it stays a tool of kind other, which the
+// tool can't be split reliably; it becomes a tool of kind other, which the
 // policy refuses.
 func (c *antigravityClient) describe(id acp.ToolCallId, name, title string, kind acp.ToolKind, locations []acp.ToolCallLocation) Tool {
 	t := Tool{ID: string(id), Title: title, Kind: antigravityKind(kind)}
 	for _, l := range locations {
-		t.Paths = append(t.Paths, l.Path)
+		if l.Path != "" { // an empty path would pass as the workspace itself
+			t.Paths = append(t.Paths, l.Path)
+		}
 	}
-	if tool, ok := strings.CutPrefix(name, "mcp_"+c.mcpName+"_"); ok {
+	if !strings.HasPrefix(name, "mcp_") {
+		return t
+	}
+	// Whatever kind agy gives another server's tool, the policy refuses it.
+	t.Kind = ToolOther
+	if tool, ok := strings.CutPrefix(name, "mcp_"+c.mcpName+"_"); ok && tool != "" {
 		t.MCPServer, t.MCPTool = c.mcpName, tool
 	}
 	return t
 }
 
 // antigravityModels lists the models and thinking levels a short-lived `agy
-// acp` session offers, in a temporary folder: ACP reports them per session.
+// acp` session offers, in the temporary folder: ACP reports them per session.
 func antigravityModels(ctx context.Context) ([]Model, error) {
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	dir, err := os.MkdirTemp("", "tutortop-agy-")
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = os.RemoveAll(dir) }() // a scratch folder
+	dir := os.TempDir()
 	proc, conn, err := startAntigravityACP(ctx, dir, &antigravityClient{onEvent: func(Event) {}})
 	if err != nil {
 		return nil, err
@@ -322,7 +333,7 @@ func antigravityModels(ctx context.Context) ([]Model, error) {
 	defer func() { _ = proc.Close() }() // the models are all we need from it
 	res, err := conn.NewSession(ctx, acp.NewSessionRequest{Cwd: dir, McpServers: []acp.McpServer{}})
 	if err != nil {
-		return nil, proc.abort(antigravitySetupError(err))
+		return nil, antigravityAbort(proc, conn, antigravitySetupError(err))
 	}
 
 	var efforts []Effort
@@ -332,7 +343,7 @@ func antigravityModels(ctx context.Context) ([]Model, error) {
 		}
 	}
 	o := antigravityOption(res.ConfigOptions, acp.SessionConfigOptionCategoryModel)
-	if o == nil {
+	if o == nil || len(antigravityValues(o)) == 0 {
 		return []Model{{Name: "Antigravity's default"}}, nil // the CLI chooses
 	}
 	var models []Model
@@ -363,7 +374,7 @@ func startAntigravityACP(ctx context.Context, cwd string, client acp.Client) (*p
 		ClientInfo:      &acp.Implementation{Name: "tutortop", Title: acp.Ptr("Tutortop"), Version: "0.1.1"},
 	})
 	if err != nil {
-		return nil, nil, proc.abort(fmt.Errorf("starting Antigravity: %w", err))
+		return nil, nil, antigravityAbort(proc, conn, fmt.Errorf("starting Antigravity: %w", err))
 	}
 	return proc, conn, nil
 }
@@ -386,6 +397,8 @@ func antigravityProfile() string {
 //     which could outlive the turn. Commands do ask; the hook refuses them
 //     too.
 func setUpAntigravity() error {
+	antigravitySetUpMu.Lock()
+	defer antigravitySetUpMu.Unlock()
 	profile := antigravityProfile()
 	settingsPath := filepath.Join(profile, "antigravity-cli", "settings.json")
 	settings := map[string]json.RawMessage{}
@@ -395,6 +408,9 @@ func setUpAntigravity() error {
 		}
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return err
+	}
+	if settings == nil { // the file holds null
+		settings = map[string]json.RawMessage{}
 	}
 	settings["toolPermission"] = json.RawMessage(`"strict"`)
 	deny := `{"decision":"deny","reason":"not available in Tutortop"}`
@@ -408,6 +424,10 @@ func setUpAntigravity() error {
 	return writeJSON(filepath.Join(profile, "config", "hooks.json"), hooks)
 }
 
+// antigravitySetUpMu keeps sessions that start together from writing the
+// profile at once.
+var antigravitySetUpMu sync.Mutex
+
 // antigravityDenied are the tools the hook refuses.
 var antigravityDenied = []string{
 	"run_command",
@@ -419,7 +439,8 @@ var antigravityDenied = []string{
 func antigravitySetupError(err error) error {
 	var re *acp.RequestError
 	if errors.As(err, &re) && re.Code == antigravityAuthRequired {
-		return fmt.Errorf("not signed in to Antigravity: run `agy acp --login --gemini-dir %q` in a terminal, then try again", antigravityProfile())
+		// Quoted for the shell, not with %q, which would double a Windows path's backslashes.
+		return fmt.Errorf("not signed in to Antigravity: run `agy acp --login --gemini-dir \"%s\"` in a terminal, then try again", antigravityProfile())
 	}
 	return fmt.Errorf("starting Antigravity: %s", antigravityReason(err))
 }
@@ -435,6 +456,32 @@ func antigravityReason(err error) string {
 		return re.Message
 	}
 	return err.Error()
+}
+
+// antigravityAbort stops agy after a request failed. If agy is gone, its
+// exit explains the failure better than err.
+func antigravityAbort(proc *process, conn *acp.ClientSideConnection, err error) error {
+	gone := antigravityGone(proc, conn)
+	_ = proc.Close()
+	if !gone {
+		return err
+	}
+	<-proc.done
+	return proc.exitError()
+}
+
+// antigravityGone reports whether agy exited or its connection ended. A
+// write to an agy that just exited fails before its output ends, so it gives
+// the exit a moment to show.
+func antigravityGone(proc *process, conn *acp.ClientSideConnection) bool {
+	select {
+	case <-conn.Done():
+		return true
+	case <-proc.done:
+		return true
+	case <-time.After(time.Second):
+		return false
+	}
 }
 
 // antigravityOption returns the select option of this category, or nil.
@@ -494,8 +541,9 @@ func antigravityStatus(s acp.ToolCallStatus) ToolStatus {
 	return ToolRunning
 }
 
-// writeJSON writes v to path as JSON, unless the file already holds it: agy
-// may be reading it for another session.
+// writeJSON writes v to path as JSON, unless the file already holds it.
+// agy may be reading the file for another session, so it's replaced whole,
+// never seen half written.
 func writeJSON(path string, v any) error {
 	b, err := json.MarshalIndent(v, "", "  ")
 	if err != nil {
@@ -507,12 +555,23 @@ func writeJSON(path string, v any) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
-	return os.WriteFile(path, b, 0o600)
+	f, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".*")
+	if err != nil {
+		return err
+	}
+	_, err = f.Write(b)
+	if err = errors.Join(err, f.Close()); err == nil {
+		err = os.Rename(f.Name(), path)
+	}
+	if err != nil {
+		_ = os.Remove(f.Name()) // the half-written copy
+	}
+	return err
 }
 
-// echoCommand is a shell command that prints s, which has no quotes of its
-// own: agy runs hooks with sh -c, or cmd /c on Windows, whose echo prints
-// the rest of the line as it is.
+// echoCommand is a shell command that prints s, which must not hold a
+// single quote: agy runs hooks with sh -c, where s goes in single quotes, or
+// cmd /c on Windows, whose echo prints the rest of the line as it is.
 func echoCommand(s string) string {
 	if runtime.GOOS == "windows" {
 		return "echo " + s

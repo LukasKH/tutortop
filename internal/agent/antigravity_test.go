@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -92,7 +93,7 @@ func TestAntigravityResume(t *testing.T) {
 func TestAntigravityNotSignedIn(t *testing.T) {
 	cli, started, _, _ := beginAntigravity(t, antigravityOptions(t))
 	acpReplyError(t, cli, acpExpect(t, cli, "session/new"), -32000, "Authentication required")
-	want := fmt.Sprintf("agy acp --login --gemini-dir %q", antigravityProfile())
+	want := `agy acp --login --gemini-dir "` + antigravityProfile() + `"`
 	if err := wait(t, started); err == nil || !strings.Contains(err.Error(), want) {
 		t.Errorf("Start = %v, want a hint to run %s", err, want)
 	}
@@ -178,6 +179,46 @@ func TestAntigravityCancel(t *testing.T) {
 	acpReply(t, cli, req, `{"stopReason":"cancelled"}`)
 	if err := wait(t, done); err != nil {
 		t.Errorf("cancelled turn: %v, want nil", err)
+	}
+
+	// Without a turn, Cancel sends nothing; the next turn isn't cancelled.
+	sess.Cancel()
+	done = prompt(t, sess, "next")
+	req = acpExpect(t, cli, "session/prompt")
+	cli.send(t, `{"jsonrpc":"2.0","id":"p2","method":"session/request_permission","params":{"sessionId":"s1","toolCall":{"toolCallId":"call_2","name":"read_file","kind":"read","title":"File a.txt","locations":[{"path":"a.txt"}]},"options":[{"optionId":"allow","name":"Allow","kind":"allow_once"},{"optionId":"deny","name":"Deny","kind":"reject_once"}]}}`)
+	if r := cli.recv(t); r.str("result.outcome.optionId") != "allow" {
+		t.Errorf("permission reply %v in the next turn, want allow", r)
+	}
+	acpReply(t, cli, req, `{"stopReason":"end_turn"}`)
+	if err := wait(t, done); err != nil {
+		t.Errorf("turn after a cancelled one: %v", err)
+	}
+}
+
+func TestAntigravityPromptContext(t *testing.T) {
+	sess, cli, _ := startFakeAntigravity(t, antigravityOptions(t))
+	ctx, cancel := context.WithCancel(t.Context())
+	done := async(func() error { return sess.Prompt(ctx, "hi") })
+	acpExpect(t, cli, "session/prompt")
+	cancel()
+	if err := wait(t, done); !errors.Is(err, context.Canceled) {
+		t.Errorf("Prompt = %v, want ctx's error", err)
+	}
+}
+
+// A settings file that holds null, as a hand edit can leave it.
+func TestAntigravityNullSettings(t *testing.T) {
+	opts := antigravityOptions(t)
+	settings := filepath.Join(antigravityProfile(), "antigravity-cli", "settings.json")
+	if err := os.MkdirAll(filepath.Dir(settings), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(settings, []byte("null"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	startFakeAntigravity(t, opts)
+	if got, _ := os.ReadFile(settings); decodeMap(t, got)["toolPermission"] != "strict" {
+		t.Errorf("settings.json = %s, want strict", got)
 	}
 }
 
@@ -270,6 +311,26 @@ func TestAntigravityPermissions(t *testing.T) {
 		}})
 		return r.str("result.outcome.optionId") == "allow"
 	})
+
+	// Calls the shared cases don't cover, which agy could describe this way.
+	for _, c := range []struct {
+		name string
+		call map[string]any
+	}{
+		{"another server's tool, said to read", map[string]any{"toolCallId": "c1", "name": "mcp_other_fetch", "kind": "read"}},
+		{"our server, no tool", map[string]any{"toolCallId": "c2", "name": "mcp_tutortop_", "kind": "other"}},
+		{"edit at an empty path", map[string]any{"toolCallId": "c3", "name": "write_file", "kind": "edit", "locations": []any{map[string]any{"path": ""}}}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			r := ask(t, "session/request_permission", map[string]any{"sessionId": "s1", "toolCall": c.call, "options": []any{
+				map[string]any{"optionId": "allow", "name": "Allow", "kind": "allow_once"},
+				map[string]any{"optionId": "deny", "name": "Deny", "kind": "reject_once"},
+			}})
+			if r.str("result.outcome.optionId") != "deny" {
+				t.Errorf("reply %v, want deny", r)
+			}
+		})
+	}
 
 	// agy may call the client's file and terminal methods only if we offer
 	// them, and we don't.
