@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 import { ChatMark, ChatRole, ChatStatus, type ChatItem, type Working } from "@/lib/api";
-import { afterSetup, mergeChat, showThinking, workingLine } from "@/lib/chat";
+import { afterSetup, mergeChat, showThinking, upsertChat, workingLine } from "@/lib/chat";
 
 const item = (id: string, over: Partial<ChatItem> = {}): ChatItem => ({ id, thread: "plan", role: ChatRole.RoleAssistant, text: id, at: "", ...over });
 
@@ -9,6 +9,17 @@ test("loading a transcript keeps live messages that aren't saved yet", () => {
   const live = [item("2"), item("3", { text: "streaming" })];
   expect(mergeChat(saved, live).map((x) => x.id)).toEqual(["1", "2", "3"]);
   expect(mergeChat(null, live)).toEqual(live);
+});
+
+test("a failed tool call leaves the chat, live or saved; a failure notice stays", () => {
+  const blocked = item("t", { role: ChatRole.RoleTool, text: "curl.exe -sI https://go.dev", status: ChatStatus.ChatFailed });
+  const notice = item("n", { role: ChatRole.RoleNotice, text: "Agent crashed", status: ChatStatus.ChatFailed });
+  const running = upsertChat([item("1")], { ...blocked, status: ChatStatus.ChatRunning });
+  expect(running.map((x) => x.id)).toEqual(["1", "t"]);
+  expect(upsertChat(running, blocked).map((x) => x.id)).toEqual(["1"]);
+  expect(upsertChat([item("1")], blocked).map((x) => x.id)).toEqual(["1"]);
+  expect(upsertChat([item("1")], notice).map((x) => x.id)).toEqual(["1", "n"]);
+  expect(mergeChat([item("1"), blocked, notice], []).map((x) => x.id)).toEqual(["1", "n"]);
 });
 
 test("thinking shows while the tutor works, unless a reply streams or a tool call runs", () => {

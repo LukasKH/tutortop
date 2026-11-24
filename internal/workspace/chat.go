@@ -45,7 +45,7 @@ type ChatStatus string
 const (
 	ChatRunning ChatStatus = "running" // a tool call still at work
 	ChatDone    ChatStatus = "done"
-	ChatFailed  ChatStatus = "failed" // a tool call that failed, or a notice about a problem
+	ChatFailed  ChatStatus = "failed" // a notice about a problem, or a tool call that failed (sent live, never saved)
 )
 
 func (w *Workspace) AppendChat(item ChatItem) error {

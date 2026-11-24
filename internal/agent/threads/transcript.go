@@ -91,7 +91,9 @@ func (t *transcript) handle(ev agent.Event) {
 		}
 		item.Status = chatStatus[tool.Status]
 		events.Emit(events.ChatMessage, events.Chat{Workspace: w.ID, Item: *item})
-		if tool.Status != agent.ToolRunning {
+		// A failed call is the tutor's to recover from, not the learner's:
+		// the UI drops it, and it isn't saved.
+		if tool.Status == agent.ToolDone {
 			_ = w.AppendChat(*item)
 		}
 	}
@@ -139,21 +141,22 @@ func (t *transcript) endTurn() {
 }
 
 // toolLabel turns an agent tool call into a short line for the learner, or
-// hides it. The tutor reading files or keeping its todo list is noise;
-// changes to the learner's mission or plan are worth seeing. Our own tools
-// show as their entry in the tool table says (mcp.ChatLine).
+// hides it. The tutor reading files or keeping its todo list is noise, and
+// the policy refuses every shell command, so those only ever fail; changes to
+// the learner's mission or plan are worth seeing. Our own tools show as their
+// entry in the tool table says (mcp.ChatLine).
 func toolLabel(t agent.Tool) (string, bool) {
 	if t.MCPServer == mcp.Name {
 		return mcp.ChatLine(t.MCPTool)
 	}
 	switch t.Kind {
-	case agent.ToolRead, agent.ToolSearch, agent.ToolThink:
+	case agent.ToolRead, agent.ToolSearch, agent.ToolThink, agent.ToolExecute:
 		return "", false
 	case agent.ToolEdit:
 		if label := editLabel(t.Paths); label != "" {
 			return label, true
 		}
-	case agent.ToolExecute, agent.ToolFetch, agent.ToolOther:
+	case agent.ToolFetch, agent.ToolOther:
 		// They show as the agent titles them, below.
 	}
 	return t.Title, t.Title != ""

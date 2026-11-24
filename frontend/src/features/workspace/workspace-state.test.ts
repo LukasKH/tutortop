@@ -40,8 +40,12 @@ describe("writers", () => {
   const failed: ChatItem = { id: "1", thread: "write-a", role: ChatRole.RoleNotice, text: "Agent crashed", status: ChatStatus.ChatFailed, at: "" };
 
   test("a failed writer is remembered until it starts again, and its check starts afresh", () => {
-    // A message that isn't a failure doesn't count.
-    let s = run({ type: "check", check: check("a", false), seq: 1 }, { type: "chat", item: { ...failed, status: ChatStatus.ChatDone } });
+    // A message that isn't a failure doesn't count, nor a failed tool call the writer recovers from.
+    let s = run(
+      { type: "check", check: check("a", false), seq: 1 },
+      { type: "chat", item: { ...failed, status: ChatStatus.ChatDone } },
+      { type: "chat", item: { ...failed, role: ChatRole.RoleTool, text: "curl.exe -sI https://go.dev" } },
+    );
     expect(s.writeFailed.a).toBeUndefined();
     s = reduceWorkspace(s, { type: "chat", item: failed });
     expect(s.writeFailed.a).toBe("Agent crashed");

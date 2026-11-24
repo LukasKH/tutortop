@@ -126,7 +126,7 @@ export enum ChatStatus {
     ChatDone = "done",
 
     /**
-     * a tool call that failed, or a notice about a problem
+     * a notice about a problem, or a tool call that failed (sent live, never saved)
      */
     ChatFailed = "failed",
 };

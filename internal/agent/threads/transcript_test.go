@@ -76,6 +76,48 @@ func TestTranscriptKeepsLatestThinking(t *testing.T) {
 	}
 }
 
+// The learner's chat keeps the tutor's finished work and real problems. Shell
+// commands, which the policy always refuses, and calls that fail and leave
+// the tutor to recover aren't saved.
+func TestTranscriptSavesOnlyWorkThatHappened(t *testing.T) {
+	w := newTestWorkspace(t)
+	tr := newTranscript(w, "plan")
+	tool := func(tool agent.Tool) { tr.handle(agent.Event{Kind: agent.EventTool, Tool: tool}) }
+
+	tool(agent.Tool{ID: "1", Status: agent.ToolRunning, Kind: agent.ToolEdit, Paths: []string{"MISSION.md"}})
+	tool(agent.Tool{ID: "1", Status: agent.ToolDone})
+	tool(agent.Tool{ID: "2", Status: agent.ToolRunning, Kind: agent.ToolExecute, Title: "curl.exe -sI https://go.dev/blog/range-functions"})
+	tool(agent.Tool{ID: "2", Status: agent.ToolFailed})
+	tool(agent.Tool{ID: "3", Status: agent.ToolRunning, Kind: agent.ToolFetch, Title: "Fetched https://go.dev"})
+	tool(agent.Tool{ID: "3", Status: agent.ToolFailed})
+	tr.handle(agent.Event{Kind: agent.EventWarning, Text: "Tutortop's tools didn't connect"})
+	tool(agent.Tool{ID: "4", Status: agent.ToolRunning, Kind: agent.ToolFetch, Title: "Searched the web: iterators"})
+	tr.endTurn()
+
+	chat, err := w.Chat("plan")
+	if err != nil {
+		t.Fatal(err)
+	}
+	type line struct {
+		role   workspace.ChatRole
+		text   string
+		status workspace.ChatStatus
+	}
+	want := []line{
+		{workspace.RoleTool, "Updated your mission", workspace.ChatDone},
+		{workspace.RoleNotice, "Tutortop's tools didn't connect", workspace.ChatFailed},
+		{workspace.RoleTool, "Searched the web: iterators", workspace.ChatDone},
+	}
+	if len(chat) != len(want) {
+		t.Fatalf("chat = %+v, want %+v", chat, want)
+	}
+	for i, c := range chat {
+		if got := (line{c.Role, c.Text, c.Status}); got != want[i] {
+			t.Errorf("chat[%d] = %+v, want %+v", i, got, want[i])
+		}
+	}
+}
+
 // captureWorking collects the workspace's thread:working events until the
 // test ends.
 func captureWorking(t *testing.T, wsID string) func() []events.Working {
