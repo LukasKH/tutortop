@@ -11,6 +11,7 @@ import (
 	"github.com/LukasKH/tutortop/internal/agent"
 	"github.com/LukasKH/tutortop/internal/events"
 	"github.com/LukasKH/tutortop/internal/mcp"
+	"github.com/LukasKH/tutortop/internal/text"
 	"github.com/LukasKH/tutortop/internal/workspace"
 )
 
@@ -28,6 +29,8 @@ func postFailure(w *workspace.Workspace, thread, msg string) {
 
 // transcript turns one thread agent's events into chat items. Streaming
 // text is sent to the UI as it arrives and saved to the chat when complete.
+// What the agent does in between, thinking or writing a long tool call, is
+// only shown while it lasts.
 type transcript struct {
 	ws     *workspace.Workspace
 	thread string
@@ -35,10 +38,16 @@ type transcript struct {
 	mu      sync.Mutex
 	current *workspace.ChatItem            // assistant message being streamed
 	tools   map[string]*workspace.ChatItem // running tool calls by id; nil if hidden
+	working events.Working                 // shown until the next message or tool call
 }
 
 func newTranscript(w *workspace.Workspace, thread string) *transcript {
-	return &transcript{ws: w, thread: thread, tools: map[string]*workspace.ChatItem{}}
+	return &transcript{
+		ws:      w,
+		thread:  thread,
+		tools:   map[string]*workspace.ChatItem{},
+		working: events.Working{Workspace: w.ID, Thread: thread},
+	}
 }
 
 func (t *transcript) handle(ev agent.Event) {
@@ -48,7 +57,14 @@ func (t *transcript) handle(ev agent.Event) {
 	switch ev.Kind {
 	case agent.EventWarning:
 		postFailure(w, t.thread, ev.Text)
+	case agent.EventThinking:
+		t.showWorking(text.Tail(t.working.Thinking+ev.Text, maxThinking), "")
+	case agent.EventPreparing:
+		if label := preparingLabel(ev.Tool); label != "" {
+			t.showWorking(t.working.Thinking, label)
+		}
 	case agent.EventText:
+		t.showWorking("", "")
 		if t.current == nil {
 			t.current = &workspace.ChatItem{ID: uuid.New().String(), Thread: t.thread, Role: workspace.RoleAssistant, At: time.Now()}
 		}
@@ -56,6 +72,7 @@ func (t *transcript) handle(ev agent.Event) {
 		events.Emit(events.ChatMessage, events.Chat{Workspace: w.ID, Item: *t.current})
 	case agent.EventTool:
 		t.endText()
+		t.showWorking("", "")
 		tool := ev.Tool
 		// A call's first event decides whether it shows; later ones only
 		// update its status.
@@ -87,6 +104,16 @@ var chatStatus = map[agent.ToolStatus]workspace.ChatStatus{
 	agent.ToolFailed:  workspace.ChatFailed,
 }
 
+// showWorking shows what the agent is doing between messages and tool
+// calls, if it changed; empty strings clear it.
+func (t *transcript) showWorking(thinking, preparing string) {
+	if thinking == t.working.Thinking && preparing == t.working.Preparing {
+		return
+	}
+	t.working.Thinking, t.working.Preparing = thinking, preparing
+	events.Emit(events.ThreadWorking, t.working)
+}
+
 func (t *transcript) endText() {
 	if t.current != nil {
 		_ = t.ws.AppendChat(*t.current)
@@ -100,6 +127,7 @@ func (t *transcript) endTurn() {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	t.endText()
+	t.showWorking("", "")
 	for _, item := range t.tools {
 		if item != nil {
 			item.Status = workspace.ChatDone
@@ -131,6 +159,19 @@ func toolLabel(t agent.Tool) (string, bool) {
 	return t.Title, t.Title != ""
 }
 
+// preparingLabel is the line shown while the agent writes a tool call, or ""
+// for a call that's quick to write. Only its name is known yet: an edit's
+// file isn't.
+func preparingLabel(t agent.Tool) string {
+	if t.MCPServer == mcp.Name {
+		return mcp.PreparingLine(t.MCPTool)
+	}
+	if t.Kind == agent.ToolEdit {
+		return "Writing a file"
+	}
+	return ""
+}
+
 // editLabel is the line for an edit of one of the learner's own documents,
 // or "" for any other edit.
 func editLabel(paths []string) string {
@@ -154,3 +195,8 @@ func editLabel(paths []string) string {
 }
 
 var learningRecord = regexp.MustCompile(`^\d{4}-.*\.md$`)
+
+// maxThinking is how much of the agent's latest reasoning the UI gets, in
+// bytes: enough to read, while long reasoning doesn't make every update
+// heavier.
+const maxThinking = 4000

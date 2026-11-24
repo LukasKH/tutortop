@@ -36,7 +36,7 @@ export function WorkspaceView({ id, onBack }: Props) {
   const nav = useOpenItem(id, live);
   const chat = useChatPanel();
   const composer = useComposer();
-  const { threads, unread } = useChatThreads(id, nav.thread, { ready: live.ws !== null, visible: chat.open, onError: live.fail });
+  const { threads, unread, working } = useChatThreads(id, nav.thread, { ready: live.ws !== null, visible: chat.open, onError: live.fail });
 
   const { ws, questions, fail } = live;
   if (!ws) {
@@ -71,7 +71,7 @@ export function WorkspaceView({ id, onBack }: Props) {
   }
 
   return (
-    <LiveWorkspaceContext value={{ id, live, nav, threads, lang: details.lang }}>
+    <LiveWorkspaceContext value={{ id, live, nav, threads, working, lang: details.lang }}>
       <div
         // Curriculum rail, centre, chat panel (folded into a 44px rail when collapsed).
         className={cn("relative grid h-full", setup ? "grid-cols-[236px_minmax(0,1fr)]" : "grid-cols-[236px_minmax(0,1fr)_var(--chat-w)]")}
@@ -108,6 +108,7 @@ export function WorkspaceView({ id, onBack }: Props) {
             // The setup interview stays out of the chat panel.
             items={thread === PLAN_THREAD ? afterSetup(threads[PLAN_THREAD] ?? []) : (threads[thread] ?? [])}
             busy={threadBusy}
+            working={working[thread]}
             questions={
               questions && place.chat === thread ? (
                 <QuestionsForm

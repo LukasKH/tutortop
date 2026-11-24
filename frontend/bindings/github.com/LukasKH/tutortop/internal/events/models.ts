@@ -114,6 +114,29 @@ export interface Task {
 }
 
 /**
+ * Working is what a thread's agent is doing between its messages and tool
+ * calls: its reasoning, or a long tool call it's writing. It's shown live and
+ * never saved, and sent again empty once a message or tool call takes over,
+ * or the turn ends.
+ */
+export interface Working {
+    "workspace": string;
+    "thread": string;
+
+    /**
+     * Thinking is the end of the agent's reasoning since its last message or
+     * tool call, as far as its CLI shows it.
+     */
+    "thinking": string;
+
+    /**
+     * Preparing is the tool call it's writing, for the learner: "Drafting
+     * your plan".
+     */
+    "preparing": string;
+}
+
+/**
  * Workspace names the workspace that changed.
  */
 export interface Workspace {

@@ -17,6 +17,9 @@ export const lessonThread = (lessonId: string) => `lesson-${lessonId}`;
  */
 export const objectiveOfWriter = (thread: string) => (thread.startsWith("write-") ? thread.slice("write-".length) : null);
 
+/** The thread of an objective's writer (workspace.WriterThread). */
+export const writerThread = (objectiveId: string) => `write-${objectiveId}`;
+
 /** A lesson is finished once every quiz question has an answer (workspace.LessonStatus.Done). */
 export const lessonDone = (l: LessonStatus) => l.answered >= l.questions;
 

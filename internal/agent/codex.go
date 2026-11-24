@@ -174,6 +174,20 @@ func (s *codexSession) notify(method string, params json.RawMessage) {
 		}](params); err == nil {
 			s.onEvent(Event{Kind: EventText, Text: p.Delta})
 		}
+	// Codex shows its reasoning as a summary, in parts that each start with
+	// a bold title.
+	case "item/reasoning/summaryTextDelta":
+		if p, err := decode.JSON[struct {
+			Delta string `json:"delta"`
+		}](params); err == nil {
+			s.onEvent(Event{Kind: EventThinking, Text: p.Delta})
+		}
+	case "item/reasoning/summaryPartAdded":
+		if p, err := decode.JSON[struct {
+			SummaryIndex int `json:"summaryIndex"`
+		}](params); err == nil && p.SummaryIndex > 0 {
+			s.onEvent(Event{Kind: EventThinking, Text: "\n\n"})
+		}
 	case "item/started", "item/completed":
 		p, err := decode.JSON[struct {
 			Item codexItem `json:"item"`

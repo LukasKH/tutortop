@@ -60,7 +60,9 @@ The second row is easy to get wrong. CLIs often report an interrupted turn as a 
 
 `onEvent` gets events from one goroutine, in the order the CLI reported them. Deliver every event of a turn before `Prompt` returns. In practice that means calling `onEvent` from the same read loop that sees the end of the turn, before it wakes `Prompt`.
 
-- `EventText` is the next piece of the reply to the learner. Joined, the pieces are the reply. Don't send reasoning or thinking text. The app starts a new message after each tool call.
+- `EventText` is the next piece of the reply to the learner. Joined, the pieces are the reply. Don't send reasoning or thinking text here. The app starts a new message after each tool call.
+- `EventThinking` is the next piece of the agent's reasoning, as far as the CLI shows it (Claude Code's `thinking_delta`, Codex's reasoning summary, ACP's `agent_thought_chunk`). The app shows it live while the agent works and doesn't save it; the next message or tool call clears it.
+- `EventPreparing` is the agent starting to write a tool call, if the CLI streams calls as they're written (Claude Code's `content_block_start` for a `tool_use` block). It carries the call's `ID` and what its name tells: `Kind`, `MCPServer`/`MCPTool`, `Subagent`. The app shows a line for long calls, such as "Drafting your plan" (`mcp.PreparingLine`), until the call's `EventTool` arrives.
 - `EventTool` is a tool call starting or changing status. Its first event describes the call in full: `Kind`, `Title`, `Paths`, and `MCPServer`/`MCPTool` for MCP tools. Later events for the same `ID` may carry only `ID` and `Status`. End every call with `ToolDone` or `ToolFailed`; a declined call is `ToolFailed`. Ids must be unique within the session.
 - `EventWarning` is something the learner must know. Send one if the CLI reports that Tutortop's MCP server didn't connect, since without it the tutor can talk but can't create tasks or ask questions. Send it once, not on every turn.
 
@@ -125,7 +127,8 @@ The Agent Client Protocol is JSON-RPC over stdio. It maps onto this package clos
 | `ResumeID` | `LoadSession`, if the agent offers it; otherwise start fresh |
 | `Prompt` | `Prompt`; the `StopReason` is `end_turn` or `cancelled` → `nil`, `refusal`, `max_tokens` and the like → an error |
 | `Cancel` | the `session/cancel` notification |
-| `EventText` | `session/update` with `agent_message_chunk` (skip `agent_thought_chunk`) |
+| `EventText` | `session/update` with `agent_message_chunk` |
+| `EventThinking` | `session/update` with `agent_thought_chunk` |
 | `EventTool` | `tool_call` (full: kind, title, locations → `Paths`, and `MCPServer`/`MCPTool` as below) and `tool_call_update`; status `pending`/`in_progress` → running, `completed` → done, `failed` → failed |
 | `policy.allow` | `session/request_permission`: describe its `toolCall` the same way, then pick an allow-once or reject-once option |
 | `xModels` | the session's config options (`configOptions` in the `NewSession` reply): the select with category `model` gives the models, the one with category `thought_level` the efforts. ACP reports them per session only, so start the binary in a temporary folder, `Initialize`, `NewSession`, read the options and `Close`, as `codexModels` does with Codex |

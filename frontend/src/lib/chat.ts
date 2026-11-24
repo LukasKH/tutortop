@@ -1,4 +1,4 @@
-import { ChatMark, ChatRole, ChatStatus, type ChatItem } from "@/lib/api";
+import { ChatMark, ChatRole, ChatStatus, type ChatItem, type Working } from "@/lib/api";
 
 /** Inserts or replaces a chat item by id (streaming text and tool updates reuse the id). */
 export function upsertChat(items: ChatItem[], item: ChatItem): ChatItem[] {
@@ -33,12 +33,32 @@ export function mergeChat(saved: ChatItem[] | null, live: ChatItem[]): ChatItem[
  * Whether a conversation shows that its tutor is thinking: the tutor is
  * working and nothing in the conversation moves already. A running tool call
  * has its own spinner, and a reply moves as it streams in. Tool calls at the
- * end run together, so any of them still running counts.
+ * end run together, so any of them still running counts. What the tutor is
+ * working on always shows: the backend clears it once a message or tool call
+ * takes over.
  */
-export function showThinking(items: ChatItem[], busy: boolean): boolean {
-  if (!busy || items.at(-1)?.role === ChatRole.RoleAssistant) return false;
+export function showThinking(items: ChatItem[], busy: boolean, working?: Working): boolean {
+  if (!busy) return false;
+  if (working?.thinking || working?.preparing) return true;
+  if (items.at(-1)?.role === ChatRole.RoleAssistant) return false;
   for (let i = items.length - 1; i >= 0 && items[i].role === ChatRole.RoleTool; i--) {
     if (items[i].status === ChatStatus.ChatRunning) return false;
   }
   return true;
 }
+
+/**
+ * One line for what the tutor is working on: the tool call it's writing, or
+ * the latest line of its reasoning without Markdown's marks. Null for neither.
+ */
+export function workingLine(working: Working | undefined): string | null {
+  if (working?.preparing) return `${working.preparing}…`;
+  return (working?.thinking ?? "").split("\n").map(plainLine).findLast(Boolean) ?? null;
+}
+
+/** A line of Markdown as plain text: "- **Next** `step`" reads "Next step". */
+const plainLine = (line: string) =>
+  line
+    .replace(/\*\*|__|`/g, "")
+    .replace(/^[\s#>*-]+/, "")
+    .trim();

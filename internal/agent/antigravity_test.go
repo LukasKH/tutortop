@@ -132,6 +132,7 @@ func TestAntigravityTurn(t *testing.T) {
 	edit := Tool{ID: "call_2", Kind: ToolEdit, Paths: []string{notes}}
 	run := Tool{ID: "call_3", Kind: ToolExecute}
 	want := []Event{
+		{Kind: EventThinking, Text: "Thinking about it."},
 		{Kind: EventText, Text: "Let me "},
 		{Kind: EventText, Text: "look."},
 		{Kind: EventTool, Tool: withStatus(mcp, ToolRunning)},

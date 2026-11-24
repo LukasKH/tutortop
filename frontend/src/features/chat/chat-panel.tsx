@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef, type ReactNode } from "react";
-import { ChatRole, ChatStatus, type ChatItem, type SandboxCheck } from "@/lib/api";
+import { ChatRole, ChatStatus, type ChatItem, type SandboxCheck, type Working } from "@/lib/api";
 import { useTutor } from "@/features/settings/use-tutor";
 import { TutorPicker } from "@/features/settings/tutor-picker";
 import { AgentIcon } from "@/components/agent-icon";
@@ -32,6 +32,8 @@ type Props = {
   items: ChatItem[];
   /** The thread's tutor is working (isBusy, workspace-state.ts): "Thinking…" shows and hints wait. */
   busy: boolean;
+  /** What the tutor is working on between messages, shown in place of "Thinking…". */
+  working?: Working;
   /** Slots: the questions form (or a pointer to it) and the status line above the composer. */
   questions: ReactNode;
   status: ReactNode;
@@ -93,7 +95,7 @@ export function ChatPanel({ composer: { draft, setDraft, inputRef }, ...p }: Pro
             <Message key={item.id} item={item} />
           ))}
           {p.questions}
-          <Thinking items={p.items} busy={p.busy} />
+          <Thinking items={p.items} busy={p.busy} working={p.working} />
         </div>
         {p.hint && <HintPill level={p.hint.level} busy={p.busy} onHint={p.hint.onHint} />}
       </div>

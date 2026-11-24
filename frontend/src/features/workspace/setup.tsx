@@ -21,7 +21,7 @@ type Props = {
  * the tutor stops to ask something in words, the learner replies here.
  */
 export function Setup({ questions }: Props) {
-  const { id, live, threads } = useLiveWorkspace();
+  const { id, live, threads, working } = useLiveWorkspace();
   const items = threads[PLAN_THREAD] ?? [];
   const busy = live.isBusy(PLAN_THREAD);
   // Only what happened since the learner last wrote is shown.
@@ -53,7 +53,13 @@ export function Setup({ questions }: Props) {
       ) : (
         <>
           {(busy || recent.length > 0) && (
-            <WorkLog items={recent} busy={busy} check={live.toolchainCheck} onStop={() => ChatService.StopAgent(id, PLAN_THREAD).catch(live.fail)} />
+            <WorkLog
+              items={recent}
+              busy={busy}
+              working={working[PLAN_THREAD]}
+              check={live.toolchainCheck}
+              onStop={() => ChatService.StopAgent(id, PLAN_THREAD).catch(live.fail)}
+            />
           )}
           {!busy && items.length > 0 && <Reply onSend={(text) => ChatService.SendMessage(id, text, PLAN_THREAD)} />}
         </>

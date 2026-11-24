@@ -1,17 +1,20 @@
 import { useEffect, useEffectEvent, useState } from "react";
-import { ChatService, AppEvents, useEvent, type ChatItem } from "@/lib/api";
+import { ChatService, AppEvents, useEvent, type ChatItem, type Working } from "@/lib/api";
 import { mergeChat, upsertChat } from "@/lib/chat";
 import { objectiveOfWriter } from "@/lib/workspace";
 
 /**
- * The workspace's conversations by thread, and which have unread messages.
- * The shown thread loads its saved transcript; new messages stream in by
- * event. Conversations stay in memory, so live (still streaming) items survive
- * switching between threads.
+ * The workspace's conversations by thread, which have unread messages, and
+ * what each thread's agent is working on between its messages (its latest
+ * reasoning or the tool call it's writing; never saved). The shown thread
+ * loads its saved transcript; new messages stream in by event. Conversations
+ * stay in memory, so live (still streaming) items survive switching between
+ * threads.
  */
 export function useChatThreads(id: string, thread: string, { ready, visible, onError }: { ready: boolean; visible: boolean; onError: (e: unknown) => void }) {
   const [threads, setThreads] = useState<Record<string, ChatItem[]>>({});
   const [unread, setUnread] = useState<Record<string, boolean>>({});
+  const [working, setWorking] = useState<Record<string, Working | undefined>>({});
 
   // Load the shown thread's transcript whenever it changes, merged with
   // anything that arrived live and isn't saved yet.
@@ -38,5 +41,10 @@ export function useChatThreads(id: string, thread: string, { ready, visible, onE
     if (t !== thread || !visible) setUnread((u) => (u[t] ? u : { ...u, [t]: true }));
   });
 
-  return { threads, unread };
+  // Writers' too: an objective's page shows what its writer is working on.
+  useEvent(AppEvents.ThreadWorking, (w) => {
+    if (w.workspace === id) setWorking((all) => ({ ...all, [w.thread]: w }));
+  });
+
+  return { threads, unread, working };
 }

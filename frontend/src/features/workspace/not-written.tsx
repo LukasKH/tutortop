@@ -1,5 +1,7 @@
 import { useState } from "react";
 import { WorkspaceService, errorText, type Objective, type SandboxCheck } from "@/lib/api";
+import { workingLine } from "@/lib/chat";
+import { writerThread } from "@/lib/workspace";
 import type { Part } from "@/features/workspace/open-item";
 import { useLiveWorkspace } from "@/features/workspace/use-workspace";
 import { Spinner } from "@/components/ui/spinner";
@@ -28,7 +30,7 @@ type Props = {
  * free. The page switches to the real thing when it arrives.
  */
 export function NotWritten({ objective, part, moduleTitle, writing, check, failed, other }: Props) {
-  const { id: wsId } = useLiveWorkspace();
+  const { id: wsId, working } = useLiveWorkspace();
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState("");
   // A writer that finishes while this page is still open didn't write this part.
@@ -39,6 +41,8 @@ export function NotWritten({ objective, part, moduleTitle, writing, check, faile
     setUnfinished(!writing);
   }
 
+  // What the writer is thinking or writing now, under the status.
+  const now = writing ? workingLine(working[writerThread(objective.id)]) : null;
   const name = objective.name || objective.title;
   const what = part === "lesson" ? "lesson" : "exercise";
 
@@ -71,6 +75,11 @@ export function NotWritten({ objective, part, moduleTitle, writing, check, faile
               <p className="flex flex-wrap items-center gap-2">
                 <Spinner className="size-3.5" aria-hidden /> {status(part, check, !other)}
               </p>
+              {now && (
+                <p className="truncate text-sm text-muted-foreground" role="status">
+                  {now}
+                </p>
+              )}
               <p className="text-sm text-muted-foreground">
                 It opens here when it's ready. Writing runs in the background, so you can open something else meanwhile.
               </p>

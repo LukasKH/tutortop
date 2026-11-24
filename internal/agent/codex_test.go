@@ -92,6 +92,10 @@ func TestCodexTurn(t *testing.T) {
 	cli.send(t,
 		`{"method":"turn/started","params":{"threadId":"thr_1","turn":{"id":"turn_1","status":"inProgress","items":[]}}}`,
 		`{"method":"item/started","params":{"threadId":"thr_1","turnId":"turn_1","item":{"type":"reasoning","id":"rs_1","summary":[],"content":[]}}}`,
+		`{"method":"item/reasoning/summaryPartAdded","params":{"threadId":"thr_1","turnId":"turn_1","itemId":"rs_1","summaryIndex":0}}`,
+		`{"method":"item/reasoning/summaryTextDelta","params":{"threadId":"thr_1","turnId":"turn_1","itemId":"rs_1","delta":"**Reading notes**","summaryIndex":0}}`,
+		`{"method":"item/reasoning/summaryPartAdded","params":{"threadId":"thr_1","turnId":"turn_1","itemId":"rs_1","summaryIndex":1}}`,
+		`{"method":"item/reasoning/summaryTextDelta","params":{"threadId":"thr_1","turnId":"turn_1","itemId":"rs_1","delta":"**Planning**","summaryIndex":1}}`,
 		`{"method":"item/started","params":{"threadId":"thr_1","turnId":"turn_1","item":{"type":"agentMessage","id":"msg_1","text":""}}}`,
 		`{"method":"item/agentMessage/delta","params":{"threadId":"thr_1","turnId":"turn_1","itemId":"msg_1","delta":"Let me "}}`,
 		`{"method":"item/agentMessage/delta","params":{"threadId":"thr_1","turnId":"turn_1","itemId":"msg_1","delta":"look."}}`,
@@ -112,6 +116,10 @@ func TestCodexTurn(t *testing.T) {
 	edit := Tool{ID: "fc_1", Kind: ToolEdit, Paths: []string{notes}}
 	mcp := Tool{ID: "mcp_1", Kind: ToolOther, MCPServer: "tutortop", MCPTool: "create_task"}
 	want := []Event{
+		// Summary parts are kept apart, as Codex shows them.
+		{Kind: EventThinking, Text: "**Reading notes**"},
+		{Kind: EventThinking, Text: "\n\n"},
+		{Kind: EventThinking, Text: "**Planning**"},
 		{Kind: EventText, Text: "Let me "},
 		{Kind: EventText, Text: "look."},
 		{Kind: EventTool, Tool: withStatus(run, ToolRunning)},

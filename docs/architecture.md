@@ -79,6 +79,7 @@ All events live in `internal/events`, apart from the services: a service, a thre
 | --- | --- | --- |
 | `chat:message` | `events.Chat` | a chat message is added or updated, including each streamed piece of a reply |
 | `thread:busy` | `events.Busy` | a thread's tutor or writer starts or stops working |
+| `thread:working` | `events.Working` | a thread's agent reasons or starts writing a long tool call, or a message, tool call or the turn's end clears that; never saved |
 | `check:status` | `events.Check` | a sandbox check (`events.SandboxCheck`) started or finished: a writer's new task in the quality gate, or a language a chat sets up |
 | `task:published` | `events.Task` | a writer published a task |
 | `lesson:published` | `events.Lesson` | a writer published a lesson |
@@ -142,7 +143,7 @@ All files are in `features/workspace/` unless named otherwise.
 4. **Selectors.** Pure functions turn that state, and what the learner has open (`use-open-item.ts: useOpenItem`), into what each part shows: `isBusy`, `tutorBusy` and `writingObjectives` in `workspace-state.ts`; `describeItem` in `open-item.ts`; `placeQuestions` and `centerOf` in `use-open-item.ts`.
 5. **Components.** `workspace-view.tsx: WorkspaceView` calls them and hands their results to `Sidebar`, `CenterPane` and `ChatPanel` (or `ChatRail` when folded). They render them and call the services or the hooks' calls.
 
-Chat transcripts are kept apart from this: `use-chat-threads.ts: useChatThreads` loads `ChatService.Chat` for the shown thread and adds each `chat:message` to it. It drops writers' messages, and `useWorkspace` keeps only writers' failures, so each message goes to one of the two.
+Chat transcripts are kept apart from this: `use-chat-threads.ts: useChatThreads` loads `ChatService.Chat` for the shown thread and adds each `chat:message` to it. It drops writers' messages, and `useWorkspace` keeps only writers' failures, so each message goes to one of the two. It also keeps each thread's latest `thread:working`, writers' included, which `Thinking` (chats and the setup page's work log) and a not-written page show in place of a bare "Thinking…".
 
 The open item is an `OpenItem`: a task, a lesson, or an objective's lesson or exercise that isn't written yet (`open-item.ts`). `centerOf` decides what the centre shows and returns a `Center` that carries everything that page shows from the snapshot. `CenterPane` renders it, taking only busy threads, checks and the calls from `useWorkspace`. `placeQuestions` decides where the tutor's questions show: the centre, the chat of the thread that asked, and the count on "Your plan". Thread names (`plan`, a task id, `lesson-<id>`, `write-<objective>`) are the backend's and live in `lib/workspace.ts`. Only the hooks and the chat pass them around.
 

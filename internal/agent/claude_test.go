@@ -113,10 +113,14 @@ func TestClaudeTurn(t *testing.T) {
 		`{"type":"stream_event","event":{"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"look."}}}`,
 		`{"type":"assistant","message":{"content":[{"type":"text","text":"Let me look."},{"type":"tool_use","id":"t1","name":"Read","input":{"file_path":"`+notes+`"}}]}}`,
 		`{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t1","content":"x"}]}}`,
+		// A long call shows as it's written, before the whole call arrives.
+		`{"type":"stream_event","event":{"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"t2","name":"mcp__tutortop__create_task","input":{}}}}`,
+		`{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\"title\":"}}}`,
 		`{"type":"assistant","message":{"content":[{"type":"tool_use","id":"t2","name":"mcp__tutortop__create_task","input":{}}]}}`,
 		`{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t2","is_error":true,"content":"gate failed"}]}}`,
 		// A subagent's own text isn't taken for the tutor's reply.
 		`{"type":"assistant","message":{"content":[{"type":"tool_use","id":"a1","name":"Agent","input":{"description":"Find sources","prompt":"..."}}]}}`,
+		`{"type":"stream_event","parent_tool_use_id":"a1","event":{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"Subagent musing"}}}`,
 		`{"type":"stream_event","parent_tool_use_id":"a1","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Report for the tutor"}}}`,
 		`{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"a1","content":"found 3"}]}}`,
 		`{"type":"stream_event","parent_tool_use_id":null,"event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Done."}}}`,
@@ -126,10 +130,12 @@ func TestClaudeTurn(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := []Event{
+		{Kind: EventThinking, Text: "hmm"},
 		{Kind: EventText, Text: "Let me "},
 		{Kind: EventText, Text: "look."},
 		{Kind: EventTool, Tool: Tool{ID: "t1", Status: ToolRunning, Kind: ToolRead, Paths: []string{notes}}},
 		{Kind: EventTool, Tool: Tool{ID: "t1", Status: ToolDone}},
+		{Kind: EventPreparing, Tool: Tool{ID: "t2", Kind: ToolOther, MCPServer: "tutortop", MCPTool: "create_task"}},
 		{Kind: EventTool, Tool: Tool{ID: "t2", Status: ToolRunning, Kind: ToolOther, MCPServer: "tutortop", MCPTool: "create_task"}},
 		{Kind: EventTool, Tool: Tool{ID: "t2", Status: ToolFailed}},
 		{Kind: EventTool, Tool: Tool{ID: "a1", Status: ToolRunning, Kind: ToolOther, Subagent: true}},

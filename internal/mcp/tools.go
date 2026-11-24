@@ -29,6 +29,21 @@ func ChatLine(tool string) (line string, shown bool) {
 	return hidden, false
 }
 
+// PreparingLine is the line shown while the agent writes a call to one of
+// our tools, or "" if it's quick to write.
+func PreparingLine(tool string) string {
+	return preparing[tool]
+}
+
+// preparing are the tools whose input is long enough to write, such as a
+// whole plan, that the learner should see what the agent is working on.
+var preparing = map[string]string{
+	askUserTool.Name:           "Writing questions for you",
+	proposeCurriculumTool.Name: "Drafting your plan",
+	createLessonTool.Name:      "Writing the lesson",
+	createTaskTool.Name:        "Writing the exercise",
+}
+
 // tools lists every tool, the line its calls show as in the chat, and the
 // kinds of thread that get it. Chats (the plan, a task's, a lesson's) talk
 // with the learner and shape the plan. Only an objective's writer publishes

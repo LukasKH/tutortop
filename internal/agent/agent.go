@@ -113,8 +113,8 @@ var ErrExited = errors.New("the agent stopped")
 // may also come between turns.
 type Event struct {
 	Kind EventKind
-	Text string // EventText: the next piece of the reply; EventWarning: the message
-	Tool Tool   // EventTool
+	Text string // EventText, EventThinking: the next piece; EventWarning: the message
+	Tool Tool   // EventTool, EventPreparing
 }
 
 // EventKind says what an [Event] carries.
@@ -125,6 +125,18 @@ const (
 	// its reasoning. The pieces of a reply, joined, are the reply; a tool
 	// event between two pieces splits them into two messages.
 	EventText EventKind = "text"
+	// EventThinking is the next piece of the agent's reasoning, as far as
+	// the CLI shows it (often a summary). It's progress to show while the
+	// agent works, not part of the reply, and isn't kept. Pieces of one
+	// stretch of reasoning, joined, are its text.
+	EventThinking EventKind = "thinking"
+	// EventPreparing is the agent starting to write a tool call's input,
+	// which can take a while for a long one such as a plan or a task. Tool
+	// has its ID and what its name tells (Kind, MCPServer, MCPTool, Subagent)
+	// but no Status, Title or Paths; an EventTool with the same ID reports
+	// the call once it's written. Only adapters whose CLI streams a call as
+	// it's written send it.
+	EventPreparing EventKind = "preparing"
 	// EventTool is a tool call starting, or changing status (see [Tool]).
 	EventTool EventKind = "tool"
 	// EventWarning is something the learner should know, e.g. Tutortop's
