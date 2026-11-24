@@ -24,6 +24,7 @@ import { GraduationCap, HardDrive, Sparkles } from "lucide-react";
 export function SettingsDialog({ onClose }: { onClose: () => void }) {
   const { settings, change } = useSettings();
   const checkingEnv = useCheckingEnvironment();
+  const [envError, setEnvError] = useState("");
 
   if (!settings) return null;
   return (
@@ -75,13 +76,17 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
                   variant="ghost"
                   size="sm"
                   disabled={checkingEnv}
-                  onClick={() => checkEnvironment().catch(() => {})}
+                  onClick={() => {
+                    setEnvError("");
+                    checkEnvironment().catch((e) => setEnvError(errorText(e)));
+                  }}
                   title="Check for newly installed agent CLIs"
                 >
                   {checkingEnv && <Spinner />}
-                  {checkingEnv ? "Updating…" : "Update"}
+                  {checkingEnv ? "Refreshing…" : "Refresh"}
                 </Button>
               </div>
+              <ErrorText error={envError} />
               <AgentsSetting />
             </div>
           </TabsContent>

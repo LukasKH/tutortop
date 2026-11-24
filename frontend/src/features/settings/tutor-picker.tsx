@@ -92,8 +92,8 @@ function Panel({ settings, onChange }: { settings: Prefs; onChange: (next: Prefs
             type="button"
             disabled={checkingEnv}
             onClick={refresh}
-            aria-label="Update installed agents"
-            title="Update installed agents"
+            aria-label="Refresh installed agents"
+            title="Refresh installed agents"
             className="mt-auto flex size-8 items-center justify-center rounded-md text-muted-foreground outline-none hover:bg-accent hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-solid disabled:opacity-50"
           >
             <RefreshCw size={15} aria-hidden="true" className={cn(checkingEnv && "animate-spin")} />

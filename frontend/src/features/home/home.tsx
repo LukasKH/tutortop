@@ -98,7 +98,7 @@ export function Home({ lastId, onOpen }: Props) {
                 disabled={checkingEnv}
                 onClick={() => checkEnvironment().catch((e) => setError(errorText(e)))}
               >
-                {checkingEnv ? "Updating…" : "Update"}
+                {checkingEnv ? "Refreshing…" : "Refresh"}
               </Button>
               {env.sandboxHint && <code className="mt-1.5 block whitespace-pre-wrap text-foreground">{env.sandboxHint}</code>}
             </p>
