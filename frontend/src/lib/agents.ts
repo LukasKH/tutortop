@@ -39,6 +39,16 @@ export async function checkEnvironment(): Promise<Environment> {
 
 let envSeq = 0;
 
+/** Whether env lacks something Tutortop needs, as SetupDialog lists: an agent to tutor, or Docker or Podman for checks. */
+export function needsSetup(env: Environment): boolean {
+  return !hasAgent(env) || !env.sandboxOk;
+}
+
+/** Whether any agent's CLI is installed, so there can be a tutor. */
+export function hasAgent(env: Environment): boolean {
+  return (env.providers ?? []).some((p) => p.installed);
+}
+
 /** The agent's models once loaded (loadModels), else null. */
 export function useModels(agent: string): Model[] | null {
   return useSyncExternalStore(subscribe, () => store.models[agent] ?? null);

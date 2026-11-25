@@ -2,9 +2,10 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { cn } from "@/lib/utils";
 import { ActivityPanel } from "@/features/home/activity-panel";
 import { WorkspaceService, errorText, type Activity, type Environment, type Summary } from "@/lib/api";
-import { checkEnvironment, useCheckingEnvironment, useEnvironment } from "@/lib/agents";
+import { hasAgent, needsSetup, useEnvironment } from "@/lib/agents";
+import { SetupDialog } from "@/features/home/setup-dialog";
 import { IDEAS, type Idea } from "@/features/home/ideas";
-import { SettingsIcon } from "lucide-react";
+import { SettingsIcon, TriangleAlertIcon } from "lucide-react";
 import { Logo } from "@/components/logo";
 import { TutorLine } from "@/features/settings/settings-dialog";
 import { useSettings } from "@/features/settings/use-settings";
@@ -28,7 +29,9 @@ type Draft = { title: string; icon: string };
 export function Home({ lastId, onOpen }: Props) {
   const { openSettings } = useSettings();
   const env = useEnvironment();
-  const checkingEnv = useCheckingEnvironment();
+  // Null until the learner opens or closes the setup popup. Until then it opens
+  // by itself for a new user: one with no workspaces yet.
+  const [setupOpen, setSetupOpen] = useState<boolean | null>(null);
   const [workspaces, setWorkspaces] = useState<Summary[] | null>(null);
   const [creating, setCreating] = useState(false);
   const [draft, setDraft] = useState<Draft>({ title: "", icon: "" });
@@ -87,25 +90,29 @@ export function Home({ lastId, onOpen }: Props) {
             )}
           </header>
 
-          {env && !env.sandboxOk && (
-            <p className="mb-5 text-sm text-soft-foreground" role="alert">
-              Checks need Docker or Podman, and neither is available.{" "}
-              <Button
-                type="button"
-                variant="link"
-                size="sm"
-                className="h-auto px-0 text-sm"
-                disabled={checkingEnv}
-                onClick={() => checkEnvironment().catch((e) => setError(errorText(e)))}
-              >
-                {checkingEnv ? "Refreshing…" : "Refresh"}
-              </Button>
-              {env.sandboxHint && <code className="mt-1.5 block whitespace-pre-wrap text-foreground">{env.sandboxHint}</code>}
+          {env && needsSetup(env) && (
+            <p className="mb-5 flex items-center gap-2 rounded-lg border border-fail/40 bg-fail/10 px-3.5 py-2.5 text-sm text-fail" role="alert">
+              <TriangleAlertIcon size={16} className="flex-none" />
+              <span>
+                Tutortop won't work until setup is finished.{" "}
+                <Button type="button" variant="link" size="sm" className="h-auto px-0 text-sm text-fail underline" onClick={() => setSetupOpen(true)}>
+                  Finish setup
+                </Button>
+              </span>
             </p>
           )}
           <ErrorText error={error} />
 
-          {creating && <NewWorkspace key={draft.title} draft={draft} env={env} onCancel={() => setCreating(false)} onCreated={onOpen} />}
+          {creating && (
+            <NewWorkspace
+              key={draft.title}
+              draft={draft}
+              env={env}
+              onCancel={() => setCreating(false)}
+              onCreated={onOpen}
+              onNeedsAgent={() => setSetupOpen(true)}
+            />
+          )}
 
           {activity && (
             <div className={cn(creating && DIMMED)}>
@@ -148,6 +155,7 @@ export function Home({ lastId, onOpen }: Props) {
           )}
         </div>
       </main>
+      {env && needsSetup(env) && (setupOpen ?? workspaces?.length === 0) && <SetupDialog env={env} onClose={() => setSetupOpen(false)} />}
     </div>
   );
 }
@@ -235,19 +243,34 @@ function IdeaCard({ idea, picked, onPick }: { idea: Idea; picked: boolean; onPic
   );
 }
 
-function NewWorkspace({ draft, env, onCancel, onCreated }: { draft: Draft; env: Environment | null; onCancel: () => void; onCreated: (id: string) => void }) {
+/** The new-workspace form. Without an agent installed, Create opens the setup popup instead (onNeedsAgent). */
+function NewWorkspace({
+  draft,
+  env,
+  onCancel,
+  onCreated,
+  onNeedsAgent,
+}: {
+  draft: Draft;
+  env: Environment | null;
+  onCancel: () => void;
+  onCreated: (id: string) => void;
+  onNeedsAgent: () => void;
+}) {
   const [title, setTitle] = useState(draft.title);
   const { pending, error, setError, run } = usePending();
-  const providers = env?.providers ?? [];
-  const noAgent = !!env && !providers.some((p) => p.installed);
-  // "Claude Code or Codex": every agent the backend offers.
-  const agents = new Intl.ListFormat("en", { type: "disjunction" }).format(providers.map((p) => p.name));
+  const noAgent = !!env && !hasAgent(env);
 
   function submit(e: FormEvent) {
     e.preventDefault();
     // An idea's icon stays only while its title does; otherwise the tutor picks one.
     const icon = title.trim() === draft.title ? draft.icon : "";
-    if (title.trim() && !noAgent) run(async () => onCreated(await WorkspaceService.CreateWorkspace(title.trim(), icon)));
+    if (!title.trim()) return;
+    if (noAgent) {
+      onNeedsAgent();
+      return;
+    }
+    run(async () => onCreated(await WorkspaceService.CreateWorkspace(title.trim(), icon)));
   }
 
   return (
@@ -275,11 +298,10 @@ function NewWorkspace({ draft, env, onCancel, onCreated }: { draft: Draft; env: 
       <div className={FIELD}>
         <span className={FIELD_LABEL}>Tutor</span>
         <TutorLine />
-        <ErrorText error={noAgent ? `Install ${agents}, sign in, then restart Tutortop.` : ""} />
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
-        <Button disabled={!title.trim() || noAgent || pending}>{pending ? "Creating…" : "Create"}</Button>
+        <Button disabled={!title.trim() || pending}>{pending ? "Creating…" : "Create"}</Button>
         <Button type="button" variant="ghost" onClick={onCancel} disabled={pending}>
           Cancel
         </Button>

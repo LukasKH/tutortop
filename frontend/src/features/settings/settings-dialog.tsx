@@ -4,11 +4,11 @@ import { CopilotService, errorText, type DeviceCode, type Plan, type Setup } fro
 import { checkEnvironment, useCheckingEnvironment, useEnvironment } from "@/lib/agents";
 import { useTutor } from "@/features/settings/use-tutor";
 import { useSettings } from "@/features/settings/use-settings";
-import { TutorPicker } from "@/features/settings/tutor-picker";
+import { TutorNote, TutorPicker } from "@/features/settings/tutor-picker";
 import { AgentsSetting } from "@/features/settings/agents-setting";
 import { AgentIcon } from "@/components/agent-icon";
 import { ErrorText } from "@/components/error-text";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Spinner } from "@/components/ui/spinner";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
@@ -64,9 +64,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
             <div className={FIELD}>
               <span className={FIELD_LABEL}>Agent, model and reasoning</span>
               <TutorLine />
-              <p className={FIELD_NOTE}>
-                Changes apply from the tutor's next message. Switching agent starts new conversations; your mission, notes and progress stay.
-              </p>
+              <TutorNote className={FIELD_NOTE} />
             </div>
             <div className={FIELD}>
               <div className="flex items-center justify-between gap-2">
@@ -115,17 +113,20 @@ const PAGES = [
 export function TutorLine() {
   const tutor = useTutor();
   return (
-    <div className="flex min-w-0 items-center justify-between gap-2 text-sm text-soft-foreground">
-      <span className="flex min-w-0 items-center gap-2" title={tutor.label}>
-        {tutor.agent && <AgentIcon id={tutor.agent} size={14} />}
-        <span className="min-w-0 truncate">{tutor.label || "…"}</span>
-      </span>
-      <TutorPicker align="end">
-        <Button type="button" variant="ghost" className="flex-none">
-          Change
-        </Button>
-      </TutorPicker>
-    </div>
+    // The whole line opens the picker, so the picker opens under its start, in line with the fields above.
+    <TutorPicker>
+      <button
+        type="button"
+        title={tutor.label}
+        className="group flex min-w-0 items-center justify-between gap-2 rounded-lg text-left text-sm text-soft-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+      >
+        <span className="flex min-w-0 items-center gap-2">
+          {tutor.agent && <AgentIcon id={tutor.agent} size={14} />}
+          <span className="min-w-0 truncate">{tutor.label || "…"}</span>
+        </span>
+        <span className={buttonVariants({ variant: "ghost", className: "flex-none group-hover:bg-muted group-hover:text-foreground" })}>Change</span>
+      </button>
+    </TutorPicker>
   );
 }
 

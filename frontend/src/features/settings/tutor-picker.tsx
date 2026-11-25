@@ -13,7 +13,6 @@ type Props = {
   /** The button that opens the picker. */
   children: ReactNode;
   side?: "top" | "bottom";
-  align?: "start" | "end";
 };
 
 /**
@@ -21,7 +20,7 @@ type Props = {
  * models in the middle, and the model's reasoning levels on the right. Picking
  * a model or a level of another agent switches the tutor to that agent.
  */
-export function TutorPicker({ children, side = "bottom", align = "start" }: Props) {
+export function TutorPicker({ children, side = "bottom" }: Props) {
   const { settings, change } = useSettings();
   return (
     // Modal, so a click outside only closes the picker, never the Settings dialog it may sit over.
@@ -29,7 +28,7 @@ export function TutorPicker({ children, side = "bottom", align = "start" }: Prop
       <PopoverTrigger asChild>{children}</PopoverTrigger>
       <PopoverContent
         side={side}
-        align={align}
+        align="start"
         collisionPadding={12}
         aria-label="Tutor"
         className="max-h-(--radix-popover-content-available-height) w-[min(600px,calc(100vw-24px))] gap-0 overflow-hidden p-0 text-base"
@@ -37,6 +36,16 @@ export function TutorPicker({ children, side = "bottom", align = "start" }: Prop
         {settings ? <Panel settings={settings} onChange={change} /> : <Message>Loading…</Message>}
       </PopoverContent>
     </Popover>
+  );
+}
+
+/** What changing the tutor does: the same note whichever agent is shown, here and in Settings. */
+export function TutorNote({ className }: { className?: string }) {
+  return (
+    <p className={className}>
+      Changes apply from the tutor's next message. Switching agent starts new conversations; your mission, notes and progress stay. More reasoning gives better
+      plans, but replies take longer and use more quota.
+    </p>
   );
 }
 
@@ -113,13 +122,7 @@ function Panel({ settings, onChange }: { settings: Prefs; onChange: (next: Prefs
         )}
       </div>
       <footer className="flex flex-none flex-col gap-1 border-t px-3 py-2 text-xs text-muted-foreground">
-        {provider && provider.id !== settings.agent && provider.installed ? (
-          <p>
-            Picking a model or reasoning level switches the tutor to {provider.name}, which starts new conversations. Your mission, notes and progress stay.
-          </p>
-        ) : (
-          <p>Changes apply from the tutor's next message. More reasoning gives better plans and tasks, but replies take longer and use more of your quota.</p>
-        )}
+        <TutorNote />
         <ErrorText error={error} />
       </footer>
     </TabsPrimitive.Root>
