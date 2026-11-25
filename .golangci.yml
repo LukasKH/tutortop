@@ -44,8 +44,9 @@ linters:
             - pkg: google.golang.org/genai
               desc: run agents through their CLI (internal/agent), not a model API
         http-only-in-mcp:
-          # internal/copilot downloads GitHub's Copilot language server.
-          files: ["$all", "!$test", "!**/internal/mcp/**", "!**/internal/copilot/**"]
+          # internal/copilot downloads GitHub's Copilot language server, and
+          # updater.go configures the HTTP client for Wails' release updater.
+          files: ["$all", "!$test", "!**/internal/mcp/**", "!**/internal/copilot/**", "!**/updater.go"]
           deny:
             - pkg: net/http
               desc: the frontend talks to Go through Wails services and agents through MCP (internal/mcp)

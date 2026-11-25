@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Browser } from "@wailsio/runtime";
 import { Phase, UpdateService, errorText, type State } from "@/lib/api";
-import { applyUpdate, downloadPercent, useUpdate } from "@/lib/update";
+import { applyUpdate, downloadPercent, restartToUpdate, useUpdate } from "@/lib/update";
 import { ErrorText } from "@/components/error-text";
 import { Markdown } from "@/components/markdown";
 import { Button } from "@/components/ui/button";
@@ -30,7 +30,7 @@ export function UpdatesSetting() {
 
   const check = () => run(() => UpdateService.Check().then(applyUpdate));
   const install = () => run(() => UpdateService.Install());
-  const restart = () => run(() => UpdateService.Restart());
+  const restart = () => run(restartToUpdate);
   const openRelease = () => run(() => Browser.OpenURL(update.releaseUrl));
 
   return (

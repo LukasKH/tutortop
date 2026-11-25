@@ -65,3 +65,33 @@ test("notice label covers actionable phases, failed downloads and progress", () 
 
   expect(update.updateNoticeLabel(state({ phase: Phase.PhaseReady, version: "0.3.0" }))).toBe("Restart to update");
 });
+
+test("restartToUpdate awaits registered before-restart flushes before restarting", async () => {
+  const order: string[] = [];
+  let finishFlush!: () => void;
+  const unregister = update.registerBeforeRestart(
+    () =>
+      new Promise<void>((resolve) => {
+        order.push("flush:start");
+        finishFlush = () => {
+          order.push("flush:done");
+          resolve();
+        };
+      }),
+  );
+  service.Restart.mockImplementation(async () => {
+    order.push("restart");
+  });
+
+  const restart = update.restartToUpdate();
+  expect(order).toEqual(["flush:start"]);
+  expect(service.Restart).not.toHaveBeenCalled();
+
+  finishFlush();
+  await restart;
+  expect(order).toEqual(["flush:start", "flush:done", "restart"]);
+
+  unregister();
+  await update.restartToUpdate();
+  expect(service.Restart).toHaveBeenCalledTimes(2);
+});

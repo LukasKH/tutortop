@@ -21,6 +21,20 @@ export function applyUpdate(next: State) {
   set(next);
 }
 
+/** Registers a hook (such as flushing pending editor saves) to await before restarting. */
+export function registerBeforeRestart(fn: () => Promise<void>): () => void {
+  beforeRestart.add(fn);
+  return () => {
+    beforeRestart.delete(fn);
+  };
+}
+
+/** Flushes pending saves, then hands the staged update to the swap helper and restarts. */
+export async function restartToUpdate(): Promise<void> {
+  await Promise.allSettled([...beforeRestart].map((fn) => fn()));
+  return UpdateService.Restart();
+}
+
 /** Short label for the subtle header and sidebar update controls, or "" when nothing needs attention. */
 export function updateNoticeLabel(state: State | null): string {
   if (!state) return "";
@@ -51,6 +65,7 @@ export function downloadPercent(state: State): number | null {
 
 let store: State | null = null;
 const listeners = new Set<() => void>();
+const beforeRestart = new Set<() => Promise<void>>();
 
 function subscribe(listener: () => void) {
   listeners.add(listener);

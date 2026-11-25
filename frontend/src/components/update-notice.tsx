@@ -1,6 +1,6 @@
 import { ArrowUpCircleIcon } from "lucide-react";
-import { Phase, UpdateService } from "@/lib/api";
-import { updateNoticeLabel, useUpdate } from "@/lib/update";
+import { Phase } from "@/lib/api";
+import { restartToUpdate, updateNoticeLabel, useUpdate } from "@/lib/update";
 import { useSettings } from "@/features/settings/use-settings";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -18,7 +18,7 @@ export function UpdateNotice({ layout }: { layout: "header" | "sidebar" }) {
   const ready = update.phase === Phase.PhaseReady;
   const onClick = () => {
     if (ready) {
-      UpdateService.Restart().catch(() => openSettings("updates"));
+      restartToUpdate().catch(() => openSettings("updates"));
       return;
     }
     openSettings("updates");
