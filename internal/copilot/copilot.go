@@ -20,6 +20,7 @@ import (
 	"unicode/utf16"
 
 	"github.com/LukasKH/tutortop/internal/decode"
+	"github.com/LukasKH/tutortop/internal/events"
 	"github.com/sourcegraph/jsonrpc2"
 	"golang.org/x/sync/singleflight"
 )
@@ -62,8 +63,12 @@ func (s *Service) ServiceShutdown() error {
 
 // Setup reports whether the language server is installed, who is signed
 // in, and whether GitHub has a newer release. It starts the server to ask.
+// While an install runs it says so, and asks nothing: the server is stopped.
 func (s *Service) Setup(ctx context.Context) (Setup, error) {
 	version := installedVersion(s.dir)
+	if s.isInstalling() {
+		return Setup{Installing: true, Installed: version != "", Version: version}, nil
+	}
 	if version == "" {
 		return Setup{}, nil
 	}
@@ -83,10 +88,11 @@ func (s *Service) Setup(ctx context.Context) (Setup, error) {
 }
 
 // Install downloads the latest Copilot language server for this computer,
-// about 120 MB, replacing any installed one.
+// about 120 MB, replacing any installed one. When it ends, it emits
+// events.CopilotInstalled too, for a Settings screen opened in the meantime.
 func (s *Service) Install(ctx context.Context) (Setup, error) {
 	if err := s.replace(ctx); err != nil {
-		return Setup{}, fmt.Errorf("installing Copilot: %w", err)
+		return Setup{}, err
 	}
 	return s.Setup(ctx)
 }
@@ -245,6 +251,12 @@ func (s *Service) CloseFiles(ctx context.Context) error {
 }
 
 // current returns the language server if it's running, else nil.
+func (s *Service) isInstalling() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.installing
+}
+
 func (s *Service) current() *server {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -341,11 +353,11 @@ func (s *Service) lookUpLatest(ctx context.Context) string {
 
 // replace stops any running server and installs the latest one into s.dir,
 // preventing concurrent callers from restarting the old binary mid-install.
-func (s *Service) replace(ctx context.Context) error {
+func (s *Service) replace(ctx context.Context) (err error) {
 	s.mu.Lock()
 	if s.installing {
 		s.mu.Unlock()
-		return errors.New("already installing")
+		return errors.New("copilot is installing already")
 	}
 	s.installing = true
 	srv := s.server
@@ -356,13 +368,18 @@ func (s *Service) replace(ctx context.Context) error {
 		s.mu.Lock()
 		s.installing = false
 		s.mu.Unlock()
+		var done events.Install
+		if err != nil {
+			done.Error = err.Error()
+		}
+		events.Emit(events.CopilotInstalled, done)
 	}()
 	if srv != nil {
 		srv.close()
 	}
 	tag, err := install(ctx, s.dir)
 	if err != nil {
-		return err
+		return fmt.Errorf("installing Copilot: %w", err)
 	}
 	// The installed release is the newest known, so an older one looked up
 	// before isn't offered as an update.
@@ -388,6 +405,9 @@ func (s *Service) stop() {
 type Setup struct {
 	Installed bool   `json:"installed"`
 	Version   string `json:"version,omitempty"`
+	// Installing is true while Install downloads a release. The other fields
+	// then only say what was installed before.
+	Installing bool `json:"installing,omitempty"`
 	// User is the GitHub account signed in, or "" if none is.
 	User string `json:"user,omitempty"`
 	// Problem says why a signed-in account gets no suggestions, such as

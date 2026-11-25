@@ -78,6 +78,12 @@ export interface Setup {
     "version"?: string;
 
     /**
+     * Installing is true while Install downloads a release. The other fields
+     * then only say what was installed before.
+     */
+    "installing"?: boolean;
+
+    /**
      * User is the GitHub account signed in, or "" if none is.
      */
     "user"?: string;

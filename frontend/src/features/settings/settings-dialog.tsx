@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Clipboard, Dialogs } from "@wailsio/runtime";
-import { CopilotService, errorText, type DeviceCode, type Plan, type Setup } from "@/lib/api";
+import { AppEvents, CopilotService, errorText, useEvent, type DeviceCode, type Plan, type Setup } from "@/lib/api";
 import { checkEnvironment, useCheckingEnvironment, useEnvironment } from "@/lib/agents";
 import { useTutor } from "@/features/settings/use-tutor";
 import { useSettings } from "@/features/settings/use-settings";
@@ -130,6 +130,8 @@ export function TutorLine() {
   );
 }
 
+const DOWNLOADING = "Downloading Copilot, about 120 MB…";
+
 /**
  * GitHub Copilot's suggestions in the editor, in three steps: install its
  * language server, sign in to GitHub, turn suggestions on.
@@ -139,12 +141,22 @@ function CopilotSetting({ enabled, onChange }: { enabled: boolean; onChange: (on
   const [code, setCode] = useState<DeviceCode | null>(null);
   const [busy, setBusy] = useState(""); // what's going on, while a step runs
   const [error, setError] = useState("");
+  // The install outlives this screen: one started before it was last closed
+  // is still downloading, and tells when it ends.
+  const working = busy || (setup?.installing ? DOWNLOADING : "");
 
   useEffect(() => {
     CopilotService.Setup()
       .then(setSetup)
       .catch((e) => setError(errorText(e)));
   }, []);
+  useEvent(AppEvents.CopilotInstalled, ({ error }) => {
+    if (busy) return; // this screen's own step shows how it went
+    setError(error ? errorText(error) : "");
+    CopilotService.Setup()
+      .then(setSetup)
+      .catch((e) => setError(errorText(e)));
+  });
 
   /** Runs one step, showing what it's doing, then the setup it leaves. */
   async function step(doing: string, work: () => Promise<Setup | null>) {
@@ -160,7 +172,7 @@ function CopilotSetting({ enabled, onChange }: { enabled: boolean; onChange: (on
     }
   }
 
-  const install = () => step("Downloading Copilot, about 120 MB…", () => CopilotService.Install());
+  const install = () => step(DOWNLOADING, () => CopilotService.Install());
   const check = () => step("Checking…", () => CopilotService.Setup());
   const signIn = () =>
     step("Starting sign-in…", async () => {
@@ -207,21 +219,21 @@ function CopilotSetting({ enabled, onChange }: { enabled: boolean; onChange: (on
         ) : (
           <p className="text-muted-foreground">Loading…</p>
         )
-      ) : !setup.installed ? (
+      ) : setup.installing ? null : !setup.installed ? (
         <SettingRow text="Not installed">
-          <Button type="button" variant="ghost" disabled={!!busy} onClick={install}>
+          <Button type="button" variant="ghost" disabled={!!working} onClick={install}>
             Install
           </Button>
         </SettingRow>
       ) : code ? (
         <SettingRow text="Sign in on GitHub with a one-time code">
-          <Button type="button" variant="ghost" disabled={!!busy} onClick={() => finishSignIn(code)}>
+          <Button type="button" variant="ghost" disabled={!!working} onClick={() => finishSignIn(code)}>
             Copy code and open GitHub
           </Button>
         </SettingRow>
       ) : !setup.user && !setup.problem ? (
         <SettingRow text="Not signed in">
-          <Button type="button" variant="ghost" disabled={!!busy} onClick={signIn}>
+          <Button type="button" variant="ghost" disabled={!!working} onClick={signIn}>
             Sign in with GitHub
           </Button>
         </SettingRow>
@@ -229,14 +241,14 @@ function CopilotSetting({ enabled, onChange }: { enabled: boolean; onChange: (on
         <>
           {setup.user && (
             <SettingRow text={[`Signed in as ${setup.user}`, setup.plan?.name].filter(Boolean).join(" · ")}>
-              <Button type="button" variant="ghost" disabled={!!busy} onClick={signOut}>
+              <Button type="button" variant="ghost" disabled={!!working} onClick={signOut}>
                 Sign out
               </Button>
             </SettingRow>
           )}
           {setup.problem ? (
             <SettingRow text={<span className="text-fail">{setup.problem}</span>}>
-              <Button type="button" variant="ghost" disabled={!!busy} onClick={check}>
+              <Button type="button" variant="ghost" disabled={!!working} onClick={check}>
                 Check again
               </Button>
             </SettingRow>
@@ -248,10 +260,10 @@ function CopilotSetting({ enabled, onChange }: { enabled: boolean; onChange: (on
           )}
         </>
       )}
-      {busy && (
+      {working && (
         <p className="flex items-center gap-2 text-sm text-muted-foreground">
           <Spinner />
-          {busy}
+          {working}
         </p>
       )}
       <ErrorText error={error} />
@@ -265,7 +277,7 @@ function CopilotSetting({ enabled, onChange }: { enabled: boolean; onChange: (on
             {setup.update && (
               <>
                 {" "}
-                <Button type="button" variant="link" size="sm" className="h-auto px-0 text-xs" disabled={!!busy} onClick={install}>
+                <Button type="button" variant="link" size="sm" className="h-auto px-0 text-xs" disabled={!!working} onClick={install}>
                   Update to {setup.update}
                 </Button>
               </>

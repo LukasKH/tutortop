@@ -57,7 +57,8 @@ export function Focus(uri: string): $CancellablePromise<void> {
 
 /**
  * Install downloads the latest Copilot language server for this computer,
- * about 120 MB, replacing any installed one.
+ * about 120 MB, replacing any installed one. When it ends, it emits
+ * events.CopilotInstalled too, for a Settings screen opened in the meantime.
  */
 export function Install(): $CancellablePromise<$models.Setup> {
     return $Call.ByID(2042539072);
@@ -66,6 +67,7 @@ export function Install(): $CancellablePromise<$models.Setup> {
 /**
  * Setup reports whether the language server is installed, who is signed
  * in, and whether GitHub has a newer release. It starts the server to ask.
+ * While an install runs it says so, and asks nothing: the server is stopped.
  */
 export function Setup(): $CancellablePromise<$models.Setup> {
     return $Call.ByID(2802203350);

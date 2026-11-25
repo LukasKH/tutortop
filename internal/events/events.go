@@ -24,6 +24,7 @@ const (
 	LSPMessage         Name[LSP]       = "lsp:message"
 	WorkspaceChanged   Name[Workspace] = "workspace:changed" // the frontend reloads the workspace
 	CurriculumProposed Name[Workspace] = "curriculum:proposed"
+	CopilotInstalled   Name[Install]   = "copilot:installed" // the Settings screen checks Copilot again
 )
 
 // emitter is wired by main.go to Wails' event bus. Tests leave it unset.
@@ -50,6 +51,11 @@ func Emit[Data any](name Name[Data], data Data) {
 // Workspace names the workspace that changed.
 type Workspace struct {
 	Workspace string `json:"workspace"`
+}
+
+// Install tells that installing Copilot's language server has ended.
+type Install struct {
+	Error string `json:"error,omitempty"` // why it failed; "" if it worked
 }
 
 // Chat is a new or updated chat message.

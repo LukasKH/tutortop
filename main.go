@@ -106,6 +106,7 @@ func registerEvents() {
 	application.RegisterEvent[events.LSP](string(events.LSPMessage))
 	application.RegisterEvent[events.Workspace](string(events.WorkspaceChanged))
 	application.RegisterEvent[events.Workspace](string(events.CurriculumProposed))
+	application.RegisterEvent[events.Install](string(events.CopilotInstalled))
 }
 
 // wailsBrowser opens URLs through Wails so internal/copilot stays free of it.

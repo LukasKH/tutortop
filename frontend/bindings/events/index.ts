@@ -19,6 +19,11 @@ export const ChatMessage = "chat:message";
 export const CheckStatus = "check:status";
 
 /**
+ * Name of the custom event "copilot:installed".
+ */
+export const CopilotInstalled = "copilot:installed";
+
+/**
  * Name of the custom event "curriculum:proposed".
  */
 export const CurriculumProposed = "curriculum:proposed";

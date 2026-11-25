@@ -14,6 +14,7 @@ declare module "@wailsio/runtime" {
         interface CustomEvents {
             "chat:message": events$0.Chat;
             "check:status": events$0.Check;
+            "copilot:installed": events$0.Install;
             "curriculum:proposed": events$0.Workspace;
             "lesson:published": events$0.Lesson;
             "lsp:message": events$0.LSP;
