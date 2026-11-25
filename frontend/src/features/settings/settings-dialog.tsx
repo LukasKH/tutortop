@@ -155,7 +155,10 @@ function CopilotSetting({ enabled, onChange }: { enabled: boolean; onChange: (on
     setError(error ? errorText(error) : "");
     CopilotService.Setup()
       .then(setSetup)
-      .catch((e) => setError(errorText(e)));
+      .catch((e) => {
+        setSetup(null); // drops `installing`, so "Check again" and "Reinstall" show
+        if (!error) setError(errorText(e)); // the failed install says more
+      });
   });
 
   /** Runs one step, showing what it's doing, then the setup it leaves. */
