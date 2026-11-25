@@ -113,7 +113,7 @@ func (s *Server) Forget(wsID string) {
 // newServer builds one thread's server with the tools of its kind.
 func (s *Server) newServer(w *workspace.Workspace, thread workspace.Thread, checks Checks) *mcpsdk.Server {
 	t := &threadTools{w: w, thread: thread, checks: checks, runner: s.runner, links: s.links}
-	srv := mcpsdk.NewServer(&mcpsdk.Implementation{Name: Name, Version: "0.2.6"}, nil) // x-release-please-version
+	srv := mcpsdk.NewServer(&mcpsdk.Implementation{Name: Name, Version: "0.2.7"}, nil) // x-release-please-version
 	for _, tool := range toolsFor(thread.Kind) {
 		tool.add(srv, t)
 	}
