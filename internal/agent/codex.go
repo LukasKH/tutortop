@@ -334,7 +334,7 @@ func startCodexServer(ctx context.Context, binary, cwd string,
 	}
 	rpc := newRPCConn(proc, onNotify, onRequest)
 	if _, err := setupCall[json.RawMessage](ctx, rpc, "initialize", map[string]any{
-		"clientInfo":   map[string]any{"name": "tutortop", "title": "Tutortop", "version": "0.2.5"},
+		"clientInfo":   map[string]any{"name": "tutortop", "title": "Tutortop", "version": "0.2.5"}, // x-release-please-version
 		"capabilities": nil,
 	}); err != nil {
 		return nil, nil, proc.abort(err)

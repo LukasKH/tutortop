@@ -12,6 +12,7 @@
         Arguments=""
         InstallLocation="C:\Program Files\My Company\My Product">
     </Installer>
+    <!-- x-release-please-start-version -->
     <PackageInformation
         PackageName="My Product"
         PackageDisplayName="My Product"
@@ -19,6 +20,7 @@
         PublisherDisplayName="My Company"
         Version="0.2.5.0"
         PackageDescription="A desktop application">
+    <!-- x-release-please-end -->
         <Capabilities>
             <Capability Name="runFullTrust" />
             

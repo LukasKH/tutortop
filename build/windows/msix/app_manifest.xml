@@ -7,11 +7,13 @@
   xmlns:desktop="http://schemas.microsoft.com/appx/manifest/desktop/windows10"
   IgnorableNamespaces="uap3">
   
+  <!-- x-release-please-start-version -->
   <Identity 
     Name="com.example.desktop"
     Publisher="CN=My Company"
     Version="0.2.5.0" 
     ProcessorArchitecture="x64" />
+  <!-- x-release-please-end -->
   
   <Properties>
     <DisplayName>My Product</DisplayName>

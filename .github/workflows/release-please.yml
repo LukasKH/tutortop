@@ -1,0 +1,48 @@
+# Keeps a release PR open with the next version and its changelog, worked out
+# from the Conventional Commits merged to main since the last release
+# (release-please-config.json). Merging that PR is how you release: it tags
+# the version, makes a draft GitHub release with the changelog, and builds the
+# installers into it (release.yml). Nothing is public until you open the draft
+# on GitHub and press Publish.
+#
+# The release PR is opened with GITHUB_TOKEN, which starts no other workflow,
+# so CI doesn't run on it: it only changes version strings and CHANGELOG.md.
+name: Release Please
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+# One at a time, so two quick merges don't race on the release PR.
+concurrency:
+  group: release-please
+  cancel-in-progress: false
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write # the release PR's branch, the tag and the draft release
+      pull-requests: write
+      issues: write # the release PR's labels
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+    steps:
+      - id: release
+        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+
+  # The tag release-please made with GITHUB_TOKEN doesn't start release.yml,
+  # so it's called from here.
+  installers:
+    needs: release-please
+    if: needs.release-please.outputs.release_created == 'true'
+    uses: ./.github/workflows/release.yml
+    with:
+      tag: ${{ needs.release-please.outputs.tag_name }}
+    permissions:
+      contents: write
