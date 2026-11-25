@@ -95,7 +95,7 @@ On Windows, run this in PowerShell:
 irm https://raw.githubusercontent.com/LukasKH/tutortop/main/install.ps1 | iex
 ```
 
-The scripts ([install.sh](install.sh) and [install.ps1](install.ps1)) download the newest release and install it. On Linux they use apt, dnf or pacman, which ask for your password, or put the AppImage in `~/.local/bin` if you have none of those. On Windows the installer installs per-user into `%LOCALAPPDATA%\Programs\Tutortop` without needing admin rights. Installed this way, macOS opens the app without blocking it, and macOS, Windows, and Linux AppImage installs can update in-app from *Settings → Updates*.
+The scripts ([install.sh](install.sh) and [install.ps1](install.ps1)) download the newest release and install it into a user-writable folder (`~/.local/bin` on Linux, `/Applications` or `~/Applications` on macOS, `%LOCALAPPDATA%\Programs\Tutortop` on Windows). On Linux, `install.sh` installs GTK4 and WebKitGTK 6.0 via `apt`, `dnf` or `pacman` if they aren't already present, and adds an app launcher entry. Installed this way, macOS opens the app without blocking it, and macOS, Windows, and Linux all support 1-click in-app updates from *Settings → Updates*.
 
 Or download the installer for your system from [Releases](https://github.com/LukasKH/tutortop/releases). The app is unsigned, so if you install it by hand:
 
