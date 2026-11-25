@@ -76,6 +76,13 @@ Reference solutions and hidden tests live outside the workspace in `~/.local/sha
 
 ## Install
 
+Tutortop needs two things it does not install for you. It shows what's missing on the home screen.
+
+- **A sandbox:** Docker or Podman. Tutortop uses whichever is installed, Docker first. On Windows and macOS that's Docker Desktop or Podman Desktop. On Linux, Docker must work without sudo: `sudo usermod -aG docker $USER`, then log out and in. The first check for each language builds a sandbox image, which takes a few minutes.
+- **A coding agent:** [Claude Code](https://docs.claude.com/en/docs/claude-code/setup) (`claude`), [Codex](https://github.com/openai/codex) (`codex`) or the [Antigravity CLI](https://antigravity.google/docs/getting-started) (`agy`), signed in. Tutortop keeps its own Antigravity profile so it doesn't change your agy settings; if agy asks you to sign in there, Tutortop shows the command to run.
+
+Git is optional. With it, every workspace keeps a history of its changes.
+
 On macOS or Linux, run this in a terminal:
 
 ```sh
@@ -101,33 +108,26 @@ Or download the installer for your system from [Releases](https://github.com/Luk
 | Windows 10/11 | `-setup.exe` | Run it. It's unsigned, so SmartScreen asks first: *More info → Run anyway*. |
 | macOS | `.dmg` | Drag to Applications. It's unsigned, so the first time macOS blocks it: open *System Settings → Privacy & Security* and click *Open Anyway*. |
 
-Tutortop also needs two things it does not install for you. It shows what's missing on the home screen.
-
-- **A sandbox:** Docker or Podman. Tutortop uses whichever is installed, Docker first. On Windows and macOS that's Docker Desktop or Podman Desktop. On Linux, Docker must work without sudo: `sudo usermod -aG docker $USER`, then log out and in. The first check for each language builds a sandbox image, which takes a few minutes.
-- **A coding agent:** [Claude Code](https://docs.claude.com/en/docs/claude-code/setup) (`claude`), [Codex](https://github.com/openai/codex) (`codex`) or the [Antigravity CLI](https://antigravity.google/docs/getting-started) (`agy`), signed in. Tutortop keeps its own Antigravity profile so it doesn't change your agy settings; if agy asks you to sign in there, Tutortop shows the command to run.
-
-Git is optional. With it, every workspace keeps a history of its changes.
-
 ## Development
 
 ### Requirements
 
-- Go 1.27+, Node 26+ and the Wails v3 CLI (`wails3`). Run `mise install` to get the pinned versions. The code uses Go 1.27 features, so older Go won't build it: generic methods (`rpcConn.Call[T]`, `process.await[T]` in `internal/agent`) and the standard library's `uuid` package.
+- Go 1.27+, Node 26+ and the Wails v3 CLI (`wails3`). Run `mise install` to get the pinned versions. The code uses Go 1.27 features, so older Go won't build it: generic methods (`rpcConn.Call[T]`, `process.await[T]` in `internal/agent`) and the standard library's `uuid` package. On Linux, installing `wails3` and running `wails3 dev` also need a C compiler, `pkg-config`, GTK4 and WebKitGTK 6.0 dev headers (`libgtk-4-dev` and `libwebkitgtk-6.0-dev` on Ubuntu and Debian).
 - Docker or Podman, and at least one of Claude Code, Codex or Antigravity, as above.
 
 ### Commands
 
 ```sh
-mise install                 # Go, Node, golangci-lint and pre-commit, pinned in mise.toml
-pre-commit install           # git hooks: lint + tests before commit, Conventional Commits on the message
-wails3 dev                   # run the app with hot reload
-task test                    # Go tests with the race detector (needs Docker or Podman)
-task lint                    # go vet, Staticcheck and format checks
-task format                  # format Go code and imports
+mise install                      # Go, Node, golangci-lint, pre-commit and wails3, pinned in mise.toml
+pre-commit install                # git hooks: lint + tests before commit, Conventional Commits on the message
+wails3 dev                        # run the app with hot reload
+wails3 task test                  # Go tests with the race detector (needs Docker or Podman)
+wails3 task lint                  # go vet, Staticcheck and format checks
+wails3 task format                # format Go code and imports
 npm --prefix frontend run format  # format the frontend (Prettier, sorts Tailwind classes)
 npm --prefix frontend run lint    # lint the frontend (Oxlint, React hooks rules)
 npm --prefix frontend test        # frontend tests (Vitest)
-task test:live               # talks to the real Claude Code, Codex and Antigravity CLIs; uses a little quota
+wails3 task test:live             # talks to the real Claude Code, Codex and Antigravity CLIs; uses a little quota
 ```
 
 [docs/architecture.md](docs/architecture.md) explains how the Go backend, the frontend and Wails fit together, and [docs/GLOSSARY.md](docs/GLOSSARY.md) defines the words used in the code.

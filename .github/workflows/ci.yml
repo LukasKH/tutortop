@@ -133,7 +133,7 @@ jobs:
           cache-dependency-path: go.sum
       - run: go test -race -short -count=1 ./internal/...
       # Runs each benchmark once, so they keep working. Shared runners are too
-      # noisy to compare timings; `task bench:compare` does that locally.
+      # noisy to compare timings; `wails3 task bench:compare` does that locally.
       - name: Benchmarks still run
         run: go test -run '^$' -bench . -benchtime 1x ./internal/app/
 

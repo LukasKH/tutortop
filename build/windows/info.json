@@ -1,12 +1,12 @@
 {
 	"fixed": {
-		"file_version": "0.2.2"
+		"file_version": "0.2.3"
 	},
 	"info": {
 		"0409": {
-			"ProductVersion": "0.2.2",
+			"ProductVersion": "0.2.3",
 			"CompanyName": "LukasKH",
-			"FileDescription": "Tutortop",
+			"FileDescription": "Learn anything you can prove with code, using your own coding agent",
 			"LegalCopyright": "(c) 2026 LukasKH",
 			"ProductName": "Tutortop",
 			"Comments": "https://github.com/LukasKH/tutortop"

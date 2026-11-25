@@ -13,7 +13,7 @@ release: "1"
 section: "education"
 priority: "optional"
 maintainer: "LukasKH"
-description: "Learn anything you can check with a program, tutored by your own AI CLI"
+description: "Learn anything you can prove with code, using your own coding agent"
 vendor: "LukasKH"
 homepage: "https://github.com/LukasKH/tutortop"
 license: "MIT"
@@ -35,8 +35,8 @@ contents:
       mode: 0644
 
 # What the app needs to start: GTK4 + WebKitGTK 6.0 (Ubuntu 24.04+ / Debian 13+).
-# Docker or Podman and the Claude Code / Codex CLIs are optional: users pick
-# their own, and the app tells them what's missing on first start.
+# Docker or Podman and the Claude Code, Codex or Antigravity CLIs are optional:
+# users pick their own, and the app tells them what's missing on first start.
 depends:
   - libgtk-4-1
   - libwebkitgtk-6.0-4
@@ -56,8 +56,7 @@ overrides:
     depends:
       - gtk4
       - webkitgtk-6.0
-    # The nfpm in Wails (v2.44.1) can't write optdepends (v2.48.0+ can);
-    # the AUR PKGBUILD (packaging/aur) has them.
+    # The nfpm in Wails (v2.44.1) can't write optdepends (v2.48.0+ can).
     recommends: []
 
 archlinux:

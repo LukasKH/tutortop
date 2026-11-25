@@ -12,7 +12,7 @@ An adapter is one file, like `claude.go`, `codex.go` or `antigravity.go`, and an
 2. The same file: `xModels(ctx, binary) ([]Model, error)`, which lists the models it offers, the CLI's default first, each with the reasoning efforts it takes. Claude's list is fixed, because the CLI takes aliases that follow each release. Codex's is asked live from the CLI. The app caches the answer for a few minutes.
 3. `internal/agent/agent.go`: a `ProviderID` constant, an entry in `Providers()` with it, a display name and the binary to look up on `PATH`, and a case for it in `Start` and `Provider.Models` that calls the two functions. In `check.go`, a case in `Provider.Check` that reads the account the CLI is signed in with, if it has a command for that; Settings shows it. Without one, listing the models has to prove the sign-in, as Antigravity's does. The `exhaustive` lint flags a switch that misses it.
 4. `internal/agent/<x>_test.go`: tests against a fake CLI, including the shared policy cases (`testPolicy`); see [Testing an adapter](#testing-an-adapter).
-5. `internal/agent/live_test.go`: add the id to the provider list in `TestLive`. `internal/app/live_test.go`'s `TestLiveInterview` runs a whole interview on any agent: `TUTORTOP_PROVIDER=<id> task test:live`.
+5. `internal/agent/live_test.go`: add the id to the provider list in `TestLive` (and add a permission test in `internal/agent/permissions_live_test.go` if the CLI has its own policy config). `wails3 task test:live` runs the live tests against the signed-in CLIs.
 6. `Taskfile.yml`: the `test:live` summary, and `.github/workflows/ci.yml`: the comment above the `test` job. Both name the CLIs the live tests talk to.
 7. `go.mod` and `go.sum`, for an SDK the adapter uses, such as `github.com/coder/acp-go-sdk`.
 8. `internal/shellpath/shellpath.go`: `commonDirs`. An app started from a desktop launcher doesn't get the user's shell PATH, so it asks the login shell and falls back to these folders, where the agents' installers put their binaries. Add the new CLI's folder if it isn't there; OpenCode's install script, for one, uses `~/.opencode/bin`.
@@ -115,7 +115,7 @@ Cover what can break:
 
 Get the real messages from the CLI's own schema or by recording a session. `codex app-server generate-json-schema --out DIR` writes Codex's schema.
 
-The live tests (`//go:build live`, step 5) check the real CLI end to end, and `task test:live` runs them.
+The live tests (`//go:build live`, step 5) check the real CLI end to end, and `wails3 task test:live` runs them.
 
 ## An ACP agent
 

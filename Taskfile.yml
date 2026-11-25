@@ -15,8 +15,6 @@ includes:
   windows: ./build/windows/Taskfile.yml
   darwin: ./build/darwin/Taskfile.yml
   linux: ./build/linux/Taskfile.yml
-  ios: ./build/ios/Taskfile.yml
-  android: ./build/android/Taskfile.yml
 
 tasks:
   format:
@@ -37,7 +35,7 @@ tasks:
   test:live:
     summary: Runs the tests that talk to the real Claude Code, Codex and Antigravity CLIs (uses a little quota)
     cmds:
-      - go test -tags live -count=1 -v ./internal/agent/ ./internal/app/
+      - go test -tags live -count=1 -v ./internal/agent/
 
   bench:
     summary: Times what the learner waits for (internal/app/bench_test.go), six times each (needs Docker or Podman)

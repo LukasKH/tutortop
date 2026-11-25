@@ -1,0 +1,83 @@
+name: Bug report
+description: Report a crash, install problem or unexpected behaviour
+labels: ["bug"]
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened?
+      description: Describe what went wrong and what you expected instead.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: How to trigger the problem, if you can reproduce it.
+    validations:
+      required: false
+
+  - type: input
+    id: version
+    attributes:
+      label: Tutortop version
+      placeholder: e.g. 0.2.3 or built from source
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - macOS
+        - Linux (Ubuntu / Debian)
+        - Linux (Fedora)
+        - Linux (Arch)
+        - Linux (Other)
+        - Windows
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install
+    attributes:
+      label: Install method
+      options:
+        - Install script (install.sh / install.ps1)
+        - Release package (.dmg / .deb / .rpm / .pkg.tar.zst / .AppImage / -setup.exe)
+        - Built from source
+    validations:
+      required: true
+
+  - type: dropdown
+    id: container
+    attributes:
+      label: Container runtime
+      options:
+        - Docker
+        - Podman
+        - None / not installed yet
+    validations:
+      required: true
+
+  - type: dropdown
+    id: agent
+    attributes:
+      label: Coding agent CLI
+      options:
+        - Claude Code
+        - Codex
+        - Antigravity
+        - None / not configured yet
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or screenshots
+      description: Paste any error messages or drop screenshots here.
+    validations:
+      required: false

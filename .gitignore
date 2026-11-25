@@ -4,11 +4,6 @@ frontend/dist
 frontend/node_modules
 build/linux/appimage/build
 build/windows/nsis/MicrosoftEdgeWebview2Setup.exe
-# Mobile generated (per-machine; overlays hold absolute paths)
-build/ios/xcode/overlay.json
-build/ios/xcode/gen/
-build/android/overlay.json
-build/android/gen/
 # Go
 *.test
 *.out
@@ -26,9 +21,11 @@ go.work.sum
 .DS_Store
 
 # Written by `wails3 update build-assets` but unused: the package config is
-# build/linux/nfpm/tutortop.yaml and the .desktop file is build/linux/tutortop.desktop
+# build/linux/nfpm/tutortop.yaml, the .desktop file is build/linux/tutortop.desktop,
+# and there is no iOS target.
 build/linux/nfpm/nfpm.yaml
 build/linux/desktop
+build/ios/
 # Copied in while building the AppImage
 build/linux/appimage/tutortop
 build/linux/appimage/tutortop.png
