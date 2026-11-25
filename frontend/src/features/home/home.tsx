@@ -7,6 +7,7 @@ import { SetupDialog } from "@/features/home/setup-dialog";
 import { IDEAS, type Idea } from "@/features/home/ideas";
 import { SettingsIcon, TriangleAlertIcon } from "lucide-react";
 import { Logo } from "@/components/logo";
+import { UpdateNotice } from "@/components/update-notice";
 import { TutorLine } from "@/features/settings/settings-dialog";
 import { useSettings } from "@/features/settings/use-settings";
 import { TopicIcon } from "@/components/topic-icon";
@@ -68,9 +69,12 @@ export function Home({ lastId, onOpen }: Props) {
           <Logo size={20} className="flex-none text-foreground" />
           <span className="text-[17px] leading-none font-bold">Tutortop</span>
         </div>
-        <Button type="button" variant="outline" className="h-[35px] px-3.5 text-base [&_svg]:text-soft-foreground" onClick={openSettings}>
-          <SettingsIcon size={16} /> Settings
-        </Button>
+        <div className="flex items-center gap-2">
+          <UpdateNotice layout="header" />
+          <Button type="button" variant="outline" className="h-[35px] px-3.5 text-base [&_svg]:text-soft-foreground" onClick={() => openSettings()}>
+            <SettingsIcon size={16} /> Settings
+          </Button>
+        </div>
       </header>
 
       <main ref={mainRef} className="min-h-0 flex-1 overflow-auto px-12 pt-9 pb-12">

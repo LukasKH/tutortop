@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 import { Spinner } from "@/components/ui/spinner";
 import { TopicIcon } from "@/components/topic-icon";
 import { ProgressBar } from "@/components/progress-bar";
+import { UpdateNotice } from "@/components/update-notice";
 
 type Props = {
   ws: WorkspaceSnapshot;
@@ -132,7 +133,8 @@ export function Sidebar(p: Props) {
         )}
       </nav>
 
-      <div className="mt-auto flex justify-between border-t p-2">
+      <div className="mt-auto flex flex-col gap-1 border-t p-2">
+        <UpdateNotice layout="sidebar" />
         <button
           className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-soft-foreground transition-colors hover:bg-muted hover:text-foreground aria-[current=page]:bg-muted aria-[current=page]:text-foreground"
           aria-current={planOpen ? "page" : undefined}

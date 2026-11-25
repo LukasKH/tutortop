@@ -6,9 +6,11 @@ import * as app from "@bindings/github.com/LukasKH/tutortop/internal/app";
 import * as threads from "@bindings/github.com/LukasKH/tutortop/internal/agent/threads";
 import * as settings from "@bindings/github.com/LukasKH/tutortop/internal/settings";
 import * as copilot from "@bindings/github.com/LukasKH/tutortop/internal/copilot";
+import * as update from "@bindings/github.com/LukasKH/tutortop/internal/update";
 import type { WorkspaceSnapshot } from "@bindings/github.com/LukasKH/tutortop/internal/app";
 import type { AgentSetup, Environment, Prefs, ProviderStatus } from "@bindings/github.com/LukasKH/tutortop/internal/settings";
 import type { Completion, DeviceCode, Plan, Setup, Suggestion } from "@bindings/github.com/LukasKH/tutortop/internal/copilot";
+import type { State } from "@bindings/github.com/LukasKH/tutortop/internal/update";
 import type { SandboxCheck, Working } from "@bindings/github.com/LukasKH/tutortop/internal/events";
 import type { Check, Limit, Model } from "@bindings/github.com/LukasKH/tutortop/internal/agent";
 import type {
@@ -33,6 +35,7 @@ import type { Result, TestResult } from "@bindings/github.com/LukasKH/tutortop/i
 export { ChatMark, ChatRole, ChatStatus, ObjectiveStatus, TaskShape, TaskSize } from "@bindings/github.com/LukasKH/tutortop/internal/workspace";
 export { CheckKind } from "@bindings/github.com/LukasKH/tutortop/internal/events";
 export { Status } from "@bindings/github.com/LukasKH/tutortop/internal/sandbox";
+export { Phase } from "@bindings/github.com/LukasKH/tutortop/internal/update";
 
 export type {
   Activity,
@@ -59,6 +62,7 @@ export type {
   SandboxCheck,
   Setup,
   Source,
+  State,
   Suggestion,
   Summary,
   TaskDetail,
@@ -102,6 +106,8 @@ export const SettingsService = {
 export { Service as EditorService } from "@bindings/github.com/LukasKH/tutortop/internal/editor";
 
 export const CopilotService = { ...copilot.Service, Setup: patiently(copilot.Service.Setup) };
+
+export const UpdateService = { ...update.Service, Status: patiently(update.Service.Status) };
 
 export function errorText(err: unknown): string {
   if (isOffline(err)) return "Can't reach Tutortop. Reload the page once it's running again.";

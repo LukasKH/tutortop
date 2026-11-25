@@ -19,8 +19,7 @@
     Write-Host 'Downloading Tutortop'
     Invoke-WebRequest $url -OutFile $installer -UseBasicParsing
     try {
-        # /S installs without the wizard. Windows still asks to allow the
-        # installer to make changes, from an unknown publisher since it's unsigned.
+        # /S installs per-user into %LOCALAPPDATA%\Programs\Tutortop without the wizard or UAC.
         Write-Host 'Installing Tutortop'
         $process = Start-Process $installer -ArgumentList '/S' -Wait -PassThru
         if ($process.ExitCode -ne 0) {

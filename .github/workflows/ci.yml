@@ -49,7 +49,7 @@ jobs:
             else
               files=$(git diff --name-only "$FROM..$TO")
             fi
-            if printf '%s\n' "$files" | grep -Eq '^(internal/|main\.go$|go\.mod$|go\.sum$|\.github/workflows/ci\.yml$)'; then
+            if printf '%s\n' "$files" | grep -Eq '^(internal/|[^/]+\.go$|build/updater\.pub$|go\.mod$|go\.sum$|\.github/workflows/ci\.yml$)'; then
               go=true
               pre_commit=true
             fi
