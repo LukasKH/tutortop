@@ -126,7 +126,13 @@ jobs:
               echo "$TAG isn't a draft release; not replacing its files." >&2
               exit 1
             fi
-            gh release upload "$TAG" * --repo "$GITHUB_REPOSITORY" --clobber
+            # A re-run starts from an empty draft, so SHA256SUMS lists every
+            # file on it: an AppImage left from an earlier run may not be rebuilt.
+            gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' |
+              while read -r name; do
+                gh release delete-asset "$TAG" "$name" --repo "$GITHUB_REPOSITORY" --yes
+              done
+            gh release upload "$TAG" * --repo "$GITHUB_REPOSITORY"
             gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --title "Tutortop ${TAG#v}"
           else
             # A tag pushed by hand has no release yet.
