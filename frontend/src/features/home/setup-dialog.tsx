@@ -32,7 +32,7 @@ export function SetupDialog({ env, onClose }: { env: Environment; onClose: () =>
               {env.sandboxHint && (
                 <details className="mt-1.5">
                   <summary className="w-fit cursor-pointer text-xs text-muted-foreground hover:text-foreground">Details</summary>
-                  <code className="mt-1 block text-xs whitespace-pre-wrap">{env.sandboxHint}</code>
+                  <code className="mt-1 block max-h-40 overflow-auto text-xs whitespace-pre-wrap">{env.sandboxHint}</code>
                 </details>
               )}
             </Missing>
