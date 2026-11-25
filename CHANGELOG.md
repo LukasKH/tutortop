@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.7](https://github.com/LukasKH/tutortop/compare/v0.2.6...v0.2.7) (2026-11-25)
+
+
+### Miscellaneous Chores
+
+* cut 0.2.7 to test in-app updates ([51b8728](https://github.com/LukasKH/tutortop/commit/51b872866068772332fb0d041c877c6a17dca95b))
+
 ## [0.2.6](https://github.com/LukasKH/tutortop/compare/v0.2.5...v0.2.6) (2026-11-25)
 
 
