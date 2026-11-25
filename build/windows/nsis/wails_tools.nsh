@@ -14,7 +14,7 @@
     !define INFO_PRODUCTNAME "Tutortop"
 !endif
 !ifndef INFO_PRODUCTVERSION
-    !define INFO_PRODUCTVERSION "0.2.5"
+    !define INFO_PRODUCTVERSION "0.2.5" ; x-release-please-version
 !endif
 !ifndef INFO_COPYRIGHT
     !define INFO_COPYRIGHT "(c) 2026 LukasKH"

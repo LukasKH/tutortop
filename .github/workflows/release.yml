@@ -1,5 +1,8 @@
 # Builds the installers and attaches them to a *draft* GitHub release.
 #
+# release-please.yml calls it once a release PR is merged, with the tag and
+# draft release it made. A tag pushed by hand runs it too, and makes the draft:
+#
 #   git tag v0.2.0 && git push origin v0.2.0
 #
 # Nothing is published until you open the draft on GitHub and press Publish.
@@ -15,6 +18,12 @@ name: Release
 on:
   push:
     tags: ["v*.*.*"]
+  workflow_call:
+    inputs:
+      tag:
+        description: "The tag to build and attach the installers to, such as v0.2.6"
+        required: true
+        type: string
   workflow_dispatch:
 
 permissions:
@@ -28,6 +37,7 @@ jobs:
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
+          ref: ${{ inputs.tag }} # "" outside workflow_call: the commit that started the run
           persist-credentials: false
       # Before setup-build: installing the Wails CLI compiles against GTK.
       - run: |
@@ -72,6 +82,7 @@ jobs:
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
+          ref: ${{ inputs.tag }} # "" outside workflow_call: the commit that started the run
           persist-credentials: false
       - uses: ./.github/actions/setup-build
       - name: Universal .dmg (unsigned)
@@ -88,7 +99,8 @@ jobs:
           if-no-files-found: error
 
   release:
-    if: startsWith(github.ref, 'refs/tags/v')
+    # Not on a manual run, even on a tag: that must never touch a published release.
+    if: inputs.tag != '' || (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v'))
     needs: [linux-windows, macos]
     runs-on: ubuntu-latest
     permissions:
@@ -98,10 +110,31 @@ jobs:
         with:
           path: dist
           merge-multiple: true
-      - name: Create draft release
+      - name: Attach to the draft release
         env:
           GH_TOKEN: ${{ github.token }}
+          FROM_RELEASE_PLEASE: ${{ inputs.tag }}
+          TAG: ${{ inputs.tag || github.ref_name }}
         run: |
           cd dist
           sha256sum * > SHA256SUMS
-          gh release create "$GITHUB_REF_NAME" * --repo "$GITHUB_REPOSITORY" --draft --generate-notes --title "Tutortop ${GITHUB_REF_NAME#v}"
+          if [ -n "$FROM_RELEASE_PLEASE" ]; then
+            # release-please made the draft, with the changelog as its notes.
+            # Stop rather than replace the files of a release that's public.
+            draft="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft)"
+            if [ "$draft" != true ]; then
+              echo "$TAG isn't a draft release; not replacing its files." >&2
+              exit 1
+            fi
+            # A re-run starts from an empty draft, so SHA256SUMS lists every
+            # file on it: an AppImage left from an earlier run may not be rebuilt.
+            gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' |
+              while read -r name; do
+                gh release delete-asset "$TAG" "$name" --repo "$GITHUB_REPOSITORY" --yes
+              done
+            gh release upload "$TAG" * --repo "$GITHUB_REPOSITORY"
+            gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --title "Tutortop ${TAG#v}"
+          else
+            # A tag pushed by hand has no release yet.
+            gh release create "$TAG" * --repo "$GITHUB_REPOSITORY" --draft --generate-notes --title "Tutortop ${TAG#v}"
+          fi
