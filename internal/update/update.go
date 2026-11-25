@@ -14,7 +14,7 @@ import (
 const (
 	// Version is the running Tutortop version. release-please updates it on
 	// each release.
-	Version = "0.2.5" // x-release-please-version
+	Version = "0.2.6" // x-release-please-version
 
 	// ReleasesURL is the GitHub Releases page for manual downloads.
 	ReleasesURL = "https://github.com/LukasKH/tutortop/releases"
