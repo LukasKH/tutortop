@@ -97,16 +97,10 @@ irm https://raw.githubusercontent.com/LukasKH/tutortop/main/install.ps1 | iex
 
 The scripts ([install.sh](install.sh) and [install.ps1](install.ps1)) download the newest release and install it. On Linux they use apt, dnf or pacman, which ask for your password, or put the AppImage in `~/.local/bin` if you have none of those. Installed this way, macOS opens the app without blocking it. Windows still asks to let an unknown publisher make changes.
 
-Or download the installer for your system from [Releases](https://github.com/LukasKH/tutortop/releases):
+Or download the installer for your system from [Releases](https://github.com/LukasKH/tutortop/releases). The app is unsigned, so if you install it by hand:
 
-| System | File | Install |
-| --- | --- | --- |
-| Ubuntu 24.04+, Debian 13+ | `.deb` | `sudo apt install ./tutortop_amd64.deb` |
-| Fedora | `.rpm` | `sudo dnf install ./tutortop-x86_64.rpm` |
-| Arch | `.pkg.tar.zst` | `sudo pacman -U tutortop-x86_64.pkg.tar.zst` |
-| Other Linux | `.AppImage` | `chmod +x` it and run it |
-| Windows 10/11 | `-setup.exe` | Run it. It's unsigned, so SmartScreen asks first: *More info → Run anyway*. |
-| macOS | `.dmg` | Drag to Applications. It's unsigned, so the first time macOS blocks it: open *System Settings → Privacy & Security* and click *Open Anyway*. |
+- Windows SmartScreen asks first: *More info → Run anyway*.
+- macOS blocks it the first time: open *System Settings → Privacy & Security* and click *Open Anyway*.
 
 ## Development
 
