@@ -40,6 +40,13 @@ type claudeSession struct {
 }
 
 func startClaude(ctx context.Context, opts Options, onEvent func(Event)) (Session, error) {
+	// The instructions go in a file rather than on the command line: npm
+	// installs claude.cmd on Windows, and cmd.exe refuses a command line over
+	// 8191 characters.
+	instructions, err := writeInstructions(opts.Instructions)
+	if err != nil {
+		return nil, err
+	}
 	mcpConfig, _ := json.Marshal(map[string]any{
 		"mcpServers": map[string]any{opts.MCPName: map[string]any{"type": "http", "url": opts.MCPURL}},
 	})
@@ -47,7 +54,7 @@ func startClaude(ctx context.Context, opts Options, onEvent func(Event)) (Sessio
 		"--output-format", "stream-json", "--verbose",
 		"--input-format", "stream-json",
 		"--include-partial-messages",
-		"--append-system-prompt", opts.Instructions,
+		"--append-system-prompt-file", instructions,
 		"--mcp-config", string(mcpConfig), "--strict-mcp-config",
 		// acceptEdits approves edits inside the workspace before our
 		// can_use_tool callback runs, so the tasks/ rule must be a deny rule:
@@ -84,8 +91,13 @@ func startClaude(ctx context.Context, opts Options, onEvent func(Event)) (Sessio
 		"CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1",
 	}, args...)
 	if err != nil {
+		_ = os.Remove(instructions)
 		return nil, err
 	}
+	go func() {
+		<-proc.done
+		_ = os.Remove(instructions)
+	}()
 	s := &claudeSession{
 		process: proc,
 		id:      sessionID,
@@ -103,6 +115,20 @@ func startClaude(ctx context.Context, opts Options, onEvent func(Event)) (Sessio
 		return nil, fmt.Errorf("starting Claude Code: %w", proc.abort(err))
 	}
 	return s, nil
+}
+
+// writeInstructions saves text to a temporary file and returns its path.
+func writeInstructions(text string) (string, error) {
+	f, err := os.CreateTemp("", "tutortop-instructions-*.md")
+	if err != nil {
+		return "", err
+	}
+	_, err = f.WriteString(text)
+	if err = cmp.Or(err, f.Close()); err != nil {
+		_ = os.Remove(f.Name())
+		return "", err
+	}
+	return f.Name(), nil
 }
 
 func (s *claudeSession) ID() string { return s.id }

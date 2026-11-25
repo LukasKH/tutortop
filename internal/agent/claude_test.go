@@ -67,6 +67,21 @@ func TestClaudeStart(t *testing.T) {
 	}
 }
 
+// The instructions go in a file, since cmd.exe on Windows caps a command
+// line at 8191 characters.
+func TestClaudeInstructionsFile(t *testing.T) {
+	opts := claudeOptions(t)
+	opts.Instructions = strings.Repeat("Be a tutor. ", 1000)
+	_, cli, _ := startFakeClaude(t, opts)
+	b, err := os.ReadFile(cli.arg("--append-system-prompt-file"))
+	if err != nil || string(b) != opts.Instructions {
+		t.Errorf("instructions file holds %d bytes (%v), want %d", len(b), err, len(opts.Instructions))
+	}
+	if slices.ContainsFunc(cli.Args, func(a string) bool { return len(a) > 1000 }) {
+		t.Error("the instructions are still on the command line")
+	}
+}
+
 func TestClaudeResume(t *testing.T) {
 	opts := claudeOptions(t)
 	const saved = "4b4c1f2e-0000-4000-8000-000000000001"
