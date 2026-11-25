@@ -59,6 +59,11 @@ export const ThreadBusy = "thread:busy";
 export const ThreadWorking = "thread:working";
 
 /**
+ * Name of the custom event "update:changed".
+ */
+export const UpdateChanged = "update:changed";
+
+/**
  * Name of the custom event "workspace:changed".
  */
 export const WorkspaceChanged = "workspace:changed";

@@ -59,6 +59,10 @@
         {
           "type": "generic",
           "path": "internal/mcp/server.go"
+        },
+        {
+          "type": "generic",
+          "path": "internal/update/update.go"
         }
       ]
     }

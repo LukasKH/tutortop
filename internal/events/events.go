@@ -6,6 +6,7 @@ package events
 import (
 	"sync/atomic"
 
+	"github.com/LukasKH/tutortop/internal/update"
 	"github.com/LukasKH/tutortop/internal/workspace"
 )
 
@@ -14,17 +15,18 @@ import (
 type Name[Data any] string
 
 const (
-	ChatMessage        Name[Chat]      = "chat:message"
-	ThreadBusy         Name[Busy]      = "thread:busy"
-	ThreadWorking      Name[Working]   = "thread:working"
-	CheckStatus        Name[Check]     = "check:status"
-	TaskPublished      Name[Task]      = "task:published"
-	LessonPublished    Name[Lesson]    = "lesson:published"
-	QuestionsAsked     Name[Questions] = "questions:asked"
-	LSPMessage         Name[LSP]       = "lsp:message"
-	WorkspaceChanged   Name[Workspace] = "workspace:changed" // the frontend reloads the workspace
-	CurriculumProposed Name[Workspace] = "curriculum:proposed"
-	CopilotInstalled   Name[Install]   = "copilot:installed" // the Settings screen checks Copilot again
+	ChatMessage        Name[Chat]         = "chat:message"
+	ThreadBusy         Name[Busy]         = "thread:busy"
+	ThreadWorking      Name[Working]      = "thread:working"
+	CheckStatus        Name[Check]        = "check:status"
+	TaskPublished      Name[Task]         = "task:published"
+	LessonPublished    Name[Lesson]       = "lesson:published"
+	QuestionsAsked     Name[Questions]    = "questions:asked"
+	LSPMessage         Name[LSP]          = "lsp:message"
+	WorkspaceChanged   Name[Workspace]    = "workspace:changed" // the frontend reloads the workspace
+	CurriculumProposed Name[Workspace]    = "curriculum:proposed"
+	CopilotInstalled   Name[Install]      = "copilot:installed" // the Settings screen checks Copilot again
+	UpdateChanged      Name[update.State] = "update:changed"
 )
 
 // emitter is wired by main.go to Wails' event bus. Tests leave it unset.

@@ -8,6 +8,9 @@ import type { Events } from "@wailsio/runtime";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import type * as events$0 from "../../../../LukasKH/tutortop/internal/events/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import type * as update$0 from "../../../../LukasKH/tutortop/internal/update/models.js";
 
 declare module "@wailsio/runtime" {
     namespace Events {
@@ -22,6 +25,7 @@ declare module "@wailsio/runtime" {
             "task:published": events$0.Task;
             "thread:busy": events$0.Busy;
             "thread:working": events$0.Working;
+            "update:changed": update$0.State;
             "workspace:changed": events$0.Workspace;
         }
     }

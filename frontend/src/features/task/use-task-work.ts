@@ -1,5 +1,6 @@
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { Status, TaskService, errorText, type Result, type TaskDetail } from "@/lib/api";
+import { registerBeforeRestart } from "@/lib/update";
 
 /** A check of the learner's code: the visible tests (run), or all of them (submit). */
 export type Run = { result: Result; submit: boolean };
@@ -22,6 +23,7 @@ export function useTaskWork(wsId: string, taskId: string) {
   const filesRef = useRef(files);
   const unsaved = useRef<Record<string, string> | null>(null);
   const saveTimer = useRef<number | undefined>(undefined);
+  const inFlight = useRef<Promise<void> | null>(null);
   const runningRef = useRef(false);
 
   function replaceFiles(work: Record<string, string>) {
@@ -34,13 +36,20 @@ export function useTaskWork(wsId: string, taskId: string) {
     unsaved.current = null;
   }
 
-  function save() {
+  function save(): Promise<void> {
     const pending = unsaved.current;
-    if (!pending) return;
+    if (!pending) return inFlight.current ?? Promise.resolve();
     unsaved.current = null;
-    TaskService.SaveWork(wsId, taskId, pending)
-      .then(() => !unsaved.current && setDirty(false))
-      .catch((e) => setError(`Couldn't save: ${errorText(e)}`));
+    const req = TaskService.SaveWork(wsId, taskId, pending)
+      .then(() => {
+        if (!unsaved.current) setDirty(false);
+      })
+      .catch((e) => setError(`Couldn't save: ${errorText(e)}`))
+      .finally(() => {
+        if (inFlight.current === req) inFlight.current = null;
+      });
+    inFlight.current = req;
+    return req;
   }
 
   /** The learner changed a file; it saves once they pause. */
@@ -95,15 +104,19 @@ export function useTaskWork(wsId: string, taskId: string) {
     setDetail(d);
     replaceFiles(workOf(d));
   });
-  const leave = useEffectEvent(() => {
+  const flush = useEffectEvent(() => {
     window.clearTimeout(saveTimer.current);
-    save();
+    return save();
   });
   useEffect(() => {
     TaskService.Task(wsId, taskId)
       .then(loaded)
       .catch((e) => setError(errorText(e)));
-    return () => leave();
+    const unregister = registerBeforeRestart(() => flush());
+    return () => {
+      unregister();
+      void flush();
+    };
   }, [wsId, taskId]);
 
   return { detail, files, dirty, error, run, running, edit, check, reset };

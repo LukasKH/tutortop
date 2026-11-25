@@ -2,10 +2,12 @@ import { useEffect, useState, type ReactNode } from "react";
 import { Clipboard, Dialogs } from "@wailsio/runtime";
 import { AppEvents, CopilotService, errorText, useEvent, type DeviceCode, type Plan, type Setup } from "@/lib/api";
 import { checkEnvironment, useCheckingEnvironment, useEnvironment } from "@/lib/agents";
+import { updateNoticeLabel, useUpdate } from "@/lib/update";
 import { useTutor } from "@/features/settings/use-tutor";
-import { useSettings } from "@/features/settings/use-settings";
+import { useSettings, type SettingsPage } from "@/features/settings/use-settings";
 import { TutorNote, TutorPicker } from "@/features/settings/tutor-picker";
 import { AgentsSetting } from "@/features/settings/agents-setting";
+import { UpdatesSetting } from "@/features/settings/updates-setting";
 import { AgentIcon } from "@/components/agent-icon";
 import { ErrorText } from "@/components/error-text";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -14,17 +16,19 @@ import { Spinner } from "@/components/ui/spinner";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { GraduationCap, HardDrive, Sparkles } from "lucide-react";
+import { ArrowUpCircle, GraduationCap, HardDrive, Sparkles } from "lucide-react";
 
 /**
  * App settings in a modal, one page at a time from the sidebar: the tutor and
- * the agents it can run on, the editor's autocomplete, and where workspaces
- * are stored.
+ * the agents it can run on, the editor's autocomplete, where workspaces are
+ * stored, and app updates.
  */
-export function SettingsDialog({ onClose }: { onClose: () => void }) {
+export function SettingsDialog({ initialPage = "tutor", onClose }: { initialPage?: SettingsPage; onClose: () => void }) {
   const { settings, change } = useSettings();
   const checkingEnv = useCheckingEnvironment();
+  const update = useUpdate();
   const [envError, setEnvError] = useState("");
+  const hasUpdate = updateNoticeLabel(update) !== "";
 
   if (!settings) return null;
   return (
@@ -46,7 +50,7 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
         </header>
 
         {/* A sidebar of pages, or a row of tabs above the page in a narrow window. */}
-        <Tabs defaultValue="tutor" orientation="vertical" className="min-h-0 flex-1 sm:flex-row">
+        <Tabs defaultValue={initialPage} orientation="vertical" className="min-h-0 flex-1 sm:flex-row">
           <TabsList className="h-auto gap-1 overflow-x-auto px-3 py-2 sm:w-44 sm:flex-col sm:items-stretch sm:gap-0.5 sm:border-r sm:border-b-0 sm:px-2 sm:py-3">
             {PAGES.map(({ id, label, Icon }) => (
               <TabsTrigger
@@ -55,7 +59,10 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
                 className="mb-0 justify-start gap-2 rounded-md border-b-0 px-2.5 py-1.5 text-base font-normal hover:bg-accent/60 data-active:bg-accent [&_svg]:text-muted-foreground data-active:[&_svg]:text-foreground"
               >
                 <Icon size={16} aria-hidden="true" />
-                {label}
+                <span className="flex items-center gap-1.5">
+                  {label}
+                  {id === "updates" && hasUpdate && <span className="size-1.5 rounded-full bg-foreground" aria-label="Update available" />}
+                </span>
               </TabsTrigger>
             ))}
           </TabsList>
@@ -96,6 +103,10 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
           <TabsContent value="storage" className={PAGE}>
             <WorkspacesFolder folder={settings.workspacesFolder ?? ""} onChange={(f) => change({ ...settings, workspacesFolder: f })} />
           </TabsContent>
+
+          <TabsContent value="updates" className={PAGE}>
+            <UpdatesSetting />
+          </TabsContent>
         </Tabs>
       </DialogContent>
     </Dialog>
@@ -103,10 +114,11 @@ export function SettingsDialog({ onClose }: { onClose: () => void }) {
 }
 
 /** The sidebar's pages, in order. */
-const PAGES = [
+const PAGES: { id: SettingsPage; label: string; Icon: typeof GraduationCap }[] = [
   { id: "tutor", label: "Tutor", Icon: GraduationCap },
   { id: "autocomplete", label: "Autocomplete", Icon: Sparkles },
   { id: "storage", label: "Storage", Icon: HardDrive },
+  { id: "updates", label: "Updates", Icon: ArrowUpCircle },
 ];
 
 /** The configured tutor with a way to change it. */

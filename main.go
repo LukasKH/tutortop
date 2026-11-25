@@ -11,7 +11,9 @@ import (
 	"github.com/LukasKH/tutortop/internal/editor"
 	"github.com/LukasKH/tutortop/internal/events"
 	"github.com/LukasKH/tutortop/internal/shellpath"
+	"github.com/LukasKH/tutortop/internal/update"
 	"github.com/wailsapp/wails/v3/pkg/application"
+	"github.com/wailsapp/wails/v3/pkg/updater"
 )
 
 //go:embed all:frontend/dist
@@ -23,9 +25,14 @@ var (
 	_ application.ServiceShutdown = (*threads.ChatService)(nil)
 	_ application.ServiceShutdown = (*editor.Service)(nil)
 	_ application.ServiceShutdown = (*copilot.Service)(nil)
+	_ application.ServiceShutdown = (*update.Service)(nil)
 )
 
 func main() {
+	// If spawned as Wails' update swap helper, swap and relaunch immediately
+	// without loading the login shell or starting MCP servers.
+	updater.HandleHelperMode()
+
 	// Before anything looks up claude, codex, docker or git.
 	shellpath.Fix()
 
@@ -58,6 +65,15 @@ func main() {
 		Server: application.ServerOptions{ReadTimeout: 5 * time.Minute, WriteTimeout: 5 * time.Minute},
 	})
 	events.SetEmitter(func(name string, data any) { wails.Event.Emit(name, data) })
+
+	// Wired after application.New so Support reflects whether Wails' updater
+	// initialized cleanly, and internal/app stays independent of Wails.
+	engine, support := newWailsUpdater(wails)
+	updates := update.NewService(engine, support, func(s update.State) {
+		events.Emit(events.UpdateChanged, s)
+	})
+	wails.RegisterService(application.NewService(updates))
+	update.Start(updates)
 	services.Start()
 
 	wails.Window.NewWithOptions(application.WebviewWindowOptions{
@@ -107,6 +123,7 @@ func registerEvents() {
 	application.RegisterEvent[events.Workspace](string(events.WorkspaceChanged))
 	application.RegisterEvent[events.Workspace](string(events.CurriculumProposed))
 	application.RegisterEvent[events.Install](string(events.CopilotInstalled))
+	application.RegisterEvent[update.State](string(events.UpdateChanged))
 }
 
 // wailsBrowser opens URLs through Wails so internal/copilot stays free of it.

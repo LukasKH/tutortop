@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { SettingsService, type Prefs } from "@/lib/api";
+import { AppEvents, SettingsService, useEvent, type Prefs } from "@/lib/api";
 import { Home } from "@/features/home/home";
 import { SettingsDialog } from "@/features/settings/settings-dialog";
-import { SettingsContext } from "@/features/settings/use-settings";
+import { SettingsContext, type SettingsPage } from "@/features/settings/use-settings";
 import { checkEnvironment, loadModels } from "@/lib/agents";
+import { applyUpdate, loadUpdate } from "@/lib/update";
 import { WorkspaceView } from "@/features/workspace/workspace-view";
 import { useStored } from "@/hooks/use-stored";
 
@@ -17,7 +18,7 @@ export function AppRoot() {
     setWorkspaceId(id);
   };
   const [settings, setSettings] = useState<Prefs | null>(null);
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsPage, setSettingsPage] = useState<SettingsPage | null>(null);
   // Saves are numbered. Once none is in flight, the settings shown are the
   // newest the backend took: a failed save rolls back, but not past a later
   // save, or an earlier one that succeeded after it.
@@ -26,9 +27,11 @@ export function AppRoot() {
   const saved = useRef<{ seq: number; prefs: Prefs | null }>({ seq: 0, prefs: null });
 
   const agent = settings?.agent ?? "";
+  useEvent(AppEvents.UpdateChanged, applyUpdate);
   useEffect(() => {
     const controller = new AbortController();
     checkEnvironment().catch(() => {});
+    loadUpdate().catch(() => {});
     SettingsService.Load().then((prefs) => {
       if (controller.signal.aborted || saves.current > 0) return;
       saved.current = { seq: 0, prefs };
@@ -53,12 +56,13 @@ export function AppRoot() {
     }
   }, []);
 
-  const context = useMemo(() => ({ settings, change: changeSettings, openSettings: () => setSettingsOpen(true) }), [settings, changeSettings]);
+  const openSettings = useCallback((page: SettingsPage = "tutor") => setSettingsPage(page), []);
+  const context = useMemo(() => ({ settings, change: changeSettings, openSettings }), [settings, changeSettings, openSettings]);
 
   return (
     <SettingsContext value={context}>
       {workspaceId ? <WorkspaceView key={workspaceId} id={workspaceId} onBack={() => setWorkspaceId(null)} /> : <Home lastId={lastId} onOpen={open} />}
-      {settingsOpen && <SettingsDialog onClose={() => setSettingsOpen(false)} />}
+      {settingsPage && <SettingsDialog initialPage={settingsPage} onClose={() => setSettingsPage(null)} />}
     </SettingsContext>
   );
 }
