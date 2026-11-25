@@ -4,12 +4,14 @@ import { ObjectiveStatus, type LessonStatus, type TaskStatus, type WorkspaceSnap
 import { describeItem, entryOf, itemKey, lessonOf, sameItem, type OpenItem } from "@/features/workspace/open-item";
 import { useLiveWorkspace } from "@/features/workspace/use-workspace";
 import type { Attention } from "@/features/chat/chat-panel";
-import { PencilIcon } from "lucide-react";
+import { PencilIcon, SettingsIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { IconButton } from "@/components/icon-button";
 import { Spinner } from "@/components/ui/spinner";
 import { TopicIcon } from "@/components/topic-icon";
 import { ProgressBar } from "@/components/progress-bar";
 import { UpdateNotice } from "@/components/update-notice";
+import { useSettings } from "@/features/settings/use-settings";
 
 type Props = {
   ws: WorkspaceSnapshot;
@@ -28,6 +30,7 @@ export function Sidebar(p: Props) {
   const { ws } = p;
   const { progress, curriculum } = ws;
   const { live, nav } = useLiveWorkspace();
+  const { openSettings } = useSettings();
   // The open item, or null while a plan page is open.
   const openItem = nav.view === "item" ? nav.item : null;
   const planOpen = nav.view === "plan";
@@ -133,8 +136,7 @@ export function Sidebar(p: Props) {
         )}
       </nav>
 
-      <div className="mt-auto flex flex-col gap-1 border-t p-2">
-        <UpdateNotice layout="sidebar" />
+      <div className="mt-auto border-t p-2">
         <button
           className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-soft-foreground transition-colors hover:bg-muted hover:text-foreground aria-[current=page]:bg-muted aria-[current=page]:text-foreground"
           aria-current={planOpen ? "page" : undefined}
@@ -156,6 +158,12 @@ export function Sidebar(p: Props) {
           </span>
           <PencilIcon size={14} className="flex-none text-muted-foreground" />
         </button>
+      </div>
+      <div className="flex items-center justify-between border-t px-2.5 py-2">
+        <IconButton label="Settings" onClick={() => openSettings()}>
+          <SettingsIcon size={16} />
+        </IconButton>
+        <UpdateNotice layout="sidebar" />
       </div>
     </aside>
   );
