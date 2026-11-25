@@ -9,6 +9,7 @@ export type {
     Busy,
     Chat,
     Check,
+    Install,
     LSP,
     Lesson,
     Questions,

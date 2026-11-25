@@ -61,6 +61,16 @@ export enum CheckKind {
 };
 
 /**
+ * Install tells that installing Copilot's language server has ended.
+ */
+export interface Install {
+    /**
+     * why it failed; "" if it worked
+     */
+    "error"?: string;
+}
+
+/**
  * LSP carries one message from a language server to the editor, or tells it
  * the server has stopped.
  */
