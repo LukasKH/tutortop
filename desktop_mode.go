@@ -1,4 +1,4 @@
-//go:build !server
+//go:build production && !server
 
 package main
 

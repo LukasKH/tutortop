@@ -73,6 +73,7 @@ jobs:
           mv bin/tutortop.deb dist/tutortop_amd64.deb
           mv bin/tutortop.rpm dist/tutortop-x86_64.rpm
           mv bin/tutortop.pkg.tar.zst dist/tutortop-x86_64.pkg.tar.zst
+          tar -czf dist/tutortop-linux-amd64.tar.gz -C bin tutortop
           mv bin/tutortop-amd64-installer.exe dist/tutortop-windows-x64-setup.exe
           zip -j dist/tutortop-windows-amd64.zip bin/tutortop.exe
           for f in bin/*.AppImage; do [ -e "$f" ] && mv "$f" dist/tutortop-x86_64.AppImage; done
@@ -158,10 +159,11 @@ jobs:
             fi
           fi
 
-          payloads=(dist/tutortop-darwin-universal.zip dist/tutortop-windows-amd64.zip)
-          if [ -f dist/tutortop-x86_64.AppImage ]; then
-            payloads+=(dist/tutortop-x86_64.AppImage)
-          fi
+          payloads=(
+            dist/tutortop-darwin-universal.zip
+            dist/tutortop-windows-amd64.zip
+            dist/tutortop-linux-amd64.tar.gz
+          )
 
           wails3 updater manifest \
             -version "${TAG#v}" \
