@@ -16,10 +16,10 @@ type Props = {
 
 /** Where the learner writes to the tutor. Images can be pasted, dropped on it or picked with its attach button. */
 export function MessageBox({ composer, placeholder, onSend }: Props) {
-  const { draft, setDraft, images, imageError, inputRef, addImages, removeImage, take } = composer;
+  const { draft, setDraft, images, imageError, attaching, inputRef, addImages, removeImage, take } = composer;
   const pickerRef = useRef<HTMLInputElement>(null);
   const [dropping, setDropping] = useState(false);
-  const canSend = draft.trim() !== "" || images.length > 0;
+  const canSend = !attaching && (draft.trim() !== "" || images.length > 0);
 
   function send() {
     if (!canSend) return;
@@ -114,7 +114,7 @@ export function MessageBox({ composer, placeholder, onSend }: Props) {
             onClick={send}
             disabled={!canSend}
             aria-label="Send"
-            title="Send (Enter)"
+            title={attaching ? "Attaching images…" : "Send (Enter)"}
           >
             ↑
           </Button>

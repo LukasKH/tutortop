@@ -84,6 +84,13 @@ func (InstalledCLI) Start(ctx context.Context, provider string, opts agent.Optio
 // agent, without waiting for the agent to start. Once the message is in the
 // chat, whatever goes wrong with it is posted there too.
 func (ag *Agents) Send(w *workspace.Workspace, t workspace.Thread, m Message) {
+	_ = ag.TrySend(w, t, m) // posted in the chat
+}
+
+// TrySend is Send that also returns why the agent couldn't take the message,
+// for a caller that lets the learner try again. A CLI that fails to open
+// fails later, in the chat only.
+func (ag *Agents) TrySend(w *workspace.Workspace, t workspace.Thread, m Message) error {
 	item := workspace.ChatItem{Thread: t.String(), Role: m.Role, Text: m.Shown}
 	p := prompt{text: m.Agent}
 	for _, img := range m.Images {
@@ -91,9 +98,11 @@ func (ag *Agents) Send(w *workspace.Workspace, t workspace.Thread, m Message) {
 		p.images = append(p.images, agent.Image{Path: img.Path, MIMEType: img.MIMEType})
 	}
 	Post(w, item)
-	if err := ag.queue(w, t, p); err != nil {
+	err := ag.queue(w, t, p)
+	if err != nil {
 		postFailure(w, t.String(), err.Error())
 	}
+	return err
 }
 
 // The UI learns which threads are busy, and how writers' sandbox checks go,

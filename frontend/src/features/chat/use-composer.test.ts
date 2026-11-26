@@ -32,3 +32,15 @@ test("keeps the images it can take, says why it refused the rest, and sends them
   expect(result.current.draft).toBe("");
   expect(result.current.images).toEqual([]);
 });
+
+test("says it's attaching while an image is still being read, so a message waits for it", async () => {
+  const { result } = renderHook(() => useComposer());
+  let adding: Promise<void> | undefined;
+  act(() => {
+    adding = result.current.addImages([png("slow.png")]);
+  });
+  expect(result.current.attaching).toBe(true);
+  await act(() => adding);
+  expect(result.current.attaching).toBe(false);
+  expect(result.current.images.map((i) => i.name)).toEqual(["slow.png"]);
+});

@@ -86,6 +86,36 @@ func TestFeedbackNeedsSomethingToSay(t *testing.T) {
 	tutor.noMoreTurns(t)
 }
 
+// Feedback the planning tutor can't take fails, so the learner can send it
+// again, instead of being thanked for feedback the tutor never gets.
+func TestFeedbackTheTutorCantTakeFails(t *testing.T) {
+	a, w, tutor := startPlanned(t)
+	taskID, _ := addObjective(t, w)
+	fb := Feedback{Chips: []FeedbackChip{FeedbackTooHard}}
+	if err := a.Tasks.SendFeedback(w.ID, taskID, fb); err != nil {
+		t.Fatal(err)
+	}
+	busy := tutor.next(t, a, w, workspace.PlanThread)
+	// The tutor is busy with the first: fill its queue.
+	waiting := 0
+	for {
+		err := a.Tasks.SendFeedback(w.ID, taskID, fb)
+		if err != nil {
+			break
+		}
+		waiting++
+		if waiting > 100 {
+			t.Fatal("the tutor's queue never filled")
+		}
+	}
+	busy.reply("Noted.")
+	for range waiting {
+		tutor.next(t, a, w, workspace.PlanThread).reply("Noted.")
+	}
+	idle(t, a, w.ID)
+	tutor.noMoreTurns(t)
+}
+
 // The learner sees how they like to learn on the plan page and edits it
 // there. A change tells the planning tutor; saving the same text doesn't.
 func TestLearnerEditsNotes(t *testing.T) {

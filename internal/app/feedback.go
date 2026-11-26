@@ -32,14 +32,15 @@ const (
 // sendFeedback tells the planning tutor what the learner thought of what
 // (`the exercise “…”`), so it updates their preferences. Only lessons and
 // exercises written afterwards follow them: rewriting ones already written
-// ahead would redo work for a single opinion.
+// ahead would redo work for a single opinion. It fails if the tutor can't take
+// the message, so the learner can send it again.
 func sendFeedback(agents *threads.Agents, w *workspace.Workspace, what string, fb Feedback) error {
 	said, err := fb.sentences(w.PriorKnowledge())
 	if err != nil {
 		return err
 	}
 	shown := "Your feedback on " + what + ": " + said
-	agents.Send(w, workspace.PlanThread, threads.Message{
+	return agents.TrySend(w, workspace.PlanThread, threads.Message{
 		Role:  workspace.RoleNotice,
 		Shown: shown,
 		Agent: fmt.Sprintf("[app] My feedback on %s: %s "+
@@ -47,7 +48,6 @@ func sendFeedback(agents *threads.Agents, w *workspace.Workspace, what string, f
 			"and update task_defaults if I want tasks of another size. Lessons and tasks written from now on follow them, so don't rewrite ones already written, "+
 			"and don't write lessons or tasks yourself. Reply in one sentence at most.", what, said),
 	})
-	return nil
 }
 
 // sentences is the feedback in the learner's words, one sentence per chip,
