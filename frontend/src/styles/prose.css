@@ -125,6 +125,16 @@
 .prose .diagram-pending {
   color: var(--faint);
 }
+/* $$…$$ math: a wide formula scrolls inside its box */
+.prose .katex-display {
+  margin: 0;
+  padding: 2px 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+.prose > * + .katex-display {
+  margin-top: 10px;
+}
 /* a statement's "Example N": input, output and explanation in a box */
 .prose .example-io {
   padding: 10px 14px;

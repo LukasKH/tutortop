@@ -1,7 +1,14 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
+import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
+import remarkParse from "remark-parse";
+import { unified, type Pluggable } from "unified";
+import { visit } from "unist-util-visit";
 import type { Element, ElementContent, Root } from "hast";
+import type { Root as MdastRoot } from "mdast";
+import type { VFile } from "vfile";
 import { Browser } from "@wailsio/runtime";
 import { Diagram } from "@/components/diagram";
 import { monaco } from "@/lib/monaco";
@@ -31,10 +38,15 @@ export function Markdown({ text, className, foldExamples, lang }: { text: string
     }),
     [lang],
   );
+  const source = useMemo(() => escapeDollarAmounts(text), [text]);
   return (
     <div className={className}>
-      <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={foldExamples ? [foldExampleCode] : []} components={components}>
-        {text}
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm, remarkMath, displayMathParagraphs]}
+        rehypePlugins={foldExamples ? [katex, foldExampleCode] : [katex]}
+        components={components}
+      >
+        {source}
       </ReactMarkdown>
     </div>
   );
@@ -132,6 +144,59 @@ const LANGS: Record<string, string> = {
   golang: "go",
 };
 const known = new Set(monaco.languages.getLanguages().map((l) => l.id));
+
+// TeX math ($…$, $$…$$) drawn by KaTeX. Formulas that don't parse, such as
+// one the tutor is still writing, show their source in grey: red is for
+// check results.
+const katex: Pluggable = [rehypeKatex, { errorColor: "var(--muted-foreground)" }];
+
+// The same parser ReactMarkdown runs, to find which dollars it reads as math.
+const mathParser = unified().use(remarkParse).use(remarkGfm).use(remarkMath);
+
+/**
+ * Escapes the dollars that would wrongly start math, so "costs $5 and $10"
+ * stays prose. remark-math pairs any two single dollars, as code spans pair
+ * backticks. This follows Pandoc's stricter rule: the TeX doesn't start or end
+ * with a space, and the closing $ isn't followed by a digit. A pair with a
+ * backtick inside isn't math either: it reached into a code span, as in
+ * "$5 and `$x$`". Escaping the opener of each such pair and parsing again
+ * lets the parser pair the dollars that remain. Code is left alone: the
+ * parser never reads math inside it.
+ */
+function escapeDollarAmounts(text: string): string {
+  let source = text;
+  while (source.includes("$")) {
+    const strays: number[] = [];
+    visit(mathParser.parse(source), "inlineMath", (node) => {
+      const start = node.position?.start.offset;
+      const end = node.position?.end.offset;
+      if (start === undefined || end === undefined || source[start + 1] === "$") return;
+      const tex = source.slice(start + 1, end - 1);
+      if (/^\s|\s$|`/.test(tex) || /\d/.test(source[end] ?? "")) strays.unshift(start);
+    });
+    if (strays.length === 0) break;
+    // From the end, so earlier offsets still hold.
+    for (const at of strays) source = `${source.slice(0, at)}\\${source.slice(at)}`;
+  }
+  return source;
+}
+
+/**
+ * A paragraph that is only $$…$$ is display math, as on GitHub. remark-math
+ * reads $$…$$ on one line as inline math, and only $$ on lines of their own as
+ * a block.
+ */
+function displayMathParagraphs() {
+  return (tree: MdastRoot, file: VFile) => {
+    visit(tree, "paragraph", (node) => {
+      const [math, ...rest] = node.children;
+      if (math?.type !== "inlineMath" || rest.length > 0) return;
+      if (String(file.value)[(math.position?.start.offset ?? 0) + 1] !== "$") return;
+      // rehype-katex draws code with this class in display mode.
+      math.data = { ...math.data, hProperties: { className: ["language-math", "math-display"] } };
+    });
+  };
+}
 
 /**
  * Lays out a task statement. Each "Example N" gets its input and output in
