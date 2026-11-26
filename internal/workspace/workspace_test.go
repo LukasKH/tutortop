@@ -185,3 +185,49 @@ func TestToolchainsInUse(t *testing.T) {
 		t.Error("no error with a workspace that can't be read")
 	}
 }
+
+// The learner's own edits of their mission and notes are saved trimmed, and
+// saving the same text again isn't a change.
+func TestSaveDocs(t *testing.T) {
+	w := newWorkspace(t)
+	for _, doc := range []struct {
+		file string
+		save func(string) (bool, error)
+	}{
+		{"MISSION.md", w.SaveMission},
+		{"NOTES.md", w.SaveNotes},
+	} {
+		if changed, err := doc.save("  - Plain words first.\n\n"); err != nil || !changed {
+			t.Fatalf("%s: first save changed %v, err %v; want a change", doc.file, changed, err)
+		}
+		if got := w.ReadDoc(doc.file); got != "- Plain words first.\n" {
+			t.Errorf("%s holds %q", doc.file, got)
+		}
+		if changed, err := doc.save("- Plain words first."); err != nil || changed {
+			t.Errorf("%s: saving the same text changed %v, err %v; want no change", doc.file, changed, err)
+		}
+	}
+}
+
+// What the learner already knows comes from the mission's own section, so
+// feedback can ask for comparisons to it by name.
+func TestPriorKnowledge(t *testing.T) {
+	for _, tc := range []struct {
+		name, mission, want string
+	}{
+		{"section", "# Mission\n\n## Why\n\nTools.\n\n## You already know\n\nPython.\n\n## Success looks like\n\n- Ship it\n", "Python"},
+		{"list item, any case", "## you already know\n- Python and SQL\n", "Python and SQL"},
+		{"no section", "# Mission\n\n## Why\n\nYou already know nothing.\n", ""},
+		{"empty section", "## You already know\n\n## Why\n\nTools.\n", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			w := newWorkspace(t)
+			if _, err := w.SaveMission(tc.mission); err != nil {
+				t.Fatal(err)
+			}
+			if got := w.PriorKnowledge(); got != tc.want {
+				t.Errorf("PriorKnowledge() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}

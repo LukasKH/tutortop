@@ -18,6 +18,8 @@ export type ResultsProps = {
   solved: boolean;
   /** Shown once solved, after Submit. */
   next: ReactNode;
+  /** Shown once solved, on its own line under the buttons: "How was this?" (HowWasThis). */
+  feedback?: ReactNode;
   open: boolean;
   /** Fixed height in px when the learner has sized the results; otherwise it fits its content. */
   height?: number;
@@ -79,6 +81,8 @@ export function Results(p: ResultsProps) {
           <ChevronDownIcon size={16} className={cn("transition-transform", !p.open && "rotate-180")} />
         </IconButton>
       </div>
+
+      {solved && p.feedback && <div className="flex-none px-3.5 pb-2.5">{p.feedback}</div>}
 
       {p.open && <ErrorText error={error} className="px-3.5 pb-2.5" />}
 

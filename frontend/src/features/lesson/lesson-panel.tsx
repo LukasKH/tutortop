@@ -3,6 +3,7 @@ import { cn } from "@/lib/utils";
 import { LessonService, errorText, type LessonDetail, type QuizResult, type Source } from "@/lib/api";
 import { plural } from "@/lib/format";
 import { useLiveWorkspace } from "@/features/workspace/use-workspace";
+import { HowWasThis } from "@/features/feedback/how-was-this";
 import { Markdown } from "@/components/markdown";
 import { References } from "@/components/references";
 import { TopicIcon } from "@/components/topic-icon";
@@ -160,6 +161,7 @@ export function LessonPanel({ lessonId, moduleTitle, icon, lang, onOpenExercise,
                 {!done && answered > 0 && <p className="text-sm text-muted-foreground">{plural(quiz.length - answered, "question")} to go.</p>}
               </section>
             )}
+            {done && <HowWasThis item={`lesson:${lessonId}`} send={(fb) => LessonService.SendFeedback(wsId, lessonId, fb)} />}
             <p className="pb-6 text-sm text-muted-foreground">Anything unclear? Ask the tutor about this lesson.</p>
             <ErrorText error={error} />
           </ReadingPage>

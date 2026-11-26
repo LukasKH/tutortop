@@ -214,17 +214,31 @@ func (w *Workspace) ReadDoc(name string) string {
 // isn't edited by hand: the tutor proposes changes to it, which the learner
 // reviews. It reports whether the mission changed.
 func (w *Workspace) SaveMission(mission string) (bool, error) {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	mission = strings.TrimSpace(mission)
-	if mission == strings.TrimSpace(w.ReadDoc("MISSION.md")) {
-		return false, nil
+	return w.saveDoc("MISSION.md", mission, "Edit mission by hand")
+}
+
+// SaveNotes stores the learner's own edit of NOTES.md, how they like to
+// learn. It reports whether the notes changed.
+func (w *Workspace) SaveNotes(notes string) (bool, error) {
+	return w.saveDoc("NOTES.md", notes, "Edit notes by hand")
+}
+
+// PriorKnowledge is what the mission's "You already know" section names,
+// such as "Python", or "" if it has none.
+func (w *Workspace) PriorKnowledge() string {
+	var known []string
+	in := false
+	for line := range strings.Lines(w.ReadDoc("MISSION.md")) {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "#") {
+			in = strings.EqualFold(strings.TrimSpace(strings.TrimLeft(line, "#")), "You already know")
+			continue
+		}
+		if in && line != "" {
+			known = append(known, strings.TrimSpace(strings.TrimLeft(line, "-* ")))
+		}
 	}
-	if err := atomicfile.Write(w.path("MISSION.md"), []byte(mission+"\n")); err != nil {
-		return false, err
-	}
-	w.commit("Edit mission by hand")
-	return true, nil
+	return strings.TrimSuffix(strings.Join(known, " "), ".")
 }
 
 // Commit snapshots the workspace so every change to the plan has history.
@@ -279,6 +293,22 @@ func (w *Workspace) git(args ...string) {
 	// which git sets for hooks, would point the commands at another one.
 	cmd.Env = slices.DeleteFunc(os.Environ(), func(kv string) bool { return strings.HasPrefix(kv, "GIT_") })
 	_ = cmd.Run() // git is a convenience; the app works without it
+}
+
+// saveDoc stores the learner's own edit of a top-level markdown file and
+// commits it with msg. It reports whether the file changed.
+func (w *Workspace) saveDoc(name, text, msg string) (bool, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	text = strings.TrimSpace(text)
+	if text == strings.TrimSpace(w.ReadDoc(name)) {
+		return false, nil
+	}
+	if err := atomicfile.Write(w.path(name), []byte(text+"\n")); err != nil {
+		return false, err
+	}
+	w.commit(msg)
+	return true, nil
 }
 
 // validName reports whether s can name a workspace, task or chat thread: a

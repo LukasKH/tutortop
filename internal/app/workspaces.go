@@ -103,6 +103,8 @@ type WorkspaceSnapshot struct {
 	Title      string                   `json:"title"`
 	Icon       string                   `json:"icon"`
 	Mission    string                   `json:"mission"`
+	Notes      string                   `json:"notes"`     // NOTES.md: how the learner likes to learn
+	Known      string                   `json:"known"`     // what the mission says the learner already knows, like "Python"; "" if it doesn't say
 	Resources  string                   `json:"resources"` // RESOURCES.md: the sources the plan and its lessons draw on
 	Curriculum *workspace.Curriculum    `json:"curriculum"`
 	Proposal   *workspace.Curriculum    `json:"proposal"`
@@ -128,6 +130,8 @@ func (s *WorkspaceService) Workspace(id string) (WorkspaceSnapshot, error) {
 		Title:     w.Meta.Title,
 		Icon:      w.Meta.Icon,
 		Mission:   w.ReadDoc("MISSION.md"),
+		Notes:     w.ReadDoc("NOTES.md"),
+		Known:     w.PriorKnowledge(),
 		Resources: w.ReadDoc("RESOURCES.md"),
 		Progress:  w.Progress(),
 	}
@@ -181,6 +185,27 @@ func (s *WorkspaceService) SaveMission(wsID, mission string) error {
 		Shown: "You edited your mission.",
 		Agent: "[app] I edited my mission by hand. Read it; it's mine now, so don't change it back. " +
 			"If the curriculum no longer fits it, propose a revision that does, keeping the ids of objectives that stay. Otherwise reply in one sentence.",
+	})
+	return nil
+}
+
+// SaveNotes saves the learner's own edit of how they like to learn, and tells
+// the planning tutor, who keeps the notes current from their feedback.
+func (s *WorkspaceService) SaveNotes(wsID, notes string) error {
+	w, err := s.store.Open(wsID)
+	if err != nil {
+		return err
+	}
+	changed, err := w.SaveNotes(notes)
+	if err != nil || !changed {
+		return err
+	}
+	events.Emit(events.WorkspaceChanged, events.Workspace{Workspace: wsID})
+	s.agents.Send(w, workspace.PlanThread, threads.Message{
+		Role:  workspace.RoleNotice,
+		Shown: "You edited how you like to learn.",
+		Agent: "[app] I edited my notes on how I like to learn by hand. Read them and keep what I wrote; build on it when I give feedback. " +
+			"If I changed how big tasks should be, update task_defaults to match. Reply in one sentence.",
 	})
 	return nil
 }

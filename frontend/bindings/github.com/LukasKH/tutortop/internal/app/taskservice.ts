@@ -18,6 +18,10 @@ import * as sandbox$0 from "../sandbox/models.js";
 // @ts-ignore: Unused imports
 import * as workspace$0 from "../workspace/models.js";
 
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as $models from "./models.js";
+
 export function ResetWork(wsID: string, taskID: string): $CancellablePromise<void> {
     return $Call.ByID(1876144313, wsID, taskID);
 }
@@ -33,6 +37,14 @@ export function RunTests(wsID: string, taskID: string, files: sandbox$0.Files, s
 
 export function SaveWork(wsID: string, taskID: string, files: sandbox$0.Files): $CancellablePromise<void> {
     return $Call.ByID(1779376385, wsID, taskID, files);
+}
+
+/**
+ * SendFeedback tells the planning tutor what the learner thought of an
+ * exercise, so later lessons and exercises fit them better.
+ */
+export function SendFeedback(wsID: string, taskID: string, fb: $models.Feedback): $CancellablePromise<void> {
+    return $Call.ByID(913636152, wsID, taskID, fb);
 }
 
 export function Task(wsID: string, taskID: string): $CancellablePromise<workspace$0.TaskDetail> {

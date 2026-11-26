@@ -14,6 +14,10 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 // @ts-ignore: Unused imports
 import * as workspace$0 from "../workspace/models.js";
 
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as $models from "./models.js";
+
 /**
  * AnswerQuiz checks one quiz answer and returns the feedback. Only the first
  * answer to a question is recorded.
@@ -24,4 +28,12 @@ export function AnswerQuiz(wsID: string, lessonID: string, question: number, cho
 
 export function Lesson(wsID: string, lessonID: string): $CancellablePromise<workspace$0.LessonDetail> {
     return $Call.ByID(1627702124, wsID, lessonID);
+}
+
+/**
+ * SendFeedback tells the planning tutor what the learner thought of a
+ * lesson, so later lessons and exercises fit them better.
+ */
+export function SendFeedback(wsID: string, lessonID: string, fb: $models.Feedback): $CancellablePromise<void> {
+    return $Call.ByID(2760810525, wsID, lessonID, fb);
 }

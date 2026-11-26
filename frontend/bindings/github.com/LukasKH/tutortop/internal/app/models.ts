@@ -9,6 +9,33 @@ import * as events$0 from "../events/models.js";
 import * as workspace$0 from "../workspace/models.js";
 
 /**
+ * Feedback is what the learner says about a lesson or exercise they just
+ * finished: any of the chips, and optionally their own words.
+ */
+export interface Feedback {
+    "chips": FeedbackChip[] | null;
+    "text": string;
+}
+
+/**
+ * FeedbackChip is one tap of "How was this?".
+ */
+export enum FeedbackChip {
+    /**
+     * The Go zero value for the underlying type of the enum.
+     */
+    $zero = "",
+
+    FeedbackTooTechnical = "tooTechnical",
+    FeedbackClear = "clear",
+    FeedbackTooLong = "tooLong",
+    FeedbackRightLength = "rightLength",
+    FeedbackTooEasy = "tooEasy",
+    FeedbackTooHard = "tooHard",
+    FeedbackMoreComparisons = "moreComparisons",
+};
+
+/**
  * WorkspaceSnapshot is everything the workspace screen shows, read at one
  * moment. The frontend keeps it current with events until the next one.
  */
@@ -17,6 +44,16 @@ export interface WorkspaceSnapshot {
     "title": string;
     "icon": string;
     "mission": string;
+
+    /**
+     * NOTES.md: how the learner likes to learn
+     */
+    "notes": string;
+
+    /**
+     * what the mission says the learner already knows, like "Python"; "" if it doesn't say
+     */
+    "known": string;
 
     /**
      * RESOURCES.md: the sources the plan and its lessons draw on

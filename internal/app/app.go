@@ -65,7 +65,7 @@ func newServices(store *workspace.Store, settingsStore *settings.Store, runner *
 		Settings:   settings.NewService(settingsStore, runner, store.Root),
 		Workspaces: newWorkspaceService(store, settingsStore, runner, agents, writers, servers),
 		Tasks:      newTaskService(store, runner, agents, writers),
-		Lessons:    newLessonService(store),
+		Lessons:    newLessonService(store, agents),
 		Chat:       threads.NewChatService(store, agents),
 		Editor:     editor.NewService(store, runner, servers),
 		Copilot:    copilot.NewService(filepath.Join(xdg.DataHome, "tutortop", "copilot"), browser),

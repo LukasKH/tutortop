@@ -66,6 +66,14 @@ export function SaveMission(wsID: string, mission: string): $CancellablePromise<
     return $Call.ByID(1523022768, wsID, mission);
 }
 
+/**
+ * SaveNotes saves the learner's own edit of how they like to learn, and tells
+ * the planning tutor, who keeps the notes current from their feedback.
+ */
+export function SaveNotes(wsID: string, notes: string): $CancellablePromise<void> {
+    return $Call.ByID(3851583851, wsID, notes);
+}
+
 export function Workspace(id: string): $CancellablePromise<$models.WorkspaceSnapshot> {
     return $Call.ByID(3546194472, id);
 }
