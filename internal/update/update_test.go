@@ -3,6 +3,7 @@ package update
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -240,13 +241,14 @@ func TestBackgroundCheckSilentErrorAndNewerRelease(t *testing.T) {
 
 func TestDetectSupport(t *testing.T) {
 	tests := []struct {
-		name     string
-		goos     string
-		exe      string
-		appImage string
-		appDir   string
-		probe    fakeProbe
-		want     bool
+		name       string
+		goos       string
+		exe        string
+		appImage   string
+		appDir     string
+		probe      fakeProbe
+		want       bool
+		wantReason string
 	}{
 		{
 			name:  "macOS packaged writable",
@@ -305,41 +307,46 @@ func TestDetectSupport(t *testing.T) {
 			want:  true,
 		},
 		{
-			name:  "Linux user-local binary read-only",
-			goos:  "linux",
-			exe:   "/home/ada/.local/bin/tutortop",
-			probe: fakeProbe{writable: false},
-			want:  false,
+			name:       "Linux user-local binary read-only",
+			goos:       "linux",
+			exe:        "/home/ada/.local/bin/tutortop",
+			probe:      fakeProbe{writable: false},
+			want:       false,
+			wantReason: "write access",
 		},
 		{
-			name:  "Linux system package",
-			goos:  "linux",
-			exe:   "/usr/bin/tutortop",
-			probe: fakeProbe{writable: true},
-			want:  false,
+			name:       "Linux system package",
+			goos:       "linux",
+			exe:        "/usr/bin/tutortop",
+			probe:      fakeProbe{writable: true},
+			want:       false,
+			wantReason: "system package",
 		},
 		{
-			name:  "Linux opt install",
-			goos:  "linux",
-			exe:   "/opt/tutortop/tutortop",
-			probe: fakeProbe{writable: true},
-			want:  false,
+			name:       "Linux opt install",
+			goos:       "linux",
+			exe:        "/opt/tutortop/tutortop",
+			probe:      fakeProbe{writable: true},
+			want:       false,
+			wantReason: "system package",
 		},
 		{
-			name:  "Linux nix store",
-			goos:  "linux",
-			exe:   "/nix/store/abc-tutortop/bin/tutortop",
-			probe: fakeProbe{writable: true},
-			want:  false,
+			name:       "Linux nix store",
+			goos:       "linux",
+			exe:        "/nix/store/abc-tutortop/bin/tutortop",
+			probe:      fakeProbe{writable: true},
+			want:       false,
+			wantReason: "Nix",
 		},
 		{
-			name:     "Linux AppImage",
-			goos:     "linux",
-			exe:      "/tmp/.mount_tut123/usr/bin/tutortop",
-			appImage: "/home/ada/.local/bin/tutortop",
-			appDir:   "/tmp/.mount_tut123",
-			probe:    fakeProbe{writable: true, regular: true},
-			want:     false,
+			name:       "Linux AppImage",
+			goos:       "linux",
+			exe:        "/tmp/.mount_tut123/usr/bin/tutortop",
+			appImage:   "/home/ada/.local/bin/tutortop",
+			appDir:     "/tmp/.mount_tut123",
+			probe:      fakeProbe{writable: true, regular: true},
+			want:       false,
+			wantReason: "AppImage",
 		},
 	}
 	for _, tc := range tests {
@@ -350,6 +357,9 @@ func TestDetectSupport(t *testing.T) {
 			}
 			if !tc.want && got.ManualReason == "" {
 				t.Fatal("expected a ManualReason when CanSelfUpdate is false")
+			}
+			if tc.wantReason != "" && !strings.Contains(got.ManualReason, tc.wantReason) {
+				t.Fatalf("ManualReason = %q, want substring %q", got.ManualReason, tc.wantReason)
 			}
 		})
 	}

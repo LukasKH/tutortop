@@ -69,14 +69,17 @@ func detectSupport(goos, exe, appImage, appDir string, probe targetProbe) Suppor
 
 	case "linux":
 		if isAppImage(exe, appImage, appDir, probe) {
-			return ManualOnly("Installed as an AppImage. Download the latest AppImage from GitHub, or reinstall with install.sh for in-app updates.")
+			return ManualOnly("Installed as an AppImage. Download the latest AppImage from GitHub, or install GTK4/WebKitGTK and re-run install.sh for in-app updates.")
 		}
 		cleanExe := path.Clean(exe)
 		if strings.HasPrefix(cleanExe, "/nix/store/") {
 			return ManualOnly("Installed via Nix. Update with Nix, or download from GitHub.")
 		}
-		if strings.HasPrefix(cleanExe, "/usr/") || strings.HasPrefix(cleanExe, "/opt/") || !probe.dirWritable(path.Dir(cleanExe)) {
+		if strings.HasPrefix(cleanExe, "/usr/") || strings.HasPrefix(cleanExe, "/opt/") {
 			return ManualOnly("Installed as a system package. Update with your package manager, or reinstall with install.sh for in-app updates.")
+		}
+		if !probe.dirWritable(path.Dir(cleanExe)) {
+			return ManualOnly("Tutortop doesn't have write access to its install folder. Download the latest version from GitHub instead.")
 		}
 		return Support{CanSelfUpdate: true}
 

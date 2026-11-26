@@ -49,19 +49,34 @@ install_linux() {
 	# Install into ~/.local/bin so in-app updates work without sudo.
 	download tutortop-linux-amd64.tar.gz
 	tar -xzf "$tmp/tutortop-linux-amd64.tar.gz" -C "$tmp"
-	mkdir -p "$HOME/.local/bin"
-	mv "$tmp/tutortop" "$HOME/.local/bin/tutortop"
-	chmod +x "$HOME/.local/bin/tutortop"
+	install_bin "$tmp/tutortop"
 
 	install_linux_desktop
 	echo "Tutortop is installed in ~/.local/bin. Open it from your app launcher, or run: tutortop"
 	warn_linux_path
 }
 
+install_bin() {
+	mkdir -p "$HOME/.local/bin"
+	# Stage on the target filesystem so mv is an atomic rename, even if tutortop is running.
+	staged=$HOME/.local/bin/.tutortop.tmp.$$
+	if cp "$1" "$staged" && chmod +x "$staged" && mv -f "$staged" "$HOME/.local/bin/tutortop"; then
+		return 0
+	fi
+	rm -f "$staged"
+	return 1
+}
+
 has_linux_libs() {
-	command -v ldconfig >/dev/null 2>&1 &&
-		ldconfig -p | grep -q 'libgtk-4\.so\.1' &&
-		ldconfig -p | grep -q 'libwebkitgtk-6\.0\.so\.4'
+	ldconfig_bin=$(PATH="$PATH:/sbin:/usr/sbin"; command -v ldconfig 2>/dev/null || true)
+	[ -n "$ldconfig_bin" ] &&
+		"$ldconfig_bin" -p | grep -q 'libgtk-4\.so\.1' &&
+		"$ldconfig_bin" -p | grep -q 'libwebkitgtk-6\.0\.so\.4'
+}
+
+desktop_exec() {
+	# Desktop Entry spec: quote the path and escape \ " ` $ (doubling \ for key-value unescaping) and % for field codes.
+	printf '"%s"' "$(printf '%s' "$1" | sed 's/\\/\\\\\\\\/g; s/"/\\\\"/g; s/`/\\\\`/g; s/\$/\\\\$/g; s/%/%%/g')"
 }
 
 install_linux_desktop() {
@@ -73,12 +88,13 @@ install_linux_desktop() {
 	# Best-effort icon download so the app launcher entry shows Tutortop's logo.
 	curl -fsSL -o "$icon_dir/tutortop.png" "$raw/build/appicon.png" 2>/dev/null || true
 
+	exec_cmd=$(desktop_exec "$HOME/.local/bin/tutortop")
 	cat >"$app_dir/tutortop.desktop" <<EOF
 [Desktop Entry]
 Type=Application
 Name=Tutortop
 Comment=Learn anything you can prove with code
-Exec=$HOME/.local/bin/tutortop
+Exec=$exec_cmd
 Icon=tutortop
 Terminal=false
 Categories=Development;Education;
@@ -104,9 +120,7 @@ warn_linux_path() {
 # No apt, dnf or pacman and GTK4/WebKitGTK aren't installed: fall back to the AppImage.
 install_appimage() {
 	download tutortop-x86_64.AppImage
-	mkdir -p "$HOME/.local/bin"
-	mv "$tmp/tutortop-x86_64.AppImage" "$HOME/.local/bin/tutortop"
-	chmod +x "$HOME/.local/bin/tutortop"
+	install_bin "$tmp/tutortop-x86_64.AppImage"
 	install_linux_desktop
 	echo "Tutortop is installed in ~/.local/bin. Run: tutortop"
 	warn_linux_path
@@ -128,16 +142,21 @@ install_macos() {
 	fi
 
 	# Install into a user-writable Applications folder so in-app updates work without admin rights.
-	if [ -w /Applications ]; then
+	app_name=$(basename "$app")
+	if [ -w /Applications ] && { [ ! -e "/Applications/$app_name" ] || [ -w "/Applications/$app_name" ]; }; then
 		apps_dir=/Applications
 	else
 		apps_dir=$HOME/Applications
 		mkdir -p "$apps_dir"
 	fi
-	target="$apps_dir/$(basename "$app")"
+	target="$apps_dir/$app_name"
 	rm -rf "$target"
 	cp -R "$app" "$target"
 	echo "Tutortop is installed in $apps_dir."
+	if [ "$apps_dir" != /Applications ] && [ -e "/Applications/$app_name" ]; then
+		echo "Note: /Applications/$app_name is also installed from an older install."
+		echo "Remove it (sudo rm -rf \"/Applications/$app_name\") so $target is used."
+	fi
 }
 
 download() {
