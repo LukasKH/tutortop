@@ -1,4 +1,4 @@
-default_install_hook_types: [pre-commit, commit-msg]
+default_install_hook_types: [pre-commit, pre-push, commit-msg]
 
 repos:
   - repo: local
@@ -11,7 +11,7 @@ repos:
         entry: golangci-lint run ./internal/...
         language: system
         pass_filenames: false
-        always_run: true
+        files: '^(internal/|[^/]+\.go$|go\.(mod|sum)$|\.golangci\.yml$)'
         stages: [pre-commit]
 
       # STYLEGUIDE.md, "Struct literals": &T{...}, not new(T). A regex can't
@@ -24,29 +24,30 @@ repos:
         types: [go]
         stages: [pre-commit]
 
-      # The sandbox tests need Docker or Podman, and fail without one.
-      # Tests that talk to the real Claude Code and Codex CLIs need -tags live
-      # and run by hand.
-      - id: go-test
-        name: Go tests (race detector)
-        entry: go test -race -short -count=1 ./internal/...
-        language: system
-        pass_filenames: false
-        always_run: true
-        stages: [pre-commit]
-
       # The bindings are the contract between the Go app and the frontend.
       # Regenerate them from the staged Go code; if that changes them, the
       # commit fails and the new bindings are left to stage. mise.toml pins
       # wails3 to the Wails version in go.mod. -tags server avoids GTK/WebKitGTK
-      # when paired with CGO_ENABLED=0 in CI.
+      # when paired with CGO_ENABLED=0.
       - id: wails-bindings
         name: Wails bindings up to date
         entry: wails3 generate bindings -f '-tags server' -clean=true -ts -i
         language: system
         pass_filenames: false
-        always_run: true
+        files: '^(internal/|[^/]+\.go$|go\.(mod|sum)$|frontend/bindings/)'
         stages: [pre-commit]
+
+      # The sandbox tests need Docker or Podman, and fail without one.
+      # Runs on pre-push rather than every commit so WIP commits stay fast.
+      # Tests that talk to the real Claude Code, Codex and Antigravity CLIs
+      # need -tags live and run by hand.
+      - id: go-test
+        name: Go tests (race detector)
+        entry: go test -race -short -count=1 ./internal/...
+        language: system
+        pass_filenames: false
+        files: '^(internal/|[^/]+\.go$|build/updater\.pub$|go\.(mod|sum)$)'
+        stages: [pre-push]
 
       - id: frontend-typecheck
         name: Frontend typecheck

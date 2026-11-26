@@ -113,7 +113,7 @@ Or download the installer for your system from [Releases](https://github.com/Luk
 
 ```sh
 mise install                      # Go, Node, golangci-lint, pre-commit and wails3, pinned in mise.toml
-pre-commit install                # git hooks: lint + tests before commit, Conventional Commits on the message
+pre-commit install                # git hooks: lint before commit, Go tests before push, Conventional Commits on messages
 wails3 dev                        # run the app with hot reload
 wails3 task test                  # Go tests with the race detector (needs Docker or Podman)
 wails3 task lint                  # go vet, Staticcheck and format checks
@@ -134,7 +134,7 @@ Code follows [STYLEGUIDE.md](STYLEGUIDE.md). The pre-commit hooks and GitHub Act
 - `go test -race -short ./internal/...`.
 - A TypeScript typecheck, an Oxlint lint, a Prettier format check and the Vitest tests of the frontend, when frontend files change.
 
-Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/) (`feat:`, `fix:`, `refactor:`, `docs:`, `test:`, `build:`, `ci:`, `chore:`), checked by commitlint.
+Commit messages and PR titles follow [Conventional Commits](https://www.conventionalcommits.org/) (`feat:`, `fix:`, `refactor:`, `docs:`, `test:`, `build:`, `ci:`, `chore:`), checked locally by commitlint and on PRs by CI.
 
 ## License
 
