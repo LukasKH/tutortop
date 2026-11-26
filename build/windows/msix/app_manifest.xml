@@ -11,7 +11,7 @@
   <Identity 
     Name="com.example.desktop"
     Publisher="CN=My Company"
-    Version="0.2.7.0" 
+    Version="0.2.8.0" 
     ProcessorArchitecture="x64" />
   <!-- x-release-please-end -->
   
