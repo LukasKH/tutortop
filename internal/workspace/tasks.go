@@ -138,8 +138,12 @@ func (w *Workspace) SaveTask(spec TaskSpec, lang string, names sandbox.TestNames
 	if err != nil {
 		return TaskInfo{}, err
 	}
+	ids := make([]string, len(tasks))
+	for i, t := range tasks {
+		ids[i] = t.ID
+	}
 	info := TaskInfo{
-		ID:        fmt.Sprintf("%04d-%s", len(tasks)+1, slugify(spec.Title)),
+		ID:        fmt.Sprintf("%04d-%s", nextNumber(ids), slugify(spec.Title)),
 		Title:     spec.Title,
 		Objective: spec.ObjectiveID,
 		Language:  lang,

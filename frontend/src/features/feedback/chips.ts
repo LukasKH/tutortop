@@ -1,4 +1,4 @@
-import { FeedbackChip } from "@/lib/api";
+import { FeedbackChip, ObjectiveStatus, type WorkspaceSnapshot } from "@/lib/api";
 
 /** The chips in the order "How was this?" shows them. Each pair's chips say opposite things. */
 export const CHIP_PAIRS: FeedbackChip[][] = [
@@ -35,4 +35,29 @@ export function toggleChip(picked: FeedbackChip[], chip: FeedbackChip): Feedback
   const next = [...picked.filter((c) => !pair.includes(c)), chip];
   const order = CHIP_PAIRS.flat();
   return next.sort((a, b) => order.indexOf(a) - order.indexOf(b));
+}
+
+/**
+ * Counts unpassed curriculum objectives that already have a generated lesson
+ * (excluding keepLessonId) or task, so the feedback dialog knows whether
+ * offering to regenerate unsolved work has anything to redo.
+ */
+export function unsolvedWrittenCount(ws: WorkspaceSnapshot | null | undefined, keepLessonId = ""): number {
+  const modules = ws?.curriculum?.modules;
+  if (!modules) return 0;
+  const objectives = ws.progress?.objectives ?? {};
+  const unpassed = new Set<string>();
+  for (const m of modules) {
+    for (const o of m.objectives ?? []) {
+      if (objectives[o.id]?.status !== ObjectiveStatus.ObjectivePassed) unpassed.add(o.id);
+    }
+  }
+  const written = new Set<string>();
+  for (const l of ws.lessons ?? []) {
+    if (l.id !== keepLessonId && unpassed.has(l.objective)) written.add(l.objective);
+  }
+  for (const t of ws.tasks ?? []) {
+    if (unpassed.has(t.objective)) written.add(t.objective);
+  }
+  return written.size;
 }

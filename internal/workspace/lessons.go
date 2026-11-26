@@ -162,8 +162,12 @@ func (w *Workspace) SaveLesson(spec LessonSpec) (LessonInfo, error) {
 	if err != nil {
 		return LessonInfo{}, err
 	}
+	ids := make([]string, len(lessons))
+	for i, l := range lessons {
+		ids[i] = l.ID
+	}
 	info := LessonInfo{
-		ID:        fmt.Sprintf("%04d-%s", len(lessons)+1, slugify(spec.Title)),
+		ID:        fmt.Sprintf("%04d-%s", nextNumber(ids), slugify(spec.Title)),
 		Title:     spec.Title,
 		Objective: spec.ObjectiveID,
 		Questions: len(spec.Quiz),

@@ -190,7 +190,7 @@ export function TaskPanel({ taskId, passed, moduleTitle, next }: Props) {
             error={error}
             solved={solved}
             next={next}
-            feedback={<HowWasThis item={`task:${taskId}`} send={(fb) => TaskService.SendFeedback(wsId, taskId, fb)} />}
+            feedback={<HowWasThis item={`task:${taskId}`} compact send={(fb) => TaskService.SendFeedback(wsId, taskId, fb)} />}
             open={resultsOpen}
             height={sizedResults ? resultsHeight : undefined}
             onToggle={() => setResultsOpen(!resultsOpen)}

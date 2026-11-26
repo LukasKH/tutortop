@@ -10,11 +10,14 @@ import * as workspace$0 from "../workspace/models.js";
 
 /**
  * Feedback is what the learner says about a lesson or exercise they just
- * finished: any of the chips, and optionally their own words.
+ * finished: any of the default chips, optionally their own words, and whether
+ * to regenerate already-written unsolved lessons and exercises once the
+ * planning tutor updates their notes.
  */
 export interface Feedback {
     "chips": FeedbackChip[] | null;
     "text": string;
+    "regenerate": boolean;
 }
 
 /**

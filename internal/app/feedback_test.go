@@ -136,6 +136,106 @@ func TestLearnerEditsNotes(t *testing.T) {
 	tutor.noMoreTurns(t)
 }
 
+// Feedback with Regenerate waits until the planning tutor finishes updating
+// NOTES.md, then clears already-written unsolved lessons and tasks (leaving
+// passed objectives untouched) and starts fresh writers for them.
+func TestFeedbackRegeneratesUnsolvedAfterNotesUpdate(t *testing.T) {
+	a, w, tutor := startPlanned(t)
+	plan := workspace.Curriculum{Language: "go", Modules: []workspace.Module{{
+		ID:         "basics",
+		Title:      "Basics",
+		References: []workspace.Source{{Title: "Go docs", URL: "https://go.dev/doc/"}},
+		Objectives: []workspace.Objective{
+			{ID: "go.one", Name: "One", Title: "First objective"},
+			{ID: "go.two", Name: "Two", Title: "Second objective"},
+			{ID: "go.three", Name: "Three", Title: "Third objective"},
+		},
+	}}}
+	if err := w.Propose(plan); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.ApproveProposal(); err != nil {
+		t.Fatal(err)
+	}
+	t1, l1 := saveSampleObjective(t, w, "go.one", "One")
+	saveSampleObjective(t, w, "go.two", "Two")
+	saveSampleObjective(t, w, "go.three", "Three")
+	if err := w.RecordAttempt(workspace.Attempt{TaskID: t1, Kind: workspace.AttemptSubmit, Status: sandbox.StatusPassed}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := a.Tasks.SendFeedback(w.ID, t1, Feedback{
+		Chips:      []FeedbackChip{FeedbackTooTechnical},
+		Text:       "Use plainer words.",
+		Regenerate: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	planTurn := tutor.next(t, a, w, workspace.PlanThread)
+	wantInOrder(t, "regenerate prompt", planTurn.prompt, []string{"It was too technical.", "“Use plainer words.”", "regenerate already-written unsolved lessons and exercises"})
+
+	// Unsolved items stay on disk until the planner finishes updating NOTES.md.
+	if lessons, _ := w.Lessons(); len(lessons) != 3 {
+		t.Fatalf("lessons cleared before planner finished: got %d, want 3", len(lessons))
+	}
+	planTurn.reply("Updated NOTES.md.")
+
+	// Once the planner finishes, go.two and go.three are cleared and rewritten.
+	w2, w3 := workspace.WriterThread("go.two"), workspace.WriterThread("go.three")
+	writerTurns := tutor.nextEach(t, a, w, w2, w3)
+	writerTurns[w2].reply("Rewritten.")
+	writerTurns[w3].reply("Rewritten.")
+	lessons, _ := w.Lessons()
+	tasks, _ := w.Tasks()
+	if len(lessons) != 1 || lessons[0].ID != l1 {
+		t.Errorf("remaining lessons %+v, want only passed %s", lessons, l1)
+	}
+	if len(tasks) != 1 || tasks[0].ID != t1 {
+		t.Errorf("remaining tasks %+v, want only passed %s", tasks, t1)
+	}
+	idle(t, a, w.ID)
+	tutor.noMoreTurns(t)
+}
+
+// saveSampleObjective saves a lesson and task for one objective in w.
+func saveSampleObjective(t *testing.T, w *workspace.Workspace, objectiveID, title string) (taskID, lessonID string) {
+	t.Helper()
+	lesson, err := w.SaveLesson(workspace.LessonSpec{
+		ObjectiveID:   objectiveID,
+		Title:         title + " lesson",
+		Summary:       "Summary for " + title,
+		Body:          "## Intro\n\nSee [the spec](https://go.dev/ref/spec).\n```go\nvar x int\n```\n",
+		PrimarySource: workspace.Source{Title: "The Go spec", URL: "https://go.dev/ref/spec"},
+		Quiz: []workspace.QuizQuestion{
+			{Question: "Q1?", Options: []string{"one", "two", "three"}, Answer: 0, Explanation: "One."},
+			{Question: "Q2?", Options: []string{"one", "two", "three"}, Answer: 1, Explanation: "Two."},
+			{Question: "Q3?", Options: []string{"one", "two", "three"}, Answer: 2, Explanation: "Three."},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	task, err := w.SaveTask(workspace.TaskSpec{
+		ObjectiveID: objectiveID,
+		Title:       title + " task",
+		Statement: workspace.Statement{
+			Task:         "Implement " + title + ".",
+			Signature:    "func F() int",
+			Requirements: []string{"Returns 1."},
+			Examples:     []workspace.Example{{Input: "F()", Output: "1"}},
+			Context:      "Context.",
+		},
+		Starter:     sandbox.Files{"f.go": "package task\n\nfunc F() int { return 0 }\n"},
+		Reference:   sandbox.Files{"f.go": "package task\n\nfunc F() int { return 1 }\n"},
+		Tests:       sandbox.Files{"f_test.go": "package task\n"},
+		HiddenTests: sandbox.Files{"f_hidden_test.go": "package task\n"},
+	}, "go", sandbox.TestNames{Visible: []string{"TestF"}, Hidden: []string{"TestFHidden"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return task.ID, lesson.ID
+}
+
 // startPlanned starts the app on a new workspace whose interview turn the
 // test has answered, so the plan tutor's next turn is the test's.
 func startPlanned(t *testing.T) (*testApp, *workspace.Workspace, *tutorCLI) {

@@ -1,5 +1,11 @@
 package workspace
 
+import (
+	"os"
+	"strconv"
+	"strings"
+)
+
 // TaskStatus is a task plus whether the learner has passed it, and the
 // deepest hint they've asked for (0 for none).
 type TaskStatus struct {
@@ -92,6 +98,117 @@ func (w *Workspace) NeedsWriting(ahead int) []Objective {
 		}
 	}
 	return out
+}
+
+// ClearUnsolved removes already-written lessons (except keepLessonID) and tasks
+// belonging to unpassed objectives, so writers can rewrite them after feedback.
+// Passed objectives and keepLessonID are untouched. It returns the objectives
+// that had content removed, in plan order.
+func (w *Workspace) ClearUnsolved(keepLessonID string) ([]Objective, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	cur, err := w.Curriculum()
+	if err != nil || cur == nil {
+		return nil, err
+	}
+	tasks, err := w.Tasks()
+	if err != nil {
+		return nil, err
+	}
+	lessons, err := w.Lessons()
+	if err != nil {
+		return nil, err
+	}
+	unpassed := unpassedObjectives(cur, progress(cur, tasks, w.history().passed))
+	affected := map[string]bool{}
+	for _, l := range lessons {
+		if !unpassed[l.Objective] || l.ID == keepLessonID {
+			continue
+		}
+		if err := w.removeLesson(l.ID); err != nil {
+			return nil, err
+		}
+		affected[l.Objective] = true
+	}
+	for _, t := range tasks {
+		if !unpassed[t.Objective] {
+			continue
+		}
+		if err := w.removeTask(t.ID); err != nil {
+			return nil, err
+		}
+		affected[t.Objective] = true
+	}
+	cleared := objectivesInOrder(cur, affected)
+	if len(cleared) > 0 {
+		w.commit("Regenerate unsolved lessons and exercises")
+	}
+	return cleared, nil
+}
+
+func (w *Workspace) removeLesson(id string) error {
+	if err := removeAll(w.path("lessons", id), w.private("lessons", id)); err != nil {
+		return err
+	}
+	name := LessonThread(id).String()
+	_ = removeAll(w.path(".tutortop", "chat", name+".jsonl"), w.path(".tutortop", "chat", name))
+	return nil
+}
+
+func (w *Workspace) removeTask(id string) error {
+	if err := removeAll(w.path("tasks", id), w.private("tasks", id)); err != nil {
+		return err
+	}
+	name := TaskThread(id).String()
+	_ = removeAll(w.path(".tutortop", "chat", name+".jsonl"), w.path(".tutortop", "chat", name))
+	return nil
+}
+
+func removeAll(paths ...string) error {
+	for _, p := range paths {
+		if err := os.RemoveAll(p); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func unpassedObjectives(cur *Curriculum, p Progress) map[string]bool {
+	out := map[string]bool{}
+	for _, m := range cur.Modules {
+		for _, o := range m.Objectives {
+			if p.Objectives[o.ID].Status != ObjectivePassed {
+				out[o.ID] = true
+			}
+		}
+	}
+	return out
+}
+
+func objectivesInOrder(cur *Curriculum, want map[string]bool) []Objective {
+	var out []Objective
+	for _, m := range cur.Modules {
+		for _, o := range m.Objectives {
+			if want[o.ID] {
+				out = append(out, o)
+			}
+		}
+	}
+	return out
+}
+
+// nextNumber returns one more than the highest numeric prefix ("0004-...")
+// among ids, so removing an earlier unsolved lesson or task never causes a new
+// one to collide with a higher-numbered one.
+func nextNumber(ids []string) int {
+	highest := 0
+	for _, id := range ids {
+		prefix, _, _ := strings.Cut(id, "-")
+		if n, err := strconv.Atoi(prefix); err == nil && n > highest {
+			highest = n
+		}
+	}
+	return highest + 1
 }
 
 func (w *Workspace) TaskPassed(id string) bool { return w.history().passed[id] }

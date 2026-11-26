@@ -3,6 +3,7 @@ package threads
 import (
 	"fmt"
 
+	"github.com/LukasKH/tutortop/internal/events"
 	"github.com/LukasKH/tutortop/internal/workspace"
 )
 
@@ -37,6 +38,31 @@ func (wr *Writers) KeepReady(w *workspace.Workspace, why string) {
 	for _, o := range w.NeedsWriting(readyAhead) {
 		wr.Write(w, o, why)
 	}
+}
+
+// Rewrite stops any running writers for w, clears already-written lessons
+// (except keepLessonID) and tasks of unpassed objectives, and starts fresh
+// writers for them (plus KeepReady for any missing ones ahead).
+func (wr *Writers) Rewrite(w *workspace.Workspace, keepLessonID, why string) error {
+	wr.agents.endWriters(w.ID)
+	cleared, err := w.ClearUnsolved(keepLessonID)
+	if err != nil {
+		return err
+	}
+	if len(cleared) > 0 {
+		events.Emit(events.WorkspaceChanged, events.Workspace{Workspace: w.ID})
+	}
+	started := map[string]bool{}
+	for _, o := range cleared {
+		started[o.ID] = true
+		wr.Write(w, o, why)
+	}
+	for _, o := range w.NeedsWriting(readyAhead) {
+		if !started[o.ID] {
+			wr.Write(w, o, why)
+		}
+	}
+	return nil
 }
 
 // Write starts a writer for one objective, unless one is already at work on

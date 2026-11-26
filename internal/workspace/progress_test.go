@@ -159,6 +159,90 @@ func TestNeedsWriting(t *testing.T) {
 	}
 }
 
+// ClearUnsolved removes written lessons and tasks of unpassed objectives
+// without touching passed ones.
+func TestClearUnsolved(t *testing.T) {
+	w := newWorkspace(t)
+	approve(t, w, "a", "b", "c", "d")
+	la := addLesson(t, w, "a")
+	ta := addTask(t, w, "a")
+	record(t, w, workspace.Attempt{TaskID: ta.ID, Kind: workspace.AttemptSubmit, Status: sandbox.StatusPassed})
+	addLesson(t, w, "b")
+	addTask(t, w, "b")
+	addLesson(t, w, "c")
+	addTask(t, w, "c")
+
+	cleared, err := w.ClearUnsolved("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := objectiveIDs(cleared); !slices.Equal(got, []string{"b", "c"}) {
+		t.Fatalf("cleared %v, want [b c]", got)
+	}
+	lessons, _ := w.Lessons()
+	tasks, _ := w.Tasks()
+	if len(lessons) != 1 || lessons[0].ID != la.ID {
+		t.Errorf("remaining lessons %+v, want only %s", lessons, la.ID)
+	}
+	if len(tasks) != 1 || tasks[0].ID != ta.ID {
+		t.Errorf("remaining tasks %+v, want only %s", tasks, ta.ID)
+	}
+}
+
+func TestClearUnsolvedKeepsOpenLesson(t *testing.T) {
+	w := newWorkspace(t)
+	approve(t, w, "a", "b")
+	la := addLesson(t, w, "a")
+	addTask(t, w, "a")
+	addLesson(t, w, "b")
+	addTask(t, w, "b")
+
+	cleared, err := w.ClearUnsolved(la.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := objectiveIDs(cleared); !slices.Equal(got, []string{"a", "b"}) {
+		t.Fatalf("cleared %v, want [a b]", got)
+	}
+	lessons, _ := w.Lessons()
+	if len(lessons) != 1 || lessons[0].ID != la.ID {
+		t.Errorf("remaining lessons %+v, want only kept lesson %s", lessons, la.ID)
+	}
+	if tasks, _ := w.Tasks(); len(tasks) != 0 {
+		t.Errorf("remaining tasks %+v, want none", tasks)
+	}
+}
+
+func TestClearUnsolvedAvoidsIDCollisions(t *testing.T) {
+	w := newWorkspace(t)
+	approve(t, w, "a", "b")
+	addLesson(t, w, "a") // 0001
+	addTask(t, w, "a")   // 0001
+	lb := addLesson(t, w, "b")
+	tb := addTask(t, w, "b")
+	record(t, w, workspace.Attempt{TaskID: tb.ID, Kind: workspace.AttemptSubmit, Status: sandbox.StatusPassed})
+
+	if _, err := w.ClearUnsolved(""); err != nil {
+		t.Fatal(err)
+	}
+	la2 := addLesson(t, w, "a")
+	ta2 := addTask(t, w, "a")
+	if !strings.HasPrefix(la2.ID, "0003-") || la2.ID == lb.ID {
+		t.Errorf("rewritten lesson id %q, want prefix 0003-", la2.ID)
+	}
+	if !strings.HasPrefix(ta2.ID, "0003-") || ta2.ID == tb.ID {
+		t.Errorf("rewritten task id %q, want prefix 0003-", ta2.ID)
+	}
+}
+
+func objectiveIDs(objs []workspace.Objective) []string {
+	ids := make([]string, len(objs))
+	for i, o := range objs {
+		ids[i] = o.ID
+	}
+	return ids
+}
+
 // A task counts once, on its first pass; a lesson once every question has
 // its first answer.
 func TestCompletions(t *testing.T) {

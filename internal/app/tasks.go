@@ -92,7 +92,7 @@ func (s *TaskService) SendFeedback(wsID, taskID string, fb Feedback) error {
 	if err != nil {
 		return err
 	}
-	return sendFeedback(s.agents, w, fmt.Sprintf("the exercise “%s”", d.Title), fb)
+	return sendFeedback(s.agents, s.writers, w, fmt.Sprintf("the exercise “%s”", d.Title), "", fb)
 }
 
 // announcePass marks a task's first pass: a commit, a notice in its chat,

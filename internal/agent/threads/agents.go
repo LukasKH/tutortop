@@ -65,6 +65,7 @@ type Message struct {
 	Shown  string
 	Agent  string
 	Images []workspace.ChatImage // pictures the learner attached, shown and sent with the text
+	After  func()                // optional callback run once this turn completes without error or stop
 }
 
 // CLI opens a session with an agent's CLI. InstalledCLI opens the
@@ -92,7 +93,7 @@ func (ag *Agents) Send(w *workspace.Workspace, t workspace.Thread, m Message) {
 // fails later, in the chat only.
 func (ag *Agents) TrySend(w *workspace.Workspace, t workspace.Thread, m Message) error {
 	item := workspace.ChatItem{Thread: t.String(), Role: m.Role, Text: m.Shown}
-	p := prompt{text: m.Agent}
+	p := prompt{text: m.Agent, after: m.After}
 	for _, img := range m.Images {
 		item.Images = append(item.Images, img.Name)
 		p.images = append(p.images, agent.Image{Path: img.Path, MIMEType: img.MIMEType})
@@ -191,6 +192,18 @@ func (ag *Agents) EndWorkspace(wsID string) {
 		}
 	}
 	ag.mcp.Forget(wsID)
+}
+
+// endWriters stops every running writer for wsID so stale writers don't
+// publish over freshly regenerated objectives.
+func (ag *Agents) endWriters(wsID string) {
+	ag.mu.Lock()
+	defer ag.mu.Unlock()
+	for key, ta := range ag.agents {
+		if key.ws == wsID && ta.thread.Kind == workspace.WriterKind {
+			ag.end(ta)
+		}
+	}
 }
 
 // queue queues a message for a thread's agent, starting the agent if it
@@ -327,13 +340,17 @@ func (ag *Agents) loop(ctx context.Context, w *workspace.Workspace, ta *threadAg
 		case msg := <-ta.queue:
 			err := ta.cli.Prompt(ctx, msg.text, msg.images)
 			ta.tr.endTurn()
-			if ta.stopped.Swap(false) {
+			stopped := ta.stopped.Swap(false)
+			if stopped {
 				// After endTurn, so the notice follows the cut-off reply.
 				Post(w, workspace.ChatItem{Thread: ta.key.name, Role: workspace.RoleNotice, Text: "Stopped. Send a message to continue."})
 			}
 			ended := ag.answered(ta, errors.Is(err, agent.ErrExited))
 			if err != nil && ctx.Err() == nil {
 				postFailure(w, ta.key.name, err.Error())
+			}
+			if err == nil && !stopped && ctx.Err() == nil && msg.after != nil {
+				msg.after()
 			}
 			if ended {
 				return
@@ -554,6 +571,7 @@ func (ta *threadAgent) idleTime() time.Duration {
 type prompt struct {
 	text   string
 	images []agent.Image
+	after  func()
 }
 
 // threadKey names one thread of one workspace by the thread's name.

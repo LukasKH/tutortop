@@ -17,4 +17,4 @@ After a lesson or exercise the learner can tell you how it went: an `[app]` mess
 - **Difficulty** (too easy, too hard): note it in `NOTES.md` so writers pitch the next objectives to match. Don't drop or reorder the plan for one opinion.
 - **Positive feedback** (clear, the right length): keep what works; record it only if it settles something the notes left open.
 
-One piece of feedback is one data point: keep the notes the learner wrote, and change course on a pattern rather than on a single remark that contradicts them. The learner can edit `NOTES.md` themselves; when they do, it's theirs, so build on it. Preferences apply to lessons and tasks written from now on; don't rewrite ones already written.
+One piece of feedback is one data point: keep the notes the learner wrote, and change course on a pattern rather than on a single remark that contradicts them. The learner can edit `NOTES.md` themselves; when they do, it's theirs, so build on it. Don't rewrite lessons or tasks yourself: by default preferences apply to new ones, and when the learner asks to regenerate unsolved ones the app restarts the writers once you finish updating `NOTES.md`.
