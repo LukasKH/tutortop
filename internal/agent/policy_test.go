@@ -39,7 +39,7 @@ func testPolicy(t *testing.T, cwd string, ask func(t *testing.T, tool Tool) (all
 // The rules the adapters' CLIs don't exercise: relative paths, several paths,
 // and calls the policy can't place.
 func TestPolicy(t *testing.T) {
-	p := policy{cwd: "/ws", mcpServer: "tutortop"}
+	p := policy{cwd: "/ws", mcpServer: "tutortop", readDir: "/data/steps"}
 	for _, c := range []struct {
 		name string
 		tool Tool
@@ -60,6 +60,11 @@ func TestPolicy(t *testing.T) {
 		{"relative read escaping", Tool{Kind: ToolSearch, Paths: []string{"../x"}}, false},
 		{"unknown tool", Tool{Kind: ToolOther, Title: "NotebookEdit"}, false},
 		{"MCP tool with a path outside", Tool{Kind: ToolOther, MCPServer: "tutortop", Paths: []string{"/etc"}}, true},
+		{"read in the extra folder", Tool{Kind: ToolRead, Paths: []string{"/data/steps/2/output.txt"}}, true},
+		{"search the extra folder", Tool{Kind: ToolSearch, Paths: []string{"/data/steps"}}, true},
+		{"read escaping the extra folder", Tool{Kind: ToolRead, Paths: []string{"/data/steps/../secret"}}, false},
+		{"read beside the extra folder", Tool{Kind: ToolRead, Paths: []string{"/data/steps-other/x"}}, false},
+		{"edit in the extra folder", Tool{Kind: ToolEdit, Paths: []string{"/data/steps/2/output.txt"}}, false},
 	} {
 		if err := p.allow(c.tool); (err == nil) != c.ok {
 			t.Errorf("%s: allow = %v, want ok=%v", c.name, err, c.ok)

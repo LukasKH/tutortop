@@ -49,6 +49,7 @@ func startAntigravity(ctx context.Context, opts Options, onEvent func(Event)) (S
 	if err := s.open(ctx, opts); err != nil {
 		return nil, antigravityAbort(proc, conn, err)
 	}
+	client.useSession(s.id)
 	return s, nil
 }
 
@@ -62,8 +63,10 @@ func (s *antigravitySession) Prompt(ctx context.Context, text string) error {
 		return s.failed(ctx, err)
 	}
 	switch res.StopReason {
-	case acp.StopReasonEndTurn, acp.StopReasonCancelled:
+	case acp.StopReasonEndTurn:
 		return nil
+	case acp.StopReasonCancelled:
+		return s.client.cancelError()
 	case acp.StopReasonMaxTokens, acp.StopReasonMaxTurnRequests, acp.StopReasonRefusal:
 	}
 	return fmt.Errorf("turn failed in Antigravity: it stopped with %s", strings.ReplaceAll(string(res.StopReason), "_", " "))
@@ -166,6 +169,7 @@ type antigravityClient struct {
 	mu        sync.Mutex
 	prompting bool                          // a Prompt is running
 	cancelled bool                          // Cancel ended the running turn
+	refused   string                        // the running turn's last refused call and why, for cancelError
 	tools     map[acp.ToolCallId]ToolStatus // unfinished calls, by the status last reported
 }
 
@@ -206,9 +210,9 @@ func (c *antigravityClient) RequestPermission(_ context.Context, req acp.Request
 	title, _ := call.Title.Value()
 	kind, _ := call.Kind.Value()
 	locations, _ := call.Locations.Value()
-	want := acp.PermissionOptionKindRejectOnce
-	if c.policy.allow(c.describe(call.ToolCallId, name, title, kind, locations)) == nil {
-		want = acp.PermissionOptionKindAllowOnce
+	want := acp.PermissionOptionKindAllowOnce
+	if c.allow(cmp.Or(name, title, "a tool"), c.describe(call.ToolCallId, name, title, kind, locations)) != nil {
+		want = acp.PermissionOptionKindRejectOnce
 	}
 	for _, o := range req.Options {
 		if o.Kind == want {
@@ -254,10 +258,33 @@ func (c *antigravityClient) CompleteElicitation(context.Context, acp.CompleteEli
 	return nil // we never start one
 }
 
+// useSession lets the policy read the session's saved tool output. agy
+// saves a tool's output there when it's too long to hand the model whole,
+// and the model reads it back; refusing that read would end the turn. The
+// folder holds only what the model has already been given, and the policy
+// still refuses writes there.
+func (c *antigravityClient) useSession(id acp.SessionId) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.policy.readDir = filepath.Join(antigravityProfile(), "antigravity-cli", "brain", string(id), ".system_generated", "steps")
+}
+
+// allow decides a tool call with the policy. agy ends the turn when we
+// refuse one, so it keeps the refusal for cancelError.
+func (c *antigravityClient) allow(name string, t Tool) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	err := c.policy.allow(t)
+	if err != nil {
+		c.refused = fmt.Sprintf("%s (%s)", name, err)
+	}
+	return err
+}
+
 func (c *antigravityClient) startTurn() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.prompting, c.cancelled = true, false
+	c.prompting, c.cancelled, c.refused = true, false, ""
 }
 
 func (c *antigravityClient) endTurn() {
@@ -278,6 +305,21 @@ func (c *antigravityClient) turnCancelled() bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.cancelled
+}
+
+// cancelError explains a turn agy ended as cancelled, or returns nil if
+// Cancel asked for it. Unasked, agy cancels a turn when we refuse a tool
+// call, where other CLIs hand the refusal back to the model.
+func (c *antigravityClient) cancelError() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	switch {
+	case c.cancelled:
+		return nil
+	case c.refused != "":
+		return fmt.Errorf("turn ended in Antigravity after Tutortop refused %s. Send your message again", c.refused)
+	}
+	return errors.New("turn cancelled by Antigravity, not by Stop. Send your message again")
 }
 
 // report sends a tool event, unless it repeats the call's last status: agy

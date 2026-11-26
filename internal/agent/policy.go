@@ -33,6 +33,7 @@ type policy struct {
 	cwd       string // the workspace
 	mcpServer string // our MCP server's name
 	subagents bool   // Options.Subagents
+	readDir   string // a folder outside the workspace that may also be read (agy's saved tool output), or ""
 }
 
 func newPolicy(opts Options) policy {
@@ -72,7 +73,7 @@ func (p policy) allow(t Tool) error {
 		return nil
 	case ToolRead, ToolSearch, ToolFetch, ToolThink:
 		for _, path := range t.Paths {
-			if _, inside := p.workspaceRel(path); !inside {
+			if !p.readable(path) {
 				return errors.New("only files inside the learner's workspace are available")
 			}
 		}
@@ -110,11 +111,30 @@ func (p policy) checkWrite(path string) error {
 // tools.
 var configPaths = []string{".git", ".agents", ".claude", ".codex", ".gemini", ".mcp.json"}
 
+// readable reports whether the tutor may read path: inside the workspace,
+// or inside p.readDir. A relative path is relative to the workspace.
+func (p policy) readable(path string) bool {
+	if _, inside := p.workspaceRel(path); inside {
+		return true
+	}
+	if p.readDir == "" || !filepath.IsAbs(path) {
+		return false
+	}
+	_, inside := relInside(p.readDir, path)
+	return inside
+}
+
 // workspaceRel returns path relative to the workspace, and whether it stays
 // inside the workspace. A relative path is taken as relative to it.
 func (p policy) workspaceRel(path string) (string, bool) {
+	return relInside(p.cwd, path)
+}
+
+// relInside returns path relative to dir, and whether it stays inside dir.
+// A relative path is taken as relative to dir.
+func relInside(dir, path string) (string, bool) {
 	if filepath.IsAbs(path) {
-		rel, err := filepath.Rel(p.cwd, path)
+		rel, err := filepath.Rel(dir, path)
 		if err != nil {
 			return "", false
 		}

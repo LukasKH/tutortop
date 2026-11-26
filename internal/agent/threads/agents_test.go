@@ -58,7 +58,8 @@ func TestBusyFromStartUntilQueueIsDone(t *testing.T) {
 }
 
 // A writer starts fresh, isn't queued twice, keeps its sandbox check while
-// it works and ends after its turn; the next message starts a new writer.
+// it works and ends after its turn, with a failure if the turn failed; the
+// next message starts a new writer.
 func TestWriterEndsAfterItsTurn(t *testing.T) {
 	ag, fake, w := newHeldAgents(t)
 	writer := workspace.WriterThread("go.errors")
@@ -83,8 +84,21 @@ func TestWriterEndsAfterItsTurn(t *testing.T) {
 	}
 
 	queue(t, ag, w, writer, "write")
-	if again := fake.next(t); again.s == turn.s || again.text != "write" {
+	again := fake.next(t)
+	if again.s == turn.s || again.text != "write" {
 		t.Fatalf("got %q on the first writer: %v", again.text, again.s == turn.s)
+	}
+
+	// A failed turn, such as one Antigravity cancelled after a refusal, ends
+	// the writer with a failure on its objective, so it can be written again.
+	again.end(errors.New("turn ended in Antigravity after Tutortop refused read_file"))
+	eventually(t, "failed writer gone", func() bool {
+		busy, _, _ := ag.State(w.ID)
+		return len(busy) == 0 && again.s.closed.Load() && failures(w, writer.String()) == 1
+	})
+	queue(t, ag, w, writer, "write")
+	if retry := fake.next(t); retry.s == again.s {
+		t.Fatal("retried on the failed writer")
 	}
 }
 
