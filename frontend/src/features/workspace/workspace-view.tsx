@@ -136,7 +136,7 @@ export function WorkspaceView({ id, onBack }: Props) {
                 />
               }
               composer={composer}
-              onSend={(text) => ChatService.SendMessage(id, text, thread).catch(fail)}
+              onSend={(text, images) => ChatService.SendMessage(id, text, thread, images).catch(fail)}
               onCollapse={() => chat.setOpen(false)}
             />
           ) : (

@@ -32,6 +32,7 @@ type antigravitySession struct {
 	conn   *acp.ClientSideConnection
 	client *antigravityClient
 	id     acp.SessionId
+	images bool // agy's initialize said it takes image blocks
 }
 
 func startAntigravity(ctx context.Context, opts Options, onEvent func(Event)) (Session, error) {
@@ -39,11 +40,11 @@ func startAntigravity(ctx context.Context, opts Options, onEvent func(Event)) (S
 		return nil, fmt.Errorf("setting up Antigravity: %w", err)
 	}
 	client := &antigravityClient{policy: newPolicy(opts), mcpName: opts.MCPName, onEvent: onEvent}
-	proc, conn, err := startAntigravityACP(ctx, opts.Binary, opts.Cwd, client)
+	proc, conn, caps, err := startAntigravityACP(ctx, opts.Binary, opts.Cwd, client)
 	if err != nil {
 		return nil, err
 	}
-	s := &antigravitySession{process: proc, conn: conn, client: client}
+	s := &antigravitySession{process: proc, conn: conn, client: client, images: caps.Image}
 	ctx, cancel := context.WithTimeout(ctx, time.Minute)
 	defer cancel()
 	if err := s.open(ctx, opts); err != nil {
@@ -55,10 +56,14 @@ func startAntigravity(ctx context.Context, opts Options, onEvent func(Event)) (S
 
 func (s *antigravitySession) ID() string { return string(s.id) }
 
-func (s *antigravitySession) Prompt(ctx context.Context, text string) error {
+func (s *antigravitySession) Prompt(ctx context.Context, text string, images []Image) error {
+	blocks, err := s.blocks(text, images)
+	if err != nil {
+		return err
+	}
 	s.client.startTurn()
 	defer s.client.endTurn()
-	res, err := s.conn.Prompt(ctx, acp.PromptRequest{SessionId: s.id, Prompt: []acp.ContentBlock{acp.TextBlock(text)}})
+	res, err := s.conn.Prompt(ctx, acp.PromptRequest{SessionId: s.id, Prompt: blocks})
 	if err != nil {
 		return s.failed(ctx, err)
 	}
@@ -140,6 +145,26 @@ func (s *antigravitySession) open(ctx context.Context, opts Options) error {
 		}
 	}
 	return nil
+}
+
+// blocks is a prompt's content: the text, then the images. ACP lets an
+// agent take only text, so images go only to an agy that said it takes them.
+func (s *antigravitySession) blocks(text string, images []Image) ([]acp.ContentBlock, error) {
+	if len(images) > 0 && !s.images {
+		return nil, errors.New("this version of Antigravity doesn't accept images: remove them and send the message again, or switch to another agent")
+	}
+	var blocks []acp.ContentBlock
+	if text != "" || len(images) == 0 {
+		blocks = append(blocks, acp.TextBlock(text))
+	}
+	for _, img := range images {
+		data, err := img.encoded()
+		if err != nil {
+			return nil, err
+		}
+		blocks = append(blocks, acp.ImageBlock(data, img.MIMEType))
+	}
+	return blocks, nil
 }
 
 // failed explains a prompt agy didn't answer: ctx ended, agy is gone, or
@@ -380,7 +405,7 @@ func askAntigravity(ctx context.Context, binary string) ([]Model, string, error)
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	dir := os.TempDir()
-	proc, conn, err := startAntigravityACP(ctx, binary, dir, &antigravityClient{onEvent: func(Event) {}})
+	proc, conn, _, err := startAntigravityACP(ctx, binary, dir, &antigravityClient{onEvent: func(Event) {}})
 	if err != nil {
 		return nil, "", err
 	}
@@ -430,24 +455,25 @@ func antigravitySessionModels(res acp.NewSessionResponse) []Model {
 }
 
 // startAntigravityACP starts `agy acp` on Tutortop's profile and completes
-// the handshake. We offer agy no terminal and no file access, so it uses its
-// own tools, which ask permission (see setUpAntigravity).
-func startAntigravityACP(ctx context.Context, binary, cwd string, client acp.Client) (*process, *acp.ClientSideConnection, error) {
+// the handshake, returning what agy said it takes in a prompt. We offer agy
+// no terminal and no file access, so it uses its own tools, which ask
+// permission (see setUpAntigravity).
+func startAntigravityACP(ctx context.Context, binary, cwd string, client acp.Client) (*process, *acp.ClientSideConnection, acp.PromptCapabilities, error) {
 	proc, err := startProcess(ctx, cwd, binary, nil, "acp", "--gemini-dir", antigravityProfile())
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, acp.PromptCapabilities{}, err
 	}
 	conn := acp.NewClientSideConnection(client, proc.stdin, proc.stdout)
 	initCtx, cancel := context.WithTimeout(ctx, time.Minute)
 	defer cancel()
-	_, err = conn.Initialize(initCtx, acp.InitializeRequest{
+	res, err := conn.Initialize(initCtx, acp.InitializeRequest{
 		ProtocolVersion: acp.ProtocolVersionNumber,
 		ClientInfo:      &acp.Implementation{Name: "tutortop", Title: acp.Ptr("Tutortop"), Version: "0.2.8"}, // x-release-please-version
 	})
 	if err != nil {
-		return nil, nil, antigravityAbort(proc, conn, fmt.Errorf("starting Antigravity: %w", err))
+		return nil, nil, acp.PromptCapabilities{}, antigravityAbort(proc, conn, fmt.Errorf("starting Antigravity: %w", err))
 	}
-	return proc, conn, nil
+	return proc, conn, res.AgentCapabilities.PromptCapabilities, nil
 }
 
 // antigravityProfile is agy's folder for Tutortop (its --gemini-dir).

@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -104,10 +105,14 @@ func TestAntigravityTurn(t *testing.T) {
 	sess, cli, log := startFakeAntigravity(t, opts)
 	notes := filepath.Join(opts.Cwd, "NOTES.md")
 
-	done := prompt(t, sess, "hello")
+	done := prompt(t, sess, "hello", testImage(t))
 	req := acpExpect(t, cli, "session/prompt")
 	if req.str("params.sessionId") != "s1" || req.str("params.prompt.0.text") != "hello" {
 		t.Errorf("session/prompt %v, want the session and text", req)
+	}
+	image := map[string]any{"type": "image", "mimeType": "image/png", "data": base64.StdEncoding.EncodeToString(testImageData)}
+	if got := req.get("params.prompt.1"); !reflect.DeepEqual(got, image) {
+		t.Errorf("session/prompt image %v, want %v", got, image)
 	}
 	cli.send(t,
 		`{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"s1","update":{"sessionUpdate":"agent_thought_chunk","content":{"type":"text","text":"Thinking about it."}}}}`,
@@ -169,6 +174,24 @@ func TestAntigravityTurn(t *testing.T) {
 	}
 }
 
+// An agy that doesn't take images says so before the turn starts, and the
+// session takes the next prompt.
+func TestAntigravityWithoutImages(t *testing.T) {
+	cli, started, sess, _ := beginAntigravityWith(t, antigravityOptions(t), strings.Replace(antigravityInitialize, `"image":true`, `"image":false`, 1))
+	acpReply(t, cli, acpExpect(t, cli, "session/new"), `{"sessionId":"s1"}`)
+	if err := wait(t, started); err != nil {
+		t.Fatal(err)
+	}
+	if err := wait(t, prompt(t, *sess, "look", testImage(t))); err == nil || !strings.Contains(err.Error(), "doesn't accept images") {
+		t.Errorf("Prompt with an image = %v, want an error saying agy takes none", err)
+	}
+	done := prompt(t, *sess, "text only")
+	acpReply(t, cli, acpExpect(t, cli, "session/prompt"), `{"stopReason":"end_turn"}`)
+	if err := wait(t, done); err != nil {
+		t.Errorf("text prompt after it: %v", err)
+	}
+}
+
 func TestAntigravityCancel(t *testing.T) {
 	opts := antigravityOptions(t)
 	sess, cli, _ := startFakeAntigravity(t, opts)
@@ -222,7 +245,7 @@ func TestAntigravityCancel(t *testing.T) {
 func TestAntigravityPromptContext(t *testing.T) {
 	sess, cli, _ := startFakeAntigravity(t, antigravityOptions(t))
 	ctx, cancel := context.WithCancel(t.Context())
-	done := async(func() error { return sess.Prompt(ctx, "hi") })
+	done := async(func() error { return sess.Prompt(ctx, "hi", nil) })
 	acpExpect(t, cli, "session/prompt")
 	cancel()
 	if err := wait(t, done); !errors.Is(err, context.Canceled) {
@@ -414,6 +437,12 @@ func startFakeAntigravity(t *testing.T, opts Options) (Session, *fakeCLI, *event
 // it opens a session. *sess is set once started is done.
 func beginAntigravity(t *testing.T, opts Options) (cli *fakeCLI, started <-chan error, sess *Session, log *eventLog) {
 	t.Helper()
+	return beginAntigravityWith(t, opts, antigravityInitialize)
+}
+
+// beginAntigravityWith is beginAntigravity with agy's initialize reply.
+func beginAntigravityWith(t *testing.T, opts Options, initialize string) (cli *fakeCLI, started <-chan error, sess *Session, log *eventLog) {
+	t.Helper()
 	clis := fakeBinary(t, "agy")
 	var s Session
 	log, sess = &eventLog{}, &s
@@ -431,7 +460,7 @@ func beginAntigravity(t *testing.T, opts Options) (cli *fakeCLI, started <-chan 
 			t.Errorf("initialize offers %s, want no file or terminal access", c)
 		}
 	}
-	acpReply(t, cli, req, antigravityInitialize)
+	acpReply(t, cli, req, initialize)
 	return cli, started, sess, log
 }
 

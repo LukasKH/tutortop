@@ -16,8 +16,10 @@ package agent
 import (
 	"cmp"
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
+	"os"
 	"slices"
 )
 
@@ -82,16 +84,18 @@ type Session interface {
 	// ID is the provider's session or thread id, never empty. The app saves
 	// it and passes it back as Options.ResumeID.
 	ID() string
-	// Prompt sends a user message and blocks until the agent's turn ends.
-	// The app sends one prompt at a time. Every event of the turn has been
-	// delivered by the time it returns. It returns:
+	// Prompt sends a user message, with any images attached to it, and
+	// blocks until the agent's turn ends. The app sends one prompt at a
+	// time. Every event of the turn has been delivered by the time it
+	// returns. It returns:
 	//   - nil when the turn ended, including when Cancel ended it;
-	//   - an error if the agent reports the turn failed; the session can
-	//     take the next prompt;
+	//   - an error if the agent reports the turn failed, or if it can't
+	//     take images and some are attached; the session can take the next
+	//     prompt;
 	//   - an error wrapping ErrExited if the process exited; the session
 	//     is finished;
 	//   - ctx's error if ctx ends first, leaving the turn running.
-	Prompt(ctx context.Context, text string) error
+	Prompt(ctx context.Context, text string, images []Image) error
 	// Cancel asks the agent to end the current turn, which Prompt then
 	// reports as ending normally. It doesn't block and may be called from
 	// any goroutine; without a turn it does nothing.
@@ -100,6 +104,23 @@ type Session interface {
 	// It doesn't wait for the exit, since callers may hold a lock. It may be
 	// called more than once.
 	Close() error
+}
+
+// Image is a picture the learner attached to a prompt, such as a screenshot
+// of an error. It's kept in a file, which some CLIs read themselves.
+type Image struct {
+	Path     string // absolute
+	MIMEType string // image/png, image/jpeg, image/gif or image/webp
+}
+
+// encoded reads the image, base64-encoded, for CLIs that take its data
+// inline.
+func (img Image) encoded() (string, error) {
+	b, err := os.ReadFile(img.Path)
+	if err != nil {
+		return "", fmt.Errorf("reading the attached image: %w", err)
+	}
+	return base64.StdEncoding.EncodeToString(b), nil
 }
 
 // ErrExited means the agent process exited; the session can't be used again.

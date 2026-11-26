@@ -35,6 +35,14 @@ export function Chat(wsID: string, thread: string): $CancellablePromise<workspac
 }
 
 /**
+ * ChatImage returns a picture attached to a message in a thread, by its name
+ * in the message's images, as a data: URL the chat can show.
+ */
+export function ChatImage(wsID: string, thread: string, name: string): $CancellablePromise<string> {
+    return $Call.ByID(1496928645, wsID, thread, name);
+}
+
+/**
  * DismissQuestions drops the pending form without answering.
  */
 export function DismissQuestions(wsID: string): $CancellablePromise<void> {
@@ -51,13 +59,15 @@ export function RequestHint(wsID: string, taskID: string, level: number): $Cance
 
 /**
  * SendMessage sends the learner's chat message to a thread, by its name
- * ("plan", a task id, ...). In a task's or lesson's thread the app adds a
- * [context] block about it. It returns once the message is queued; the
- * reply, or why the agent couldn't answer, arrives in the chat. An error
+ * ("plan", a task id, ...), with the images they attached: PNG, JPEG, GIF or
+ * WebP files, at most workspace.MaxChatImages of up to
+ * workspace.MaxChatImageBytes each. In a task's or lesson's thread the app
+ * adds a [context] block about it. It returns once the message is queued;
+ * the reply, or why the agent couldn't answer, arrives in the chat. An error
  * means the message wasn't sent at all.
  */
-export function SendMessage(wsID: string, text: string, thread: string): $CancellablePromise<void> {
-    return $Call.ByID(154037275, wsID, text, thread);
+export function SendMessage(wsID: string, text: string, thread: string, images: (string | null)[] | null): $CancellablePromise<void> {
+    return $Call.ByID(154037275, wsID, text, thread, images);
 }
 
 /**

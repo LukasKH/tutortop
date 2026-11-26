@@ -54,6 +54,11 @@ export interface ChatItem {
     "text": string;
 
     /**
+     * pictures the learner attached, by file name (ChatImage)
+     */
+    "images"?: string[] | null;
+
+    /**
      * tools always have one; notices only ChatFailed
      */
     "status"?: ChatStatus;

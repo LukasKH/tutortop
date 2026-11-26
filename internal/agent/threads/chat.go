@@ -1,9 +1,11 @@
 package threads
 
 import (
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"maps"
+	"os"
 	"slices"
 	"strings"
 
@@ -45,14 +47,19 @@ func (s *ChatService) Chat(wsID, thread string) ([]workspace.ChatItem, error) {
 }
 
 // SendMessage sends the learner's chat message to a thread, by its name
-// ("plan", a task id, ...). In a task's or lesson's thread the app adds a
-// [context] block about it. It returns once the message is queued; the
-// reply, or why the agent couldn't answer, arrives in the chat. An error
+// ("plan", a task id, ...), with the images they attached: PNG, JPEG, GIF or
+// WebP files, at most workspace.MaxChatImages of up to
+// workspace.MaxChatImageBytes each. In a task's or lesson's thread the app
+// adds a [context] block about it. It returns once the message is queued;
+// the reply, or why the agent couldn't answer, arrives in the chat. An error
 // means the message wasn't sent at all.
-func (s *ChatService) SendMessage(wsID, text, thread string) error {
+func (s *ChatService) SendMessage(wsID, text, thread string, images [][]byte) error {
 	text = strings.TrimSpace(text)
-	if text == "" {
+	if text == "" && len(images) == 0 {
 		return nil
+	}
+	if len(images) > workspace.MaxChatImages {
+		return fmt.Errorf("a message can have at most %d images", workspace.MaxChatImages)
 	}
 	w, err := s.store.Open(wsID)
 	if err != nil {
@@ -62,8 +69,34 @@ func (s *ChatService) SendMessage(wsID, text, thread string) error {
 	if err != nil {
 		return err
 	}
-	s.agents.Send(w, t, Message{Role: workspace.RoleUser, Shown: text, Agent: contextFor(w, t) + text})
+	var saved []workspace.ChatImage
+	for _, b := range images {
+		img, err := w.SaveChatImage(t.String(), b)
+		if err != nil {
+			return err
+		}
+		saved = append(saved, img)
+	}
+	s.agents.Send(w, t, Message{Role: workspace.RoleUser, Shown: text, Agent: contextFor(w, t) + text, Images: saved})
 	return nil
+}
+
+// ChatImage returns a picture attached to a message in a thread, by its name
+// in the message's images, as a data: URL the chat can show.
+func (s *ChatService) ChatImage(wsID, thread, name string) (string, error) {
+	w, err := s.store.Open(wsID)
+	if err != nil {
+		return "", err
+	}
+	img, err := w.ChatImage(thread, name)
+	if err != nil {
+		return "", err
+	}
+	b, err := os.ReadFile(img.Path)
+	if err != nil {
+		return "", err
+	}
+	return "data:" + img.MIMEType + ";base64," + base64.StdEncoding.EncodeToString(b), nil
 }
 
 // AnswerQuestions sends the learner's answers to the thread that asked.

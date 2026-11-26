@@ -59,6 +59,9 @@ func TestNamesStayInsideTheWorkspace(t *testing.T) {
 		}},
 		{"ParseThread", func(bad string) error { _, err := workspace.ParseThread(bad); return err }},
 		{"Toolchain", func(bad string) error { _, err := w.Toolchain(bad); return err }},
+		{"SaveChatImage", func(bad string) error { _, err := w.SaveChatImage(bad, []byte("GIF89a")); return err }},
+		{"ChatImage thread", func(bad string) error { _, err := w.ChatImage(bad, "a.png"); return err }},
+		{"ChatImage name", func(bad string) error { _, err := w.ChatImage(workspace.PlanThread.String(), bad); return err }},
 		// A file name joined under the task's starter folder.
 		{"SaveTask", func(bad string) error {
 			spec := taskSpec("a")

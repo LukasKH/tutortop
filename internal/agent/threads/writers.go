@@ -47,7 +47,7 @@ func (wr *Writers) KeepReady(w *workspace.Workspace, why string) {
 func (wr *Writers) Write(w *workspace.Workspace, o workspace.Objective, why string) {
 	t := workspace.WriterThread(o.ID)
 	msg := contextFor(w, t) + fmt.Sprintf("[app] Write for the objective “%s” (%s). %s", o.Title, o.ID, why)
-	if err := wr.agents.queue(w, t, msg); err != nil {
+	if err := wr.agents.queue(w, t, prompt{text: msg}); err != nil {
 		postFailure(w, t.String(), err.Error())
 	}
 }

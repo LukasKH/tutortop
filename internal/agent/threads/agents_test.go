@@ -421,7 +421,7 @@ func newTestWorkspace(t *testing.T) *workspace.Workspace {
 // queue queues a message for a thread's agent.
 func queue(t *testing.T, ag *Agents, w *workspace.Workspace, thread workspace.Thread, msg string) {
 	t.Helper()
-	if err := ag.queue(w, thread, msg); err != nil {
+	if err := ag.queue(w, thread, prompt{text: msg}); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -457,8 +457,9 @@ func (f *heldAgents) next(t *testing.T) heldTurn {
 }
 
 type heldTurn struct {
-	s    *heldSession
-	text string
+	s      *heldSession
+	text   string
+	images []agent.Image
 }
 
 // end makes the turn's Prompt return err.
@@ -474,8 +475,8 @@ type heldSession struct {
 	closed  atomic.Bool
 }
 
-func (s *heldSession) Prompt(ctx context.Context, text string) error {
-	s.agents.turns <- heldTurn{s, text}
+func (s *heldSession) Prompt(ctx context.Context, text string, images []agent.Image) error {
+	s.agents.turns <- heldTurn{s, text, images}
 	select {
 	case err := <-s.turn:
 		return err

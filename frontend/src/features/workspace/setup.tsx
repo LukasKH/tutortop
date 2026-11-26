@@ -61,7 +61,7 @@ export function Setup({ questions }: Props) {
               onStop={() => ChatService.StopAgent(id, PLAN_THREAD).catch(live.fail)}
             />
           )}
-          {!busy && items.length > 0 && <Reply onSend={(text) => ChatService.SendMessage(id, text, PLAN_THREAD)} />}
+          {!busy && items.length > 0 && <Reply onSend={(text) => ChatService.SendMessage(id, text, PLAN_THREAD, [])} />}
         </>
       )}
     </ReadingPage>

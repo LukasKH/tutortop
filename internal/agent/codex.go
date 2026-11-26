@@ -104,15 +104,23 @@ func startCodex(ctx context.Context, opts Options, onEvent func(Event)) (Session
 
 func (s *codexSession) ID() string { return s.threadID }
 
-func (s *codexSession) Prompt(ctx context.Context, text string) error {
+func (s *codexSession) Prompt(ctx context.Context, text string, images []Image) error {
 	done := make(chan codexTurn, 1)
 	s.mu.Lock()
 	s.turnDone, s.cancelled = done, false
 	s.mu.Unlock()
 
+	var input []any
+	if text != "" || len(images) == 0 {
+		input = append(input, map[string]any{"type": "text", "text": text, "text_elements": []any{}})
+	}
+	for _, img := range images {
+		// Codex reads the file itself; the sandbox lets it read anywhere.
+		input = append(input, map[string]any{"type": "localImage", "path": img.Path})
+	}
 	params := map[string]any{
 		"threadId": s.threadID,
-		"input":    []any{map[string]any{"type": "text", "text": text, "text_elements": []any{}}},
+		"input":    input,
 	}
 	if s.effort != "" {
 		params["effort"] = s.effort

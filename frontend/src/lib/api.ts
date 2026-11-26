@@ -91,7 +91,11 @@ export const TaskService = {
 
 export const LessonService = { ...app.LessonService, Lesson: patiently(app.LessonService.Lesson) };
 
-export const ChatService = { ...threads.ChatService, Chat: patiently(threads.ChatService.Chat) };
+export const ChatService = {
+  ...threads.ChatService,
+  Chat: patiently(threads.ChatService.Chat),
+  ChatImage: patiently(threads.ChatService.ChatImage),
+};
 
 // settings.Service, editor.Service and copilot.Service are all named Service
 // in Go, so they take their package's name here.

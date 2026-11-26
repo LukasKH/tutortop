@@ -9,6 +9,7 @@
 //	.tutortop/{workspace.json,attempts.jsonl,proposal.yaml,questions.json}  app state
 //	.tutortop/toolchains/<language>.yaml                                    languages the tutor set up (beyond the built-in ones)
 //	.tutortop/chat/<thread>.jsonl                                           one chat per thread, by its name (Thread)
+//	.tutortop/chat/<thread>/                                                pictures the learner attached in it
 //
 // Private files the learner and tutor shouldn't see (reference solutions,
 // hidden tests, quiz answers) live outside the workspace in the app

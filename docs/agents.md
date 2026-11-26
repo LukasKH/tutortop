@@ -42,7 +42,7 @@ Every field must be honoured:
 
 ### A turn
 
-`Prompt` sends the learner's message and blocks until the turn ends. The app sends one prompt at a time. It returns:
+`Prompt` sends the learner's message, with any images they attached, and blocks until the turn ends. The app sends one prompt at a time. Each `Image` is a PNG, JPEG, GIF or WebP file in the thread's chat folder, with its MIME type: pass it the way the CLI takes images (Claude Code: `image` blocks with base64 `source` before the text; Codex: `localImage` input items with the path; ACP: `ImageBlock`, only if `initialize` reported `promptCapabilities.image`). A message can be only images: then leave out the text block if the CLI refuses an empty one, as Claude's API does. If the CLI can't take images, return an error saying so before the turn starts. It returns:
 
 | Outcome | Return | The session afterwards |
 | --- | --- | --- |
@@ -125,7 +125,7 @@ The Agent Client Protocol is JSON-RPC over stdio. It maps onto this package clos
 | --- | --- |
 | `startX` | start the binary with `startProcess`, then `acp.NewClientSideConnection(client, proc.stdin, proc.stdout)`, `Initialize` (don't offer the terminal capability) and `NewSession` with `Cwd` and an HTTP `McpServers` entry for `MCPName`/`MCPURL` |
 | `ResumeID` | `LoadSession`, if the agent offers it; otherwise start fresh |
-| `Prompt` | `Prompt`; the `StopReason` is `end_turn` or `cancelled` → `nil`, `refusal`, `max_tokens` and the like → an error |
+| `Prompt` | `Prompt`, with a `TextBlock` and an `ImageBlock` per image if `initialize` reported `promptCapabilities.image` (otherwise an error before the turn); the `StopReason` is `end_turn` or `cancelled` → `nil`, `refusal`, `max_tokens` and the like → an error |
 | `Cancel` | the `session/cancel` notification |
 | `EventText` | `session/update` with `agent_message_chunk` |
 | `EventThinking` | `session/update` with `agent_thought_chunk` |

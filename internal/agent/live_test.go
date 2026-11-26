@@ -49,7 +49,7 @@ func TestLive(t *testing.T) {
 			}
 			defer sess.Close()
 
-			if err := sess.Prompt(ctx, "Call the ping tool on the probe MCP server, then reply with only the secret word it returns."); err != nil {
+			if err := sess.Prompt(ctx, "Call the ping tool on the probe MCP server, then reply with only the secret word it returns.", nil); err != nil {
 				t.Fatal(err)
 			}
 			mu.Lock()
@@ -68,10 +68,10 @@ func TestLive(t *testing.T) {
 			// Stopping a turn ends it cleanly, and the session goes on.
 			stop := time.AfterFunc(6*time.Second, sess.Cancel)
 			defer stop.Stop()
-			if err := sess.Prompt(ctx, "Write a 400 word essay about goroutines."); err != nil {
+			if err := sess.Prompt(ctx, "Write a 400 word essay about goroutines.", nil); err != nil {
 				t.Fatalf("stopped turn: %v", err)
 			}
-			if err := sess.Prompt(ctx, "Say OK."); err != nil {
+			if err := sess.Prompt(ctx, "Say OK.", nil); err != nil {
 				t.Fatalf("turn after a stopped one: %v", err)
 			}
 		})

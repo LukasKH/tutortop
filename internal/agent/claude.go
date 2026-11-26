@@ -133,15 +133,19 @@ func writeInstructions(text string) (string, error) {
 
 func (s *claudeSession) ID() string { return s.id }
 
-func (s *claudeSession) Prompt(ctx context.Context, text string) error {
+func (s *claudeSession) Prompt(ctx context.Context, text string, images []Image) error {
+	content, err := claudeContent(text, images)
+	if err != nil {
+		return err
+	}
 	done := make(chan claudeResult, 1)
 	s.mu.Lock()
 	s.result = done
 	s.mu.Unlock()
 	s.interrupted.Store(false)
-	err := s.send(map[string]any{
+	err = s.send(map[string]any{
 		"type":               "user",
-		"message":            map[string]any{"role": "user", "content": text},
+		"message":            map[string]any{"role": "user", "content": content},
 		"parent_tool_use_id": nil,
 		"session_id":         "",
 	})
@@ -371,6 +375,30 @@ func (s *claudeSession) canUseTool(name string, input json.RawMessage) error {
 		return errUnavailable
 	}
 	return s.policy.allow(t)
+}
+
+// claudeContent is a user message's content: the text alone, or the images
+// as base64 blocks followed by the text, the order Anthropic recommends. The
+// API refuses an empty text block, so a message of only images has none.
+func claudeContent(text string, images []Image) (any, error) {
+	if len(images) == 0 {
+		return text, nil
+	}
+	var content []any
+	for _, img := range images {
+		data, err := img.encoded()
+		if err != nil {
+			return nil, err
+		}
+		content = append(content, map[string]any{
+			"type":   "image",
+			"source": map[string]any{"type": "base64", "media_type": img.MIMEType, "data": data},
+		})
+	}
+	if text == "" {
+		return content, nil
+	}
+	return append(content, map[string]any{"type": "text", "text": text}), nil
 }
 
 type claudeLine struct {
