@@ -57,9 +57,10 @@ tasks:
       - go run golang.org/x/perf/cmd/benchstat@v0.0.0-20261009192801-be2c69fb417e {{.DIR}}/old.txt {{.DIR}}/new.txt
 
   check:
-    summary: Runs every pre-commit hook on all files
+    summary: Runs every pre-commit and pre-push hook on all files
     cmds:
       - pre-commit run --all-files
+      - pre-commit run --all-files --hook-stage pre-push
 
   build:
     summary: Builds the application

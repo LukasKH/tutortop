@@ -1,145 +1,88 @@
 name: CI
 
-# Pull requests, and main once merged. A push to a PR's branch runs once, as
-# the pull request.
+# Pull requests only. Enable "Require branches to be up to date before merging"
+# in the main branch ruleset so every merged commit was already checked here.
 on:
   pull_request:
-  push:
-    branches: [main]
 
 permissions:
   contents: read
 
-# A newer push to a pull request cancels its older run; main runs them all.
+# A newer push to a pull request cancels its older run.
 concurrency:
-  group: ci-${{ github.event.pull_request.number || github.sha }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: ci-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
 jobs:
-  # Decide which jobs need to run from the files changed in this PR or push,
-  # so doc, release-script, or single-side changes skip unrelated builds/tests.
-  changes:
+  # GitHub's Ubuntu runners have Docker, so the sandbox tests run here too.
+  # Tests that talk to the real Claude Code, Codex and Antigravity CLIs need -tags live.
+  go:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
-    outputs:
-      go: ${{ steps.filter.outputs.go }}
-      frontend: ${{ steps.filter.outputs.frontend }}
-      pre_commit: ${{ steps.filter.outputs.pre_commit }}
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           persist-credentials: false
           fetch-depth: 0
-      - id: filter
+      - id: changes
+        name: Check for Go changes
         env:
-          EVENT: ${{ github.event_name }}
-          FROM: ${{ github.event.pull_request.base.sha || github.event.before }}
-          TO: ${{ github.event.pull_request.head.sha || github.sha }}
+          FROM: ${{ github.event.pull_request.base.sha }}
+          TO: ${{ github.event.pull_request.head.sha }}
         run: |
-          go=false
-          frontend=false
-          pre_commit=false
-          if [ -z "$FROM" ] || [ "$FROM" = "0000000000000000000000000000000000000000" ] || ! git cat-file -e "$FROM^{commit}" 2>/dev/null; then
-            go=true
-            frontend=true
-            pre_commit=true
+          changed=false
+          if [ -z "$FROM" ] || ! git cat-file -e "$FROM^{commit}" 2>/dev/null; then
+            changed=true
+          elif git diff --name-only "$FROM...$TO" | grep -Eq '^(internal/|[^/]+\.go$|build/updater\.pub$|go\.mod$|go\.sum$|\.golangci\.yml$|\.github/workflows/ci\.yml$|frontend/bindings/)'; then
+            changed=true
           else
-            if [ "$EVENT" = "pull_request" ]; then
-              files=$(git diff --name-only "$FROM...$TO")
-            else
-              files=$(git diff --name-only "$FROM..$TO")
-            fi
-            if printf '%s\n' "$files" | grep -Eq '^(internal/|[^/]+\.go$|build/updater\.pub$|go\.mod$|go\.sum$|\.github/workflows/ci\.yml$)'; then
-              go=true
-              pre_commit=true
-            fi
-            if printf '%s\n' "$files" | grep -Eq '^(frontend/|\.github/workflows/ci\.yml$)'; then
-              frontend=true
-              pre_commit=true
-            fi
-            if printf '%s\n' "$files" | grep -Eq '^(\.pre-commit-config\.yaml$|\.golangci\.yml$|commitlint\.config\.cjs$)'; then
-              pre_commit=true
-            fi
+            echo "No Go files changed; skipping Go checks."
           fi
-          printf 'go=%s\nfrontend=%s\npre_commit=%s\n' "$go" "$frontend" "$pre_commit" >> "$GITHUB_OUTPUT"
-
-  # The pre-commit hooks, so a commit made with --no-verify can't skip them.
-  # The Go tests run in the test job instead, beside the benchmarks.
-  pre-commit:
-    needs: changes
-    if: needs.changes.outputs.pre_commit == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
-        with:
-          persist-credentials: false
-          fetch-depth: 0 # the commit messages to check
+          echo "changed=$changed" >> "$GITHUB_OUTPUT"
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        if: steps.changes.outputs.changed == 'true'
         with:
           go-version-file: go.mod
           cache-dependency-path: go.sum
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
-        with:
-          node-version: 26
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
-      # The wails-bindings hook runs the wails3 on PATH, at the Wails version
-      # in go.mod. CGO_ENABLED=0 so the CLI builds without GTK.
-      - name: Install the Wails CLI
-        run: CGO_ENABLED=0 go install "github.com/wailsapp/wails/v3/cmd/wails3@$(go list -m -f '{{.Version}}' github.com/wailsapp/wails/v3)"
-      # The hook runs the golangci-lint on PATH.
       - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        if: steps.changes.outputs.changed == 'true'
         with:
           version: v2.15.0
-          install-only: true
-      - run: npm ci
-        working-directory: frontend
-      # Keep in step with mise.toml.
-      - run: pipx install pre-commit==4.7.0
-      - name: Pre-commit hooks
-        run: pre-commit run --all-files --show-diff-on-failure
-        env:
-          SKIP: go-test
-          # wails-bindings loads main.go with -tags server; without CGO that
-          # needs no GTK or WebKitGTK.
-          CGO_ENABLED: "0"
-      - name: Commit messages
-        env:
-          FROM: ${{ github.event.pull_request.base.sha || github.event.before }}
-          TO: ${{ github.event.pull_request.head.sha || github.sha }}
-        # The hook runs `commitlint --edit`, which reads .git/COMMIT_EDITMSG
-        # whatever file it's given.
+          args: ./internal/...
+      # STYLEGUIDE.md, "Struct literals": &T{...}, not new(T).
+      - name: Build structs with &T{} not new(T)
+        if: steps.changes.outputs.changed == 'true'
         run: |
-          for sha in $(git rev-list --no-merges "$FROM..$TO"); do
-            git log -1 --format=%B "$sha" > .git/COMMIT_EDITMSG
-            pre-commit run commitlint --hook-stage commit-msg --commit-msg-filename .git/COMMIT_EDITMSG
-          done
-
-  # GitHub's Ubuntu runners have Docker, so the sandbox tests run here too.
-  # Tests that talk to the real Claude Code, Codex and Antigravity CLIs need -tags live.
-  test:
-    needs: changes
-    if: needs.changes.outputs.go == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
-        with:
-          persist-credentials: false
-      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
-        with:
-          go-version-file: go.mod
-          cache-dependency-path: go.sum
-      - run: go test -race -short -count=1 ./internal/...
+          if rg -nP '(?<![\w.])new\((?!(?:any|bool|byte|complex64|complex128|error|float32|float64|int|int8|int16|int32|int64|rune|string|uint|uint8|uint16|uint32|uint64|uintptr|[A-Z])\))[\w.]+\)' --glob '*.go'; then
+            echo "Build structs with &T{} not new(T) (STYLEGUIDE.md)." >&2
+            exit 1
+          fi
+      # CGO_ENABLED=0 so the CLI builds and loads main.go with -tags server without GTK or WebKitGTK.
+      - name: Install the Wails CLI
+        if: steps.changes.outputs.changed == 'true'
+        run: CGO_ENABLED=0 go install "github.com/wailsapp/wails/v3/cmd/wails3@$(go list -m -f '{{.Version}}' github.com/wailsapp/wails/v3)"
+      - name: Wails bindings up to date
+        if: steps.changes.outputs.changed == 'true'
+        env:
+          CGO_ENABLED: "0"
+        run: |
+          wails3 generate bindings -f '-tags server' -clean=true -ts -i
+          if [ -n "$(git status --porcelain -- frontend/bindings)" ]; then
+            git diff -- frontend/bindings
+            git status --short -- frontend/bindings
+            echo "frontend/bindings is out of date; run 'wails3 generate bindings -clean=true -ts -i' and commit the result." >&2
+            exit 1
+          fi
+      - name: Go tests
+        if: steps.changes.outputs.changed == 'true'
+        run: go test -race -short -count=1 ./internal/...
       # Runs each benchmark once, so they keep working. Shared runners are too
       # noisy to compare timings; `wails3 task bench:compare` does that locally.
       - name: Benchmarks still run
+        if: steps.changes.outputs.changed == 'true'
         run: go test -run '^$' -bench . -benchtime 1x ./internal/app/
 
   frontend:
-    needs: changes
-    if: needs.changes.outputs.frontend == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     defaults:
@@ -149,27 +92,44 @@ jobs:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           persist-credentials: false
+          fetch-depth: 0
+      - id: changes
+        name: Check for frontend changes
+        working-directory: .
+        env:
+          FROM: ${{ github.event.pull_request.base.sha }}
+          TO: ${{ github.event.pull_request.head.sha }}
+        run: |
+          changed=false
+          if [ -z "$FROM" ] || ! git cat-file -e "$FROM^{commit}" 2>/dev/null; then
+            changed=true
+          elif git diff --name-only "$FROM...$TO" | grep -Eq '^(frontend/|\.github/workflows/ci\.yml$)'; then
+            changed=true
+          else
+            echo "No frontend files changed; skipping frontend checks."
+          fi
+          echo "changed=$changed" >> "$GITHUB_OUTPUT"
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        if: steps.changes.outputs.changed == 'true'
         with:
           node-version: 26
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-      # The bindings, typecheck, lint, format and tests are checked in the
-      # pre-commit job.
-      - run: npm ci
-      - run: npm run build
-
-  # Single status check for branch protection: passes when every needed job
-  # succeeded or was skipped, so docs-only PRs don't hang waiting for skipped jobs.
-  ci:
-    if: always()
-    needs: [changes, pre-commit, test, frontend]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check job outcomes
-        env:
-          RESULTS: ${{ join(needs.*.result, ',') }}
-        run: |
-          case ",$RESULTS," in
-            *,failure,*|*,cancelled,*) exit 1 ;;
-          esac
+      - name: Install dependencies
+        if: steps.changes.outputs.changed == 'true'
+        run: npm ci
+      - name: Typecheck
+        if: steps.changes.outputs.changed == 'true'
+        run: npm exec -- tsc --noEmit -p .
+      - name: Lint
+        if: steps.changes.outputs.changed == 'true'
+        run: npm run lint
+      - name: Format check
+        if: steps.changes.outputs.changed == 'true'
+        run: npm run format:check
+      - name: Tests
+        if: steps.changes.outputs.changed == 'true'
+        run: npm test
+      - name: Build
+        if: steps.changes.outputs.changed == 'true'
+        run: npm run build
