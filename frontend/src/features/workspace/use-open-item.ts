@@ -89,7 +89,10 @@ export function useOpenItem(id: string, { ws, refresh, dismissFinishedCheck }: P
     if (workspace === id) refresh().then((s) => s?.proposal && setView("proposal"));
   });
 
-  return { item, view, thread, newItem, open, setView };
+  // Regenerating unsolved work can delete what was pointed out.
+  const shownNew = newItem && ws && sameItem(resolveOpen(ws, newItem.item), newItem.item) ? newItem : null;
+
+  return { item, view, thread, newItem: shownNew, open, setView };
 }
 
 export type UseOpenItemResult = ReturnType<typeof useOpenItem>;

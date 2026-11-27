@@ -65,12 +65,23 @@ describe("published work", () => {
   });
 
   test("is pointed out once the open task is solved, an announced lesson first", () => {
-    const { result } = render(workspace({ tasks: [task("t1", "a", true)] }), "t1");
+    const { result, rerender } = render(workspace({ tasks: [task("t1", "a", true)] }), "t1");
     emit(AppEvents.LessonPublished, { lesson: lesson("l2", "b") });
     emit(AppEvents.TaskPublished, { task: task("t2", "b") });
+    rerender({ ws: workspace({ lessons: [lesson("l2", "b")], tasks: [task("t1", "a", true), task("t2", "b")] }) });
     expect(result.current.item).toEqual({ kind: "task", id: "t1" });
     expect(result.current.newItem).toEqual({ item: { kind: "lesson", id: "l2" }, title: "Lesson l2" });
     act(() => result.current.open({ kind: "lesson", id: "l2" }));
+    expect(result.current.newItem).toBeNull();
+  });
+
+  test("isn't pointed out once regenerating unsolved work deleted it", () => {
+    const solved = workspace({ tasks: [task("t1", "a", true)] });
+    const { result, rerender } = render(solved, "t1");
+    emit(AppEvents.LessonPublished, { lesson: lesson("l2", "b") });
+    rerender({ ws: workspace({ lessons: [lesson("l2", "b")], tasks: [task("t1", "a", true)] }) });
+    expect(result.current.newItem).not.toBeNull();
+    rerender({ ws: solved });
     expect(result.current.newItem).toBeNull();
   });
 
