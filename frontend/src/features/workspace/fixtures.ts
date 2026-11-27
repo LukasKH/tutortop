@@ -9,6 +9,8 @@ export function workspace(over: Partial<WorkspaceSnapshot> = {}): WorkspaceSnaps
     title: "Go",
     icon: "",
     mission: "",
+    notes: "",
+    known: "",
     resources: "",
     curriculum: {
       language: "go",

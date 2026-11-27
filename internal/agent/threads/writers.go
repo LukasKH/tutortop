@@ -3,6 +3,7 @@ package threads
 import (
 	"fmt"
 
+	"github.com/LukasKH/tutortop/internal/events"
 	"github.com/LukasKH/tutortop/internal/workspace"
 )
 
@@ -39,6 +40,41 @@ func (wr *Writers) KeepReady(w *workspace.Workspace, why string) {
 	}
 }
 
+// Rewrite stops any running writers for w, clears already-written lessons
+// (except keepLessonID) and tasks of unpassed objectives, and starts fresh
+// writers for cleared objectives, any in-flight objectives that were stopped
+// (such as "Write it now" requests), and KeepReady for missing ones ahead.
+func (wr *Writers) Rewrite(w *workspace.Workspace, keepLessonID, why string) error {
+	stoppedIDs := wr.agents.endWriters(w.ID)
+	cleared, err := w.ClearUnsolved(keepLessonID)
+	if len(cleared) > 0 {
+		events.Emit(events.WorkspaceChanged, events.Workspace{Workspace: w.ID})
+	}
+	started := map[string]bool{}
+	start := func(o workspace.Objective) {
+		if started[o.ID] {
+			return
+		}
+		started[o.ID] = true
+		wr.Write(w, o, why)
+	}
+	for _, o := range cleared {
+		start(o)
+	}
+	for _, o := range w.NeedsWriting(readyAhead) {
+		start(o)
+	}
+	if cur, curErr := w.Curriculum(); curErr == nil && cur != nil {
+		p := w.Progress()
+		for _, id := range stoppedIDs {
+			if o, _, ok := cur.Objective(id); ok && p.Objectives[id].Status != workspace.ObjectivePassed {
+				start(o)
+			}
+		}
+	}
+	return err
+}
+
 // Write starts a writer for one objective, unless one is already at work on
 // it. why tells the writer what prompted it, and the message carries the
 // objective's sources (writerContext). Like a chat message, it doesn't wait
@@ -47,7 +83,7 @@ func (wr *Writers) KeepReady(w *workspace.Workspace, why string) {
 func (wr *Writers) Write(w *workspace.Workspace, o workspace.Objective, why string) {
 	t := workspace.WriterThread(o.ID)
 	msg := contextFor(w, t) + fmt.Sprintf("[app] Write for the objective “%s” (%s). %s", o.Title, o.ID, why)
-	if err := wr.agents.queue(w, t, msg); err != nil {
+	if err := wr.agents.queue(w, t, prompt{text: msg}); err != nil {
 		postFailure(w, t.String(), err.Error())
 	}
 }

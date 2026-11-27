@@ -1,5 +1,5 @@
-import { useCallback, useLayoutEffect, useRef, type ReactNode } from "react";
-import { ChatRole, ChatStatus, type ChatItem, type SandboxCheck } from "@/lib/api";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { ChatRole, ChatService, ChatStatus, errorText, type ChatItem, type SandboxCheck } from "@/lib/api";
 import { useTutor } from "@/features/settings/use-tutor";
 import { TutorPicker } from "@/features/settings/tutor-picker";
 import { AgentIcon } from "@/components/agent-icon";
@@ -8,8 +8,8 @@ import type { NewItem } from "@/features/workspace/use-open-item";
 import { useLiveWorkspace } from "@/features/workspace/use-workspace";
 import type { Composer } from "@/features/chat/use-composer";
 import { Thinking } from "@/features/chat/thinking";
+import { MessageBox } from "@/features/chat/message-box";
 import { Markdown } from "@/components/markdown";
-import { AutoTextarea } from "@/components/auto-textarea";
 import { IconButton } from "@/components/icon-button";
 import { useArmed } from "@/hooks/use-armed";
 import { ChevronDown, PanelRightIcon } from "lucide-react";
@@ -35,13 +35,14 @@ type Props = {
   /** Slots: the questions form (or a pointer to it) and the status line above the composer. */
   questions: ReactNode;
   status: ReactNode;
-  /** The message box's draft, kept above the panel (use-composer.ts). */
+  /** The message box's draft and images, kept above the panel (use-composer.ts). */
   composer: Composer;
-  onSend: (text: string) => void;
+  /** Sends the learner's message; images are base64, as ChatService.SendMessage takes them. */
+  onSend: (text: string, images: string[]) => void;
   onCollapse: () => void;
 };
 
-export function ChatPanel({ composer: { draft, setDraft, inputRef }, ...p }: Props) {
+export function ChatPanel({ composer, ...p }: Props) {
   const tutor = useTutor();
   const listRef = useRef<HTMLDivElement>(null);
   const stickToBottom = useRef(true);
@@ -64,12 +65,9 @@ export function ChatPanel({ composer: { draft, setDraft, inputRef }, ...p }: Pro
     stickToBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48;
   }
 
-  function send() {
-    const text = draft.trim();
-    if (!text) return;
+  function send(text: string, images: string[]) {
     stickToBottom.current = true;
-    setDraft("");
-    p.onSend(text);
+    p.onSend(text, images);
   }
 
   return (
@@ -101,33 +99,7 @@ export function ChatPanel({ composer: { draft, setDraft, inputRef }, ...p }: Pro
       </div>
 
       {p.status}
-      <div className="mx-3 mb-1 flex flex-none items-end gap-2 rounded-xl border border-input py-2 pr-2 pl-3 transition-colors focus-within:border-foreground">
-        <AutoTextarea
-          ref={inputRef}
-          className="flex-1 rounded-none border-0 bg-transparent px-0 py-1 text-[13px] leading-[1.5] focus-visible:border-0"
-          maxHeight={180}
-          value={draft}
-          placeholder={p.context === "Plan" ? "Ask about your plan" : `Ask about this ${p.context.toLowerCase()}`}
-          aria-label="Message the tutor"
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.nativeEvent.isComposing) {
-              e.preventDefault();
-              send();
-            }
-          }}
-        />
-        <Button
-          size="icon-sm"
-          className="font-normal hover:not-disabled:border-primary hover:not-disabled:bg-primary disabled:border-input disabled:bg-input disabled:opacity-100"
-          onClick={send}
-          disabled={!draft.trim()}
-          aria-label="Send"
-          title="Send (Enter)"
-        >
-          ↑
-        </Button>
-      </div>
+      <MessageBox composer={composer} placeholder={p.context === "Plan" ? "Ask about your plan" : `Ask about this ${p.context.toLowerCase()}`} onSend={send} />
       <TutorPicker side="top">
         <Button
           variant="ghost"
@@ -223,7 +195,18 @@ function Message({ item }: { item: ChatItem }) {
   const { lang } = useLiveWorkspace();
   switch (item.role) {
     case ChatRole.RoleUser:
-      return <div className="max-w-[85%] self-end rounded-xl bg-muted px-[11px] py-2 leading-[1.5] wrap-anywhere whitespace-pre-wrap">{item.text}</div>;
+      return (
+        <div className="flex max-w-[85%] flex-col items-end gap-1.5 self-end">
+          {item.images && item.images.length > 0 && (
+            <div className="flex flex-wrap justify-end gap-1.5">
+              {item.images.map((name) => (
+                <ChatImage key={name} thread={item.thread} name={name} />
+              ))}
+            </div>
+          )}
+          {item.text && <div className="rounded-xl bg-muted px-[11px] py-2 leading-[1.5] wrap-anywhere whitespace-pre-wrap">{item.text}</div>}
+        </div>
+      );
     case ChatRole.RoleAssistant:
       return (
         <Markdown
@@ -250,6 +233,26 @@ function Message({ item }: { item: ChatItem }) {
         </div>
       );
   }
+}
+
+/** An image the learner attached to a message, loaded from where the app keeps it with the thread. */
+function ChatImage({ thread, name }: { thread: string; name: string }) {
+  const { id } = useLiveWorkspace();
+  const [url, setUrl] = useState("");
+  const [error, setError] = useState("");
+  useEffect(() => {
+    let current = true;
+    ChatService.ChatImage(id, thread, name).then(
+      (u) => current && setUrl(u),
+      (e: unknown) => current && setError(errorText(e)),
+    );
+    return () => {
+      current = false;
+    };
+  }, [id, thread, name]);
+  if (error) return <div className="rounded-md border px-2 py-1 text-xs text-muted-foreground">Image unavailable</div>;
+  if (!url) return <div className="size-24 rounded-md border bg-muted" aria-busy="true" />;
+  return <img src={url} alt="Attached image" className="max-h-40 max-w-full rounded-md border object-contain" />;
 }
 
 /**

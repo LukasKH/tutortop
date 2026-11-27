@@ -83,10 +83,15 @@ func TestCodexTurn(t *testing.T) {
 	sess, cli, log, _ := startFakeCodex(t, opts)
 	notes := filepath.Join(opts.Cwd, "NOTES.md")
 
-	done := prompt(t, sess, "hello")
+	img := testImage(t)
+	done := prompt(t, sess, "hello", img)
 	start := codexExpect(t, cli, "turn/start")
 	if start.str("params.threadId") != "thr_1" || start.str("params.input.0.text") != "hello" || start.str("params.effort") != "high" {
 		t.Errorf("turn/start %v, want the thread, text and effort", start)
+	}
+	// Codex reads an attached image from its file.
+	if start.str("params.input.1.type") != "localImage" || start.str("params.input.1.path") != img.Path {
+		t.Errorf("turn/start input %v, want the image's file after the text", start.get("params.input"))
 	}
 	codexReply(t, cli, start, `{"turn":{"id":"turn_1","status":"inProgress","items":[]}}`)
 	cli.send(t,

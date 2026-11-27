@@ -50,7 +50,7 @@ func TestLiveClaudePermissions(t *testing.T) {
 
 	outside := filepath.Join(root, "outside", "b.txt")
 	prompt := "Use the Edit tool three times, even if one fails: change the x to y in tasks/a.txt, in NOTES.md, and in " + outside + ". Then reply DONE."
-	if err := sess.Prompt(ctx, prompt); err != nil {
+	if err := sess.Prompt(ctx, prompt, nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -108,7 +108,7 @@ func TestLiveClaudeSubagents(t *testing.T) {
 		"\"Do all three steps even if one fails: use the Bash tool to run `touch ran.txt`; " +
 		"use the Edit tool to change the x to y in tasks/a.txt; use the Edit tool to change the x to y in NOTES.md. Then reply OK.\" " +
 		"When it has finished, reply DONE."
-	if err := sess.Prompt(ctx, prompt); err != nil {
+	if err := sess.Prompt(ctx, prompt, nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -191,7 +191,7 @@ func TestLiveAntigravityPermissions(t *testing.T) {
 		"Use the invoke_subagent tool to start a subagent with the task 'Reply OK.'",
 		"Use the schedule tool to schedule a one-time reminder in 5 minutes saying 'hi'.",
 	} {
-		if err := sess.Prompt(ctx, step+" Don't retry or work around it if it fails. Then reply DONE."); err != nil {
+		if err := sess.Prompt(ctx, step+" Don't retry or work around it if it fails. Then reply DONE.", nil); err != nil {
 			t.Fatalf("%s: %v", step, err)
 		}
 	}

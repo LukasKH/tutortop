@@ -10,6 +10,11 @@ export {
     WorkspaceService
 };
 
+export {
+    FeedbackChip
+} from "./models.js";
+
 export type {
+    Feedback,
     WorkspaceSnapshot
 } from "./models.js";

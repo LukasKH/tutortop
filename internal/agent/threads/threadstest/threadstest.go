@@ -24,7 +24,7 @@ func Quiet() CLI {
 
 type quietSession struct{}
 
-func (quietSession) Prompt(context.Context, string) error { return nil }
-func (quietSession) ID() string                           { return "" }
-func (quietSession) Cancel()                              {}
-func (quietSession) Close() error                         { return nil }
+func (quietSession) Prompt(context.Context, string, []agent.Image) error { return nil }
+func (quietSession) ID() string                                          { return "" }
+func (quietSession) Cancel()                                             {}
+func (quietSession) Close() error                                        { return nil }

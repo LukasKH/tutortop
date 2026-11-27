@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -167,6 +168,40 @@ func TestClaudeTurn(t *testing.T) {
 	cli.send(t, `{"type":"result","subtype":"error_during_execution","is_error":true,"result":"Credit balance is too low"}`)
 	if err := wait(t, done); err == nil || !strings.Contains(err.Error(), "Credit balance is too low") || errors.Is(err, ErrExited) {
 		t.Errorf("failed turn: %v, want Claude's reason", err)
+	}
+}
+
+// Attached images go inline, before the text, each with its type.
+func TestClaudeImages(t *testing.T) {
+	sess, cli, _ := startFakeClaude(t, claudeOptions(t))
+	img := testImage(t)
+	done := prompt(t, sess, "What does this error mean?", img)
+	msg := cli.recv(t)
+	want := []any{
+		map[string]any{"type": "image", "source": map[string]any{"type": "base64", "media_type": "image/png", "data": base64.StdEncoding.EncodeToString(testImageData)}},
+		map[string]any{"type": "text", "text": "What does this error mean?"},
+	}
+	if got := msg.get("message.content"); !reflect.DeepEqual(got, want) {
+		t.Errorf("content %v, want %v", got, want)
+	}
+	cli.send(t, `{"type":"result","subtype":"success","is_error":false}`)
+	if err := wait(t, done); err != nil {
+		t.Fatal(err)
+	}
+
+	// Claude's API refuses an empty text block, so only images send none.
+	done = prompt(t, sess, "", img)
+	if got := cli.recv(t).get("message.content"); !reflect.DeepEqual(got, want[:1]) {
+		t.Errorf("content %v, want the image alone", got)
+	}
+	cli.send(t, `{"type":"result","subtype":"success","is_error":false}`)
+	if err := wait(t, done); err != nil {
+		t.Fatal(err)
+	}
+
+	// An image that's gone fails the prompt before anything is sent.
+	if err := wait(t, prompt(t, sess, "again", Image{Path: filepath.Join(t.TempDir(), "gone.png"), MIMEType: "image/png"})); err == nil {
+		t.Error("Prompt with a missing image succeeded")
 	}
 }
 
@@ -379,6 +414,6 @@ func claudeControlOK(req message) string {
 }
 
 // prompt runs sess.Prompt while the test plays the CLI.
-func prompt(t *testing.T, sess Session, text string) <-chan error {
-	return async(func() error { return sess.Prompt(t.Context(), text) })
+func prompt(t *testing.T, sess Session, text string, images ...Image) <-chan error {
+	return async(func() error { return sess.Prompt(t.Context(), text, images) })
 }

@@ -156,14 +156,27 @@ func (w *Workspace) ValidateLesson(spec LessonSpec) error {
 
 // SaveLesson stores a validated lesson.
 func (w *Workspace) SaveLesson(spec LessonSpec) (LessonInfo, error) {
+	return w.SaveLessonForGen(spec, 0)
+}
+
+// SaveLessonForGen stores a validated lesson if gen is 0 or matches the
+// workspace's current writer generation, rejecting saves from stopped writers.
+func (w *Workspace) SaveLessonForGen(spec LessonSpec, gen uint64) (LessonInfo, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
+	if gen != 0 && w.state.gen != gen {
+		return LessonInfo{}, ErrStaleWriter
+	}
 	lessons, err := w.Lessons()
 	if err != nil {
 		return LessonInfo{}, err
 	}
+	num, err := w.claimLessonNumber(lessons)
+	if err != nil {
+		return LessonInfo{}, err
+	}
 	info := LessonInfo{
-		ID:        fmt.Sprintf("%04d-%s", len(lessons)+1, slugify(spec.Title)),
+		ID:        fmt.Sprintf("%04d-%s", num, slugify(spec.Title)),
 		Title:     spec.Title,
 		Objective: spec.ObjectiveID,
 		Questions: len(spec.Quiz),

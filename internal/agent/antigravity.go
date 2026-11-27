@@ -32,6 +32,7 @@ type antigravitySession struct {
 	conn   *acp.ClientSideConnection
 	client *antigravityClient
 	id     acp.SessionId
+	images bool // agy's initialize said it takes image blocks
 }
 
 func startAntigravity(ctx context.Context, opts Options, onEvent func(Event)) (Session, error) {
@@ -39,31 +40,38 @@ func startAntigravity(ctx context.Context, opts Options, onEvent func(Event)) (S
 		return nil, fmt.Errorf("setting up Antigravity: %w", err)
 	}
 	client := &antigravityClient{policy: newPolicy(opts), mcpName: opts.MCPName, onEvent: onEvent}
-	proc, conn, err := startAntigravityACP(ctx, opts.Binary, opts.Cwd, client)
+	proc, conn, caps, err := startAntigravityACP(ctx, opts.Binary, opts.Cwd, client)
 	if err != nil {
 		return nil, err
 	}
-	s := &antigravitySession{process: proc, conn: conn, client: client}
+	s := &antigravitySession{process: proc, conn: conn, client: client, images: caps.Image}
 	ctx, cancel := context.WithTimeout(ctx, time.Minute)
 	defer cancel()
 	if err := s.open(ctx, opts); err != nil {
 		return nil, antigravityAbort(proc, conn, err)
 	}
+	client.useSession(s.id)
 	return s, nil
 }
 
 func (s *antigravitySession) ID() string { return string(s.id) }
 
-func (s *antigravitySession) Prompt(ctx context.Context, text string) error {
+func (s *antigravitySession) Prompt(ctx context.Context, text string, images []Image) error {
+	blocks, err := s.blocks(text, images)
+	if err != nil {
+		return err
+	}
 	s.client.startTurn()
 	defer s.client.endTurn()
-	res, err := s.conn.Prompt(ctx, acp.PromptRequest{SessionId: s.id, Prompt: []acp.ContentBlock{acp.TextBlock(text)}})
+	res, err := s.conn.Prompt(ctx, acp.PromptRequest{SessionId: s.id, Prompt: blocks})
 	if err != nil {
 		return s.failed(ctx, err)
 	}
 	switch res.StopReason {
-	case acp.StopReasonEndTurn, acp.StopReasonCancelled:
+	case acp.StopReasonEndTurn:
 		return nil
+	case acp.StopReasonCancelled:
+		return s.client.cancelError()
 	case acp.StopReasonMaxTokens, acp.StopReasonMaxTurnRequests, acp.StopReasonRefusal:
 	}
 	return fmt.Errorf("turn failed in Antigravity: it stopped with %s", strings.ReplaceAll(string(res.StopReason), "_", " "))
@@ -139,6 +147,26 @@ func (s *antigravitySession) open(ctx context.Context, opts Options) error {
 	return nil
 }
 
+// blocks is a prompt's content: the text, then the images. ACP lets an
+// agent take only text, so images go only to an agy that said it takes them.
+func (s *antigravitySession) blocks(text string, images []Image) ([]acp.ContentBlock, error) {
+	if len(images) > 0 && !s.images {
+		return nil, errors.New("this version of Antigravity doesn't accept images: remove them and send the message again, or switch to another agent")
+	}
+	var blocks []acp.ContentBlock
+	if text != "" || len(images) == 0 {
+		blocks = append(blocks, acp.TextBlock(text))
+	}
+	for _, img := range images {
+		data, err := img.encoded()
+		if err != nil {
+			return nil, err
+		}
+		blocks = append(blocks, acp.ImageBlock(data, img.MIMEType))
+	}
+	return blocks, nil
+}
+
 // failed explains a prompt agy didn't answer: ctx ended, agy is gone, or
 // agy reported an error.
 func (s *antigravitySession) failed(ctx context.Context, err error) error {
@@ -166,6 +194,7 @@ type antigravityClient struct {
 	mu        sync.Mutex
 	prompting bool                          // a Prompt is running
 	cancelled bool                          // Cancel ended the running turn
+	refused   string                        // the running turn's last refused call and why, for cancelError
 	tools     map[acp.ToolCallId]ToolStatus // unfinished calls, by the status last reported
 }
 
@@ -206,9 +235,9 @@ func (c *antigravityClient) RequestPermission(_ context.Context, req acp.Request
 	title, _ := call.Title.Value()
 	kind, _ := call.Kind.Value()
 	locations, _ := call.Locations.Value()
-	want := acp.PermissionOptionKindRejectOnce
-	if c.policy.allow(c.describe(call.ToolCallId, name, title, kind, locations)) == nil {
-		want = acp.PermissionOptionKindAllowOnce
+	want := acp.PermissionOptionKindAllowOnce
+	if c.allow(cmp.Or(name, title, "a tool"), c.describe(call.ToolCallId, name, title, kind, locations)) != nil {
+		want = acp.PermissionOptionKindRejectOnce
 	}
 	for _, o := range req.Options {
 		if o.Kind == want {
@@ -254,10 +283,33 @@ func (c *antigravityClient) CompleteElicitation(context.Context, acp.CompleteEli
 	return nil // we never start one
 }
 
+// useSession lets the policy read the session's saved tool output. agy
+// saves a tool's output there when it's too long to hand the model whole,
+// and the model reads it back; refusing that read would end the turn. The
+// folder holds only what the model has already been given, and the policy
+// still refuses writes there.
+func (c *antigravityClient) useSession(id acp.SessionId) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.policy.readDir = filepath.Join(antigravityProfile(), "antigravity-cli", "brain", string(id), ".system_generated", "steps")
+}
+
+// allow decides a tool call with the policy. agy ends the turn when we
+// refuse one, so it keeps the refusal for cancelError.
+func (c *antigravityClient) allow(name string, t Tool) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	err := c.policy.allow(t)
+	if err != nil {
+		c.refused = fmt.Sprintf("%s (%s)", name, err)
+	}
+	return err
+}
+
 func (c *antigravityClient) startTurn() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.prompting, c.cancelled = true, false
+	c.prompting, c.cancelled, c.refused = true, false, ""
 }
 
 func (c *antigravityClient) endTurn() {
@@ -278,6 +330,21 @@ func (c *antigravityClient) turnCancelled() bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.cancelled
+}
+
+// cancelError explains a turn agy ended as cancelled, or returns nil if
+// Cancel asked for it. Unasked, agy cancels a turn when we refuse a tool
+// call, where other CLIs hand the refusal back to the model.
+func (c *antigravityClient) cancelError() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	switch {
+	case c.cancelled:
+		return nil
+	case c.refused != "":
+		return fmt.Errorf("turn ended in Antigravity after Tutortop refused %s. Send your message again", c.refused)
+	}
+	return errors.New("turn cancelled by Antigravity, not by Stop. Send your message again")
 }
 
 // report sends a tool event, unless it repeats the call's last status: agy
@@ -338,7 +405,7 @@ func askAntigravity(ctx context.Context, binary string) ([]Model, string, error)
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	dir := os.TempDir()
-	proc, conn, err := startAntigravityACP(ctx, binary, dir, &antigravityClient{onEvent: func(Event) {}})
+	proc, conn, _, err := startAntigravityACP(ctx, binary, dir, &antigravityClient{onEvent: func(Event) {}})
 	if err != nil {
 		return nil, "", err
 	}
@@ -388,24 +455,25 @@ func antigravitySessionModels(res acp.NewSessionResponse) []Model {
 }
 
 // startAntigravityACP starts `agy acp` on Tutortop's profile and completes
-// the handshake. We offer agy no terminal and no file access, so it uses its
-// own tools, which ask permission (see setUpAntigravity).
-func startAntigravityACP(ctx context.Context, binary, cwd string, client acp.Client) (*process, *acp.ClientSideConnection, error) {
+// the handshake, returning what agy said it takes in a prompt. We offer agy
+// no terminal and no file access, so it uses its own tools, which ask
+// permission (see setUpAntigravity).
+func startAntigravityACP(ctx context.Context, binary, cwd string, client acp.Client) (*process, *acp.ClientSideConnection, acp.PromptCapabilities, error) {
 	proc, err := startProcess(ctx, cwd, binary, nil, "acp", "--gemini-dir", antigravityProfile())
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, acp.PromptCapabilities{}, err
 	}
 	conn := acp.NewClientSideConnection(client, proc.stdin, proc.stdout)
 	initCtx, cancel := context.WithTimeout(ctx, time.Minute)
 	defer cancel()
-	_, err = conn.Initialize(initCtx, acp.InitializeRequest{
+	res, err := conn.Initialize(initCtx, acp.InitializeRequest{
 		ProtocolVersion: acp.ProtocolVersionNumber,
 		ClientInfo:      &acp.Implementation{Name: "tutortop", Title: acp.Ptr("Tutortop"), Version: "0.2.8"}, // x-release-please-version
 	})
 	if err != nil {
-		return nil, nil, antigravityAbort(proc, conn, fmt.Errorf("starting Antigravity: %w", err))
+		return nil, nil, acp.PromptCapabilities{}, antigravityAbort(proc, conn, fmt.Errorf("starting Antigravity: %w", err))
 	}
-	return proc, conn, nil
+	return proc, conn, res.AgentCapabilities.PromptCapabilities, nil
 }
 
 // antigravityProfile is agy's folder for Tutortop (its --gemini-dir).

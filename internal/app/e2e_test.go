@@ -139,7 +139,7 @@ func (j *journey) writeObjectives(t *testing.T) {
 // asks back with a form. The answers go to that tutor, not the plan's.
 func (j *journey) askTaskTutor(t *testing.T) {
 	thread := workspace.TaskThread(idle(t, j.a, j.id).Tasks[0].ID)
-	if err := j.a.Chat.SendMessage(j.id, "I'm stuck.", thread.String()); err != nil {
+	if err := j.a.Chat.SendMessage(j.id, "I'm stuck.", thread.String(), nil); err != nil {
 		t.Fatal(err)
 	}
 	ask := j.tutor.next(t, j.a, j.w, thread)
@@ -219,7 +219,7 @@ func (j *journey) restart(t *testing.T) {
 	if fx := words[d.Language]; d.Work[fx.file] != fx.reference[fx.file] {
 		t.Fatalf("the learner's code wasn't kept: %v", d.Work)
 	}
-	if err := j.a.Chat.SendMessage(j.id, "What's next?", workspace.PlanThread.String()); err != nil {
+	if err := j.a.Chat.SendMessage(j.id, "What's next?", workspace.PlanThread.String(), nil); err != nil {
 		t.Fatal(err)
 	}
 	resumed := j.tutor.next(t, j.a, j.w, workspace.PlanThread)
@@ -320,7 +320,7 @@ type tutorSession struct {
 }
 
 // Prompt hands the turn to the test, and streams its reply as the agent's.
-func (s *tutorSession) Prompt(ctx context.Context, text string) error {
+func (s *tutorSession) Prompt(ctx context.Context, text string, _ []agent.Image) error {
 	tn := &turn{session: s, opts: s.opts, prompt: text, done: make(chan string, 1)}
 	select {
 	case s.cli.turns <- tn:

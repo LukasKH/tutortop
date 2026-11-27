@@ -52,7 +52,12 @@ type Server struct {
 
 	mu      sync.Mutex
 	servers map[string]*mcpsdk.Server // token -> server
-	tokens  map[threadKey]string
+	tokens  map[threadKey]tokenEntry
+}
+
+type tokenEntry struct {
+	token string
+	gen   uint64 // writer generation when created; 0 for chats
 }
 
 // Start serves the threads' tools on a free port on localhost. They run
@@ -67,7 +72,7 @@ func Start(runner *sandbox.Runner, links *LinkChecker) (*Server, error) {
 		links:   links,
 		baseURL: "http://" + ln.Addr().String(),
 		servers: map[string]*mcpsdk.Server{},
-		tokens:  map[threadKey]string{},
+		tokens:  map[threadKey]tokenEntry{},
 	}
 	handler := mcpsdk.NewStreamableHTTPHandler(func(r *http.Request) *mcpsdk.Server {
 		token := strings.TrimPrefix(r.URL.Path, "/mcp/")
@@ -83,36 +88,59 @@ func Start(runner *sandbox.Runner, links *LinkChecker) (*Server, error) {
 }
 
 // URL returns the MCP endpoint for one thread, creating its server on first
-// use. checks shows the thread's sandbox checks; it's the thread's agent,
-// which needs this URL to start.
+// use (or replacing a cached writer server whose generation is stale). checks
+// shows the thread's sandbox checks; it's the thread's agent, which needs this
+// URL to start.
 func (s *Server) URL(w *workspace.Workspace, thread workspace.Thread, checks Checks) string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	key := threadKey{w.ID, thread.String()}
-	token, ok := s.tokens[key]
-	if !ok {
-		token = rand.Text()
-		s.tokens[key] = token
-		s.servers[token] = s.newServer(w, thread, checks)
+	var wantGen uint64
+	if thread.Kind == workspace.WriterKind {
+		wantGen = w.WriterGen()
 	}
-	return s.baseURL + "/mcp/" + token
+	key := threadKey{w.ID, thread.String()}
+	cur, ok := s.tokens[key]
+	if !ok || (thread.Kind == workspace.WriterKind && cur.gen < wantGen) {
+		if ok {
+			delete(s.servers, cur.token)
+		}
+		cur = tokenEntry{token: rand.Text(), gen: wantGen}
+		s.tokens[key] = cur
+		s.servers[cur.token] = s.newServer(w, thread, wantGen, checks)
+	}
+	return s.baseURL + "/mcp/" + cur.token
 }
 
 // Forget drops the MCP servers of a deleted workspace.
 func (s *Server) Forget(wsID string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	for key, token := range s.tokens {
+	for key, cur := range s.tokens {
 		if key.ws == wsID {
 			delete(s.tokens, key)
-			delete(s.servers, token)
+			delete(s.servers, cur.token)
+		}
+	}
+}
+
+// ForgetWriters drops the MCP servers of a workspace's writers, so stopped
+// writers can no longer reach MCP tools and replacement writers get fresh
+// servers stamped with the new writer generation.
+func (s *Server) ForgetWriters(wsID string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for key, cur := range s.tokens {
+		t, err := workspace.ParseThread(key.name)
+		if key.ws == wsID && err == nil && t.Kind == workspace.WriterKind {
+			delete(s.tokens, key)
+			delete(s.servers, cur.token)
 		}
 	}
 }
 
 // newServer builds one thread's server with the tools of its kind.
-func (s *Server) newServer(w *workspace.Workspace, thread workspace.Thread, checks Checks) *mcpsdk.Server {
-	t := &threadTools{w: w, thread: thread, checks: checks, runner: s.runner, links: s.links}
+func (s *Server) newServer(w *workspace.Workspace, thread workspace.Thread, writerGen uint64, checks Checks) *mcpsdk.Server {
+	t := &threadTools{w: w, thread: thread, writerGen: writerGen, checks: checks, runner: s.runner, links: s.links}
 	srv := mcpsdk.NewServer(&mcpsdk.Implementation{Name: Name, Version: "0.2.8"}, nil) // x-release-please-version
 	for _, tool := range toolsFor(thread.Kind) {
 		tool.add(srv, t)
@@ -129,11 +157,12 @@ type threadKey struct{ ws, name string }
 // error's text back as an error result, which the agent reads and acts on. So
 // errors here are written for the agent, and say what to do next.
 type threadTools struct {
-	w      *workspace.Workspace
-	thread workspace.Thread
-	checks Checks // show the thread's sandbox checks
-	runner *sandbox.Runner
-	links  *LinkChecker
+	w         *workspace.Workspace
+	thread    workspace.Thread
+	writerGen uint64 // captured when a writer's MCP server is created; 0 for chats
+	checks    Checks // show the thread's sandbox checks
+	runner    *sandbox.Runner
+	links     *LinkChecker
 }
 
 // ownObjective refuses a writer's work on another objective, which has its

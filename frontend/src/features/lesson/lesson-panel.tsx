@@ -3,6 +3,7 @@ import { cn } from "@/lib/utils";
 import { LessonService, errorText, type LessonDetail, type QuizResult, type Source } from "@/lib/api";
 import { plural } from "@/lib/format";
 import { useLiveWorkspace } from "@/features/workspace/use-workspace";
+import { HowWasThis } from "@/features/feedback/how-was-this";
 import { Markdown } from "@/components/markdown";
 import { References } from "@/components/references";
 import { TopicIcon } from "@/components/topic-icon";
@@ -150,15 +151,23 @@ export function LessonPanel({ lessonId, moduleTitle, icon, lang, onOpenExercise,
                   })}
                 </ol>
                 {done && (
-                  <div className="mt-[22px] flex items-center justify-between gap-3 border-t pt-3.5">
+                  <div className="mt-[22px] flex flex-wrap items-center justify-between gap-3 border-t pt-3.5">
                     <span className="font-medium tabular-nums">
                       {correct} / {quiz.length} right
                     </span>
-                    {toExercise}
+                    <div className="flex items-center gap-2">
+                      <HowWasThis item={`lesson:${lessonId}`} keepLessonId={lessonId} compact send={(fb) => LessonService.SendFeedback(wsId, lessonId, fb)} />
+                      {toExercise}
+                    </div>
                   </div>
                 )}
                 {!done && answered > 0 && <p className="text-sm text-muted-foreground">{plural(quiz.length - answered, "question")} to go.</p>}
               </section>
+            )}
+            {quiz.length === 0 && done && (
+              <div>
+                <HowWasThis item={`lesson:${lessonId}`} keepLessonId={lessonId} send={(fb) => LessonService.SendFeedback(wsId, lessonId, fb)} />
+              </div>
             )}
             <p className="pb-6 text-sm text-muted-foreground">Anything unclear? Ask the tutor about this lesson.</p>
             <ErrorText error={error} />

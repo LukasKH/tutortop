@@ -1,6 +1,10 @@
 import { useEffect, useId, useState } from "react";
+import { Dialog, DialogContent, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 
-/** A diagram, or its source as code when it doesn't parse (for example while the tutor is still writing it). */
+/**
+ * A diagram, or its source as code when it doesn't parse (for example while the
+ * tutor is still writing it). Clicking a drawn diagram opens it as large as the window.
+ */
 export function Diagram({ code }: { code: string }) {
   const id = `diagram-${useId().replace(/[^a-zA-Z0-9]/g, "")}`;
   const [svg, setSvg] = useState("");
@@ -25,7 +29,27 @@ export function Diagram({ code }: { code: string }) {
     );
   }
   // Mermaid sanitises the output (securityLevel "strict").
-  return <figure className="diagram" dangerouslySetInnerHTML={{ __html: svg }} />;
+  const drawing = { __html: svg };
+  return (
+    <Dialog>
+      {/* The button sits inside the figure: a button may hold an svg but not a figure. */}
+      <figure className="diagram">
+        <DialogTrigger asChild>
+          <button
+            type="button"
+            aria-label="Expand diagram"
+            className="flex w-full cursor-zoom-in justify-center rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            dangerouslySetInnerHTML={drawing}
+          />
+        </DialogTrigger>
+      </figure>
+      <DialogContent aria-describedby={undefined} className="h-[calc(100vh-4rem)] max-w-[calc(100vw-4rem)] bg-background p-8 sm:max-w-[calc(100vw-4rem)]">
+        <DialogTitle className="sr-only">Diagram</DialogTitle>
+        {/* Mermaid sets the svg's max-width inline to its drawn size; lift it so the diagram fills the window. */}
+        <div className="min-h-0 [&_svg]:size-full [&_svg]:max-w-none!" dangerouslySetInnerHTML={drawing} />
+      </DialogContent>
+    </Dialog>
+  );
 }
 
 // Mermaid diagrams in lessons and chat, drawn in the app's greys. Mermaid is

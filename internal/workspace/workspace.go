@@ -9,6 +9,7 @@
 //	.tutortop/{workspace.json,attempts.jsonl,proposal.yaml,questions.json}  app state
 //	.tutortop/toolchains/<language>.yaml                                    languages the tutor set up (beyond the built-in ones)
 //	.tutortop/chat/<thread>.jsonl                                           one chat per thread, by its name (Thread)
+//	.tutortop/chat/<thread>/                                                pictures the learner attached in it
 //
 // Private files the learner and tutor shouldn't see (reference solutions,
 // hidden tests, quiz answers) live outside the workspace in the app
@@ -41,7 +42,12 @@ type Store struct {
 	Root        string // public workspaces, ~/Tutortop
 	PrivateRoot string // ~/.local/share/tutortop/private
 
-	locks sync.Map // workspace id -> *sync.Mutex, shared by every Open of that id
+	locks sync.Map // workspace id -> *wsState, shared by every Open of that id
+}
+
+type wsState struct {
+	mu  sync.Mutex
+	gen uint64 // writer generation; incremented on ClearUnsolved to reject saves from stopped writers
 }
 
 // NewStore keeps workspaces in root and their private files under the
@@ -134,8 +140,9 @@ func (s *Store) Delete(id string) error {
 }
 
 func (s *Store) workspace(id string) *Workspace {
-	mu, _ := s.locks.LoadOrStore(id, &sync.Mutex{})
-	return &Workspace{ID: id, Dir: filepath.Join(s.Root, id), PrivateDir: filepath.Join(s.PrivateRoot, id), mu: mu.(*sync.Mutex)}
+	v, _ := s.locks.LoadOrStore(id, &wsState{gen: 1})
+	st := v.(*wsState)
+	return &Workspace{ID: id, Dir: filepath.Join(s.Root, id), PrivateDir: filepath.Join(s.PrivateRoot, id), mu: &st.mu, state: st}
 }
 
 type Summary struct {
@@ -156,7 +163,12 @@ type Meta struct {
 	// ResumeIDs maps a chat thread to its conversation's id in the agent
 	// (agent.Session.ID), so each thread resumes its own conversation.
 	ResumeIDs map[string]string `json:"sessions,omitempty"`
-	CreatedAt time.Time         `json:"createdAt"`
+	// NextLesson and NextTask are monotonic counters so deleted lessons or
+	// tasks never have their IDs reused (avoiding stale quiz answers, hints
+	// and chat history).
+	NextLesson int       `json:"nextLesson,omitempty"`
+	NextTask   int       `json:"nextTask,omitempty"`
+	CreatedAt  time.Time `json:"createdAt"`
 }
 
 type Workspace struct {
@@ -168,7 +180,21 @@ type Workspace struct {
 	// mu serialises changes that read-then-write (task numbering, plan
 	// revisions) and git commits. It's shared by every Workspace value with
 	// the same id, since Store.Open returns a fresh value each time.
-	mu *sync.Mutex
+	mu    *sync.Mutex
+	state *wsState
+}
+
+// ErrStaleWriter is returned when a writer stopped during regeneration tries
+// to publish a lesson or task from before the learner's updated feedback.
+var ErrStaleWriter = errors.New("this writer was replaced after feedback; stop without saving")
+
+// WriterGen returns the workspace's current writer generation. Writers capture
+// it when started and pass it to SaveLessonForGen / SaveTaskForGen so saves
+// from stopped writers are rejected under the workspace lock.
+func (w *Workspace) WriterGen() uint64 {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.state.gen
 }
 
 // UseProvider switches the workspace to another agent. Resume ids belong to
@@ -213,17 +239,31 @@ func (w *Workspace) ReadDoc(name string) string {
 // isn't edited by hand: the tutor proposes changes to it, which the learner
 // reviews. It reports whether the mission changed.
 func (w *Workspace) SaveMission(mission string) (bool, error) {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	mission = strings.TrimSpace(mission)
-	if mission == strings.TrimSpace(w.ReadDoc("MISSION.md")) {
-		return false, nil
+	return w.saveDoc("MISSION.md", mission, "Edit mission by hand")
+}
+
+// SaveNotes stores the learner's own edit of NOTES.md, how they like to
+// learn. It reports whether the notes changed.
+func (w *Workspace) SaveNotes(notes string) (bool, error) {
+	return w.saveDoc("NOTES.md", notes, "Edit notes by hand")
+}
+
+// PriorKnowledge is what the mission's "You already know" section names,
+// such as "Python", or "" if it has none.
+func (w *Workspace) PriorKnowledge() string {
+	var known []string
+	in := false
+	for line := range strings.Lines(w.ReadDoc("MISSION.md")) {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "#") {
+			in = strings.EqualFold(strings.TrimSpace(strings.TrimLeft(line, "#")), "You already know")
+			continue
+		}
+		if in && line != "" {
+			known = append(known, strings.TrimSpace(strings.TrimLeft(line, "-* ")))
+		}
 	}
-	if err := atomicfile.Write(w.path("MISSION.md"), []byte(mission+"\n")); err != nil {
-		return false, err
-	}
-	w.commit("Edit mission by hand")
-	return true, nil
+	return strings.TrimSuffix(strings.Join(known, " "), ".")
 }
 
 // Commit snapshots the workspace so every change to the plan has history.
@@ -278,6 +318,22 @@ func (w *Workspace) git(args ...string) {
 	// which git sets for hooks, would point the commands at another one.
 	cmd.Env = slices.DeleteFunc(os.Environ(), func(kv string) bool { return strings.HasPrefix(kv, "GIT_") })
 	_ = cmd.Run() // git is a convenience; the app works without it
+}
+
+// saveDoc stores the learner's own edit of a top-level markdown file and
+// commits it with msg. It reports whether the file changed.
+func (w *Workspace) saveDoc(name, text, msg string) (bool, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	text = strings.TrimSpace(text)
+	if text == strings.TrimSpace(w.ReadDoc(name)) {
+		return false, nil
+	}
+	if err := atomicfile.Write(w.path(name), []byte(text+"\n")); err != nil {
+		return false, err
+	}
+	w.commit(msg)
+	return true, nil
 }
 
 // validName reports whether s can name a workspace, task or chat thread: a

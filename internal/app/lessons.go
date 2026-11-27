@@ -1,17 +1,22 @@
 package app
 
 import (
+	"fmt"
+
+	"github.com/LukasKH/tutortop/internal/agent/threads"
 	"github.com/LukasKH/tutortop/internal/events"
 	"github.com/LukasKH/tutortop/internal/workspace"
 )
 
 // LessonService serves the lessons: a lesson and its quiz.
 type LessonService struct {
-	store *workspace.Store
+	store   *workspace.Store
+	agents  *threads.Agents  // tells the plan's tutor the learner's feedback
+	writers *threads.Writers // regenerates unsolved work after feedback when asked
 }
 
-func newLessonService(store *workspace.Store) *LessonService {
-	return &LessonService{store: store}
+func newLessonService(store *workspace.Store, agents *threads.Agents, writers *threads.Writers) *LessonService {
+	return &LessonService{store: store, agents: agents, writers: writers}
 }
 
 func (s *LessonService) Lesson(wsID, lessonID string) (workspace.LessonDetail, error) {
@@ -35,4 +40,18 @@ func (s *LessonService) AnswerQuiz(wsID, lessonID string, question, choice int) 
 	}
 	events.Emit(events.WorkspaceChanged, events.Workspace{Workspace: wsID})
 	return r, nil
+}
+
+// SendFeedback tells the planning tutor what the learner thought of a
+// lesson, so later lessons and exercises fit them better.
+func (s *LessonService) SendFeedback(wsID, lessonID string, fb Feedback) error {
+	w, err := s.store.Open(wsID)
+	if err != nil {
+		return err
+	}
+	l, err := w.Lesson(lessonID)
+	if err != nil {
+		return err
+	}
+	return sendFeedback(s.agents, s.writers, w, fmt.Sprintf("the lesson “%s”", l.Title), lessonID, fb)
 }

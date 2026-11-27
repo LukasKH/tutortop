@@ -5,6 +5,7 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
+@import "katex/dist/katex.min.css" layer(prose);
 @import "./prose.css" layer(prose);
 
 @custom-variant dark (&:is(.dark *));

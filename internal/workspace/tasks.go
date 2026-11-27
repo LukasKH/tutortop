@@ -131,15 +131,28 @@ func (w *Workspace) ValidateSpec(spec TaskSpec) (TaskSpec, sandbox.Toolchain, er
 // SaveTask writes a task that already passed the quality gate, with the
 // names of its tests as the gate saw them.
 func (w *Workspace) SaveTask(spec TaskSpec, lang string, names sandbox.TestNames) (TaskInfo, error) {
+	return w.SaveTaskForGen(spec, lang, names, 0)
+}
+
+// SaveTaskForGen writes a task if gen is 0 or matches the workspace's current
+// writer generation, rejecting saves from stopped writers.
+func (w *Workspace) SaveTaskForGen(spec TaskSpec, lang string, names sandbox.TestNames, gen uint64) (TaskInfo, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
+	if gen != 0 && w.state.gen != gen {
+		return TaskInfo{}, ErrStaleWriter
+	}
 
 	tasks, err := w.Tasks()
 	if err != nil {
 		return TaskInfo{}, err
 	}
+	num, err := w.claimTaskNumber(tasks)
+	if err != nil {
+		return TaskInfo{}, err
+	}
 	info := TaskInfo{
-		ID:        fmt.Sprintf("%04d-%s", len(tasks)+1, slugify(spec.Title)),
+		ID:        fmt.Sprintf("%04d-%s", num, slugify(spec.Title)),
 		Title:     spec.Title,
 		Objective: spec.ObjectiveID,
 		Language:  lang,

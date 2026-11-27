@@ -7,7 +7,7 @@ import * as threads from "@bindings/github.com/LukasKH/tutortop/internal/agent/t
 import * as settings from "@bindings/github.com/LukasKH/tutortop/internal/settings";
 import * as copilot from "@bindings/github.com/LukasKH/tutortop/internal/copilot";
 import * as update from "@bindings/github.com/LukasKH/tutortop/internal/update";
-import type { WorkspaceSnapshot } from "@bindings/github.com/LukasKH/tutortop/internal/app";
+import type { Feedback, WorkspaceSnapshot } from "@bindings/github.com/LukasKH/tutortop/internal/app";
 import type { AgentSetup, Environment, Prefs, ProviderStatus } from "@bindings/github.com/LukasKH/tutortop/internal/settings";
 import type { Completion, DeviceCode, Plan, Setup, Suggestion } from "@bindings/github.com/LukasKH/tutortop/internal/copilot";
 import type { State } from "@bindings/github.com/LukasKH/tutortop/internal/update";
@@ -32,6 +32,7 @@ import type {
 import type { Result, TestResult } from "@bindings/github.com/LukasKH/tutortop/internal/sandbox";
 
 // The backend's enums, compared against instead of their string values.
+export { FeedbackChip } from "@bindings/github.com/LukasKH/tutortop/internal/app";
 export { ChatMark, ChatRole, ChatStatus, ObjectiveStatus, TaskShape, TaskSize } from "@bindings/github.com/LukasKH/tutortop/internal/workspace";
 export { CheckKind } from "@bindings/github.com/LukasKH/tutortop/internal/events";
 export { Status } from "@bindings/github.com/LukasKH/tutortop/internal/sandbox";
@@ -46,6 +47,7 @@ export type {
   Curriculum,
   DeviceCode,
   Environment,
+  Feedback,
   LessonDetail,
   LessonStatus,
   Limit,
@@ -91,7 +93,11 @@ export const TaskService = {
 
 export const LessonService = { ...app.LessonService, Lesson: patiently(app.LessonService.Lesson) };
 
-export const ChatService = { ...threads.ChatService, Chat: patiently(threads.ChatService.Chat) };
+export const ChatService = {
+  ...threads.ChatService,
+  Chat: patiently(threads.ChatService.Chat),
+  ChatImage: patiently(threads.ChatService.ChatImage),
+};
 
 // settings.Service, editor.Service and copilot.Service are all named Service
 // in Go, so they take their package's name here.

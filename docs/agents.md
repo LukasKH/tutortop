@@ -42,7 +42,7 @@ Every field must be honoured:
 
 ### A turn
 
-`Prompt` sends the learner's message and blocks until the turn ends. The app sends one prompt at a time. It returns:
+`Prompt` sends the learner's message, with any images they attached, and blocks until the turn ends. The app sends one prompt at a time. Each `Image` is a PNG, JPEG, GIF or WebP file in the thread's chat folder, with its MIME type: pass it the way the CLI takes images (Claude Code: `image` blocks with base64 `source` before the text; Codex: `localImage` input items with the path; ACP: `ImageBlock`, only if `initialize` reported `promptCapabilities.image`). A message can be only images: then leave out the text block if the CLI refuses an empty one, as Claude's API does. If the CLI can't take images, return an error saying so before the turn starts. It returns:
 
 | Outcome | Return | The session afterwards |
 | --- | --- | --- |
@@ -125,7 +125,7 @@ The Agent Client Protocol is JSON-RPC over stdio. It maps onto this package clos
 | --- | --- |
 | `startX` | start the binary with `startProcess`, then `acp.NewClientSideConnection(client, proc.stdin, proc.stdout)`, `Initialize` (don't offer the terminal capability) and `NewSession` with `Cwd` and an HTTP `McpServers` entry for `MCPName`/`MCPURL` |
 | `ResumeID` | `LoadSession`, if the agent offers it; otherwise start fresh |
-| `Prompt` | `Prompt`; the `StopReason` is `end_turn` or `cancelled` → `nil`, `refusal`, `max_tokens` and the like → an error |
+| `Prompt` | `Prompt`, with a `TextBlock` and an `ImageBlock` per image if `initialize` reported `promptCapabilities.image` (otherwise an error before the turn); `end_turn` → `nil`; `cancelled` → `nil` only after `Cancel`, otherwise an error; `refusal`, `max_tokens` and the like → an error |
 | `Cancel` | the `session/cancel` notification |
 | `EventText` | `session/update` with `agent_message_chunk` |
 | `EventThinking` | `session/update` with `agent_thought_chunk` |
@@ -162,5 +162,6 @@ OpenCode merges this file with the user's own config, so their MCP servers can s
 - The first layer of the policy is two files in the profile, which `setUpAntigravity` writes before each start. Over ACP, agy's default mode writes files anywhere, even under `tasks/` or outside the workspace, without asking, and it ignores `permissions.deny` rules in `settings.json`. `"toolPermission": "strict"` in `antigravity-cli/settings.json` makes it ask before every read, write, command and MCP call, so `RequestPermission` puts them through the policy. Subagents (`invoke_subagent` and the tools that manage them) and scheduled or background work (`schedule`, `manage_task`, `run_workflow`, `swarm`) never ask, even in strict mode, so a `PreToolUse` hook in `config/hooks.json` denies them, and `run_command` too. The session's mode stays `default`.
 - `Subagents`: off. agy starts a subagent without asking, and nothing promises that it finishes within the turn or that its tool calls reach the policy.
 - agy doesn't report over ACP when an MCP server fails to connect, so there's no warning to send.
-- A refused permission request, whether `reject_once` or an error, ends agy's turn at once, without a reply. A hook's denial doesn't: the model reads the reason and goes on.
+- A refused permission request, whether `reject_once` or an error, ends agy's turn at once, without a reply: `session/prompt` returns `stopReason: cancelled`. A hook's denial doesn't: the model reads the reason and goes on. So `Prompt` returns `nil` for `cancelled` only after `Cancel`; otherwise it returns an error naming the refused tool and the policy's reason, which the chat shows.
+- agy saves a tool output too long to hand the model whole in `antigravity-cli/brain/<session id>/.system_generated/steps/<N>/output.txt` in the profile, and the model reads it back with `read_file`. Refusing that read would end the turn, so the policy may read the session's own `steps` folder (`policy.readDir`). It holds only what the model has already been given; writes there, and other sessions' folders, stay refused.
 - agy stops an MCP tool call after 3 minutes. MCP progress notifications don't extend it, and neither does `timeoutSeconds` on the ACP server entry or its `_meta`. A `timeoutSeconds` in the profile's `config/mcp_config.json` does, but only for an entry with the same URL, and each thread has its own URL. So a `create_task` whose checks take longer fails in Antigravity.

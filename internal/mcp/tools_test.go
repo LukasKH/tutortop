@@ -95,6 +95,43 @@ func TestCreateLessonChecksSourceLinks(t *testing.T) {
 	}
 }
 
+// URL replaces a cached writer server when ClearUnsolved advances the writer
+// generation, so a replacement writer can save even if an older writer cached a
+// URL just before ClearUnsolved ran.
+func TestWriterURLReplacesStaleGeneration(t *testing.T) {
+	tt := newTools(t)
+	w := tt.goWorkspace(t)
+	thread := workspace.WriterThread("go.strings")
+
+	oldURL := tt.url(w, thread)
+	if _, err := w.ClearUnsolved(""); err != nil {
+		t.Fatalf("ClearUnsolved: %v", err)
+	}
+
+	newURL := tt.url(w, thread)
+	if newURL == oldURL {
+		t.Fatal("URL reused stale writer server after ClearUnsolved")
+	}
+
+	lesson := workspace.LessonSpec{
+		ObjectiveID: "go.strings", Title: "Strings", Summary: "Work with strings.", Body: "Strings are bytes ([spec](https://go.dev/ref/spec)).\n\n```go\ns := \"hi\"\n```",
+		PrimarySource: workspace.Source{Title: "Go", URL: "https://go.dev/"},
+		Sources:       []workspace.Source{{Title: "Go spec", URL: "https://go.dev/ref/spec"}},
+		Quiz: []workspace.QuizQuestion{
+			{Question: "A?", Options: []string{"a", "b", "c"}, Answer: 0, Explanation: "A."},
+			{Question: "B?", Options: []string{"a", "b", "c"}, Answer: 1, Explanation: "B."},
+			{Question: "C?", Options: []string{"a", "b", "c"}, Answer: 2, Explanation: "C."},
+		},
+	}
+	write := mcptest.Caller(t, newURL)
+	if out, isErr := write("create_lesson", lesson); isErr {
+		t.Fatalf("replacement writer create_lesson failed: %s", out)
+	}
+	if lessons, _ := w.Lessons(); len(lessons) != 1 {
+		t.Fatalf("lessons = %+v, want 1", lessons)
+	}
+}
+
 // TestSetToolchainEnablesALanguage sets up JavaScript the way the tutor would.
 func TestSetToolchainEnablesALanguage(t *testing.T) {
 	tt := newTools(t)

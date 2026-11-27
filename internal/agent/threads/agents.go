@@ -61,9 +61,11 @@ func NewAgents(settingsStore *settings.Store, tools *mcp.Server, cli CLI) *Agent
 // the open task as context, and its own instructions to the tutor are shown
 // as short notices.
 type Message struct {
-	Role  workspace.ChatRole // workspace.RoleUser for the learner's words, RoleNotice for app events
-	Shown string
-	Agent string
+	Role   workspace.ChatRole // workspace.RoleUser for the learner's words, RoleNotice for app events
+	Shown  string
+	Agent  string
+	Images []workspace.ChatImage // pictures the learner attached, shown and sent with the text
+	After  func()                // optional callback run once this turn completes without error or stop
 }
 
 // CLI opens a session with an agent's CLI. InstalledCLI opens the
@@ -83,10 +85,25 @@ func (InstalledCLI) Start(ctx context.Context, provider string, opts agent.Optio
 // agent, without waiting for the agent to start. Once the message is in the
 // chat, whatever goes wrong with it is posted there too.
 func (ag *Agents) Send(w *workspace.Workspace, t workspace.Thread, m Message) {
-	Post(w, workspace.ChatItem{Thread: t.String(), Role: m.Role, Text: m.Shown})
-	if err := ag.queue(w, t, m.Agent); err != nil {
+	_ = ag.TrySend(w, t, m) // posted in the chat
+}
+
+// TrySend is Send that also returns why the agent couldn't take the message,
+// for a caller that lets the learner try again. A CLI that fails to open
+// fails later, in the chat only.
+func (ag *Agents) TrySend(w *workspace.Workspace, t workspace.Thread, m Message) error {
+	item := workspace.ChatItem{Thread: t.String(), Role: m.Role, Text: m.Shown}
+	p := prompt{text: m.Agent, after: m.After}
+	for _, img := range m.Images {
+		item.Images = append(item.Images, img.Name)
+		p.images = append(p.images, agent.Image{Path: img.Path, MIMEType: img.MIMEType})
+	}
+	Post(w, item)
+	err := ag.queue(w, t, p)
+	if err != nil {
 		postFailure(w, t.String(), err.Error())
 	}
+	return err
 }
 
 // The UI learns which threads are busy, and how writers' sandbox checks go,
@@ -177,11 +194,28 @@ func (ag *Agents) EndWorkspace(wsID string) {
 	ag.mcp.Forget(wsID)
 }
 
+// endWriters stops every running writer for wsID, drops their MCP endpoints,
+// and returns the objective IDs that were being written so Rewrite can restart
+// requested writes (such as "Write it now") alongside cleared ones.
+func (ag *Agents) endWriters(wsID string) []string {
+	ag.mu.Lock()
+	var stopped []string
+	for key, ta := range ag.agents {
+		if key.ws == wsID && ta.thread.Kind == workspace.WriterKind {
+			stopped = append(stopped, ta.thread.ID)
+			ag.end(ta)
+		}
+	}
+	ag.mu.Unlock()
+	ag.mcp.ForgetWriters(wsID)
+	return stopped
+}
+
 // queue queues a message for a thread's agent, starting the agent if it
 // isn't running. It doesn't wait for the start: the CLI opens in the
 // background, and if it doesn't, one notice is posted in the thread's chat.
 // It fails only if too many messages are already waiting.
-func (ag *Agents) queue(w *workspace.Workspace, t workspace.Thread, msg string) error {
+func (ag *Agents) queue(w *workspace.Workspace, t workspace.Thread, msg prompt) error {
 	key := threadKey{w.ID, t.String()}
 	cfg := configOf(ag.settings.Load())
 	ag.mu.Lock()
@@ -245,7 +279,7 @@ func (ag *Agents) start(w *workspace.Workspace, t workspace.Thread, cfg agentCon
 		thread: t,
 		cfg:    cfg,
 		tr:     newTranscript(w, t.String()),
-		queue:  make(chan string, 32),
+		queue:  make(chan prompt, 32),
 		cancel: cancel,
 		ready:  make(chan struct{}),
 	}
@@ -309,11 +343,17 @@ func (ag *Agents) loop(ctx context.Context, w *workspace.Workspace, ta *threadAg
 		case <-ctx.Done():
 			return
 		case msg := <-ta.queue:
-			err := ta.cli.Prompt(ctx, msg)
+			err := ta.cli.Prompt(ctx, msg.text, msg.images)
 			ta.tr.endTurn()
-			if ta.stopped.Swap(false) {
+			stopped := ta.stopped.Swap(false)
+			if stopped {
 				// After endTurn, so the notice follows the cut-off reply.
 				Post(w, workspace.ChatItem{Thread: ta.key.name, Role: workspace.RoleNotice, Text: "Stopped. Send a message to continue."})
+			}
+			// Run After before marking the turn idle so replacement writers
+			// are queued before the UI (or tests) sees the plan thread idle.
+			if err == nil && !stopped && ctx.Err() == nil && msg.after != nil {
+				msg.after()
 			}
 			ended := ag.answered(ta, errors.Is(err, agent.ErrExited))
 			if err != nil && ctx.Err() == nil {
@@ -328,6 +368,9 @@ func (ag *Agents) loop(ctx context.Context, w *workspace.Workspace, ta *threadAg
 
 // open opens the CLI session for a thread's agent.
 func (ag *Agents) open(ctx context.Context, w *workspace.Workspace, ta *threadAgent, onEvent func(agent.Event)) (agent.Session, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	// This also switches the workspace to the agent in the settings, which
 	// forgets the other agent's saved conversations.
 	saved, err := w.UseProvider(ta.cfg.Provider)
@@ -454,7 +497,7 @@ type threadAgent struct {
 	thread  workspace.Thread
 	cfg     agentConfig // the agent, CLI, model and effort it was started with
 	tr      *transcript
-	queue   chan string
+	queue   chan prompt
 	cancel  context.CancelFunc
 	once    sync.Once   // close runs once
 	stopped atomic.Bool // the learner pressed Stop during the current turn
@@ -532,6 +575,13 @@ func (ta *threadAgent) pingWatch() {
 
 func (ta *threadAgent) idleTime() time.Duration {
 	return time.Since(ta.started) - time.Duration(ta.lastAlive.Load())
+}
+
+// prompt is one queued message, as the agent receives it.
+type prompt struct {
+	text   string
+	images []agent.Image
+	after  func()
 }
 
 // threadKey names one thread of one workspace by the thread's name.

@@ -15,7 +15,7 @@ import (
 type TaskService struct {
 	store   *workspace.Store
 	runner  *sandbox.Runner
-	agents  *threads.Agents  // tells the plan's tutor about a first pass
+	agents  *threads.Agents  // tells the plan's tutor about a first pass and the learner's feedback
 	writers *threads.Writers // keep the next objectives written after a pass
 }
 
@@ -79,6 +79,20 @@ func (s *TaskService) RunTests(wsID, taskID string, files sandbox.Files, submit 
 		s.announcePass(w, taskID, p, t)
 	}
 	return res, nil
+}
+
+// SendFeedback tells the planning tutor what the learner thought of an
+// exercise, so later lessons and exercises fit them better.
+func (s *TaskService) SendFeedback(wsID, taskID string, fb Feedback) error {
+	w, err := s.store.Open(wsID)
+	if err != nil {
+		return err
+	}
+	d, err := w.Task(taskID)
+	if err != nil {
+		return err
+	}
+	return sendFeedback(s.agents, s.writers, w, fmt.Sprintf("the exercise “%s”", d.Title), "", fb)
 }
 
 // announcePass marks a task's first pass: a commit, a notice in its chat,

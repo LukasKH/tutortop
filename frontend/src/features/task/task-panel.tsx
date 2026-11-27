@@ -11,6 +11,8 @@ import { useCopilot } from "@/features/task/use-copilot";
 import { useSettings } from "@/features/settings/use-settings";
 import { useTaskWork } from "@/features/task/use-task-work";
 import { useLiveWorkspace } from "@/features/workspace/use-workspace";
+import { HowWasThis } from "@/features/feedback/how-was-this";
+import { TaskService } from "@/lib/api";
 import { Markdown } from "@/components/markdown";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Page, PageHeader } from "@/components/page";
@@ -188,6 +190,7 @@ export function TaskPanel({ taskId, passed, moduleTitle, next }: Props) {
             error={error}
             solved={solved}
             next={next}
+            feedback={<HowWasThis item={`task:${taskId}`} compact send={(fb) => TaskService.SendFeedback(wsId, taskId, fb)} />}
             open={resultsOpen}
             height={sizedResults ? resultsHeight : undefined}
             onToggle={() => setResultsOpen(!resultsOpen)}

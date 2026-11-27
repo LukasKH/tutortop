@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -104,10 +105,14 @@ func TestAntigravityTurn(t *testing.T) {
 	sess, cli, log := startFakeAntigravity(t, opts)
 	notes := filepath.Join(opts.Cwd, "NOTES.md")
 
-	done := prompt(t, sess, "hello")
+	done := prompt(t, sess, "hello", testImage(t))
 	req := acpExpect(t, cli, "session/prompt")
 	if req.str("params.sessionId") != "s1" || req.str("params.prompt.0.text") != "hello" {
 		t.Errorf("session/prompt %v, want the session and text", req)
+	}
+	image := map[string]any{"type": "image", "mimeType": "image/png", "data": base64.StdEncoding.EncodeToString(testImageData)}
+	if got := req.get("params.prompt.1"); !reflect.DeepEqual(got, image) {
+		t.Errorf("session/prompt image %v, want %v", got, image)
 	}
 	cli.send(t,
 		`{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"s1","update":{"sessionUpdate":"agent_thought_chunk","content":{"type":"text","text":"Thinking about it."}}}}`,
@@ -124,6 +129,11 @@ func TestAntigravityTurn(t *testing.T) {
 		`{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"s1","update":{"sessionUpdate":"tool_call_update","toolCallId":"call_3","name":"run_command","status":"failed","kind":"execute","title":"ls","rawOutput":"tool call denied by pre-tool hook: not available in Tutortop"}}}`,
 		`{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"s1","update":{"sessionUpdate":"usage_update","used":11126,"size":1048576}}}`,
 	)
+	// agy saved a long tool output in the session's folder, and reads it back.
+	saved := filepath.Join(antigravitySteps("s1"), "2", "output.txt")
+	if r := askPermission(t, cli, "p1", "read_file", "read", saved); r.str("result.outcome.optionId") != "allow" {
+		t.Errorf("reading saved output: %v, want allow", r)
+	}
 	acpReply(t, cli, req, `{"stopReason":"end_turn","usage":{"inputTokens":12768,"outputTokens":577,"totalTokens":21746}}`)
 	if err := wait(t, done); err != nil {
 		t.Fatal(err)
@@ -164,8 +174,27 @@ func TestAntigravityTurn(t *testing.T) {
 	}
 }
 
+// An agy that doesn't take images says so before the turn starts, and the
+// session takes the next prompt.
+func TestAntigravityWithoutImages(t *testing.T) {
+	cli, started, sess, _ := beginAntigravityWith(t, antigravityOptions(t), strings.Replace(antigravityInitialize, `"image":true`, `"image":false`, 1))
+	acpReply(t, cli, acpExpect(t, cli, "session/new"), `{"sessionId":"s1"}`)
+	if err := wait(t, started); err != nil {
+		t.Fatal(err)
+	}
+	if err := wait(t, prompt(t, *sess, "look", testImage(t))); err == nil || !strings.Contains(err.Error(), "doesn't accept images") {
+		t.Errorf("Prompt with an image = %v, want an error saying agy takes none", err)
+	}
+	done := prompt(t, *sess, "text only")
+	acpReply(t, cli, acpExpect(t, cli, "session/prompt"), `{"stopReason":"end_turn"}`)
+	if err := wait(t, done); err != nil {
+		t.Errorf("text prompt after it: %v", err)
+	}
+}
+
 func TestAntigravityCancel(t *testing.T) {
-	sess, cli, _ := startFakeAntigravity(t, antigravityOptions(t))
+	opts := antigravityOptions(t)
+	sess, cli, _ := startFakeAntigravity(t, opts)
 	done := prompt(t, sess, "write an essay")
 	req := acpExpect(t, cli, "session/prompt")
 	sess.Cancel()
@@ -173,8 +202,7 @@ func TestAntigravityCancel(t *testing.T) {
 		t.Errorf("sent %v, want the session/cancel notification", n)
 	}
 	// A permission request still open when the turn was cancelled.
-	cli.send(t, `{"jsonrpc":"2.0","id":"p1","method":"session/request_permission","params":{"sessionId":"s1","toolCall":{"toolCallId":"call_1","name":"read_file","kind":"read","title":"File a.txt","locations":[{"path":"a.txt"}]},"options":[{"optionId":"allow","name":"Allow","kind":"allow_once"},{"optionId":"deny","name":"Deny","kind":"reject_once"}]}}`)
-	if r := cli.recv(t); r.str("result.outcome.outcome") != "cancelled" {
+	if r := askPermission(t, cli, "p1", "read_file", "read", "a.txt"); r.str("result.outcome.outcome") != "cancelled" {
 		t.Errorf("permission reply %v, want the cancelled outcome", r)
 	}
 	acpReply(t, cli, req, `{"stopReason":"cancelled"}`)
@@ -186,20 +214,38 @@ func TestAntigravityCancel(t *testing.T) {
 	sess.Cancel()
 	done = prompt(t, sess, "next")
 	req = acpExpect(t, cli, "session/prompt")
-	cli.send(t, `{"jsonrpc":"2.0","id":"p2","method":"session/request_permission","params":{"sessionId":"s1","toolCall":{"toolCallId":"call_2","name":"read_file","kind":"read","title":"File a.txt","locations":[{"path":"a.txt"}]},"options":[{"optionId":"allow","name":"Allow","kind":"allow_once"},{"optionId":"deny","name":"Deny","kind":"reject_once"}]}}`)
-	if r := cli.recv(t); r.str("result.outcome.optionId") != "allow" {
+	if r := askPermission(t, cli, "p2", "read_file", "read", "a.txt"); r.str("result.outcome.optionId") != "allow" {
 		t.Errorf("permission reply %v in the next turn, want allow", r)
 	}
 	acpReply(t, cli, req, `{"stopReason":"end_turn"}`)
 	if err := wait(t, done); err != nil {
 		t.Errorf("turn after a cancelled one: %v", err)
 	}
+
+	// agy cancels a turn by itself when we refuse a call. That's an error
+	// saying what was refused, even after a refusal in an earlier turn.
+	done = prompt(t, sess, "read it")
+	req = acpExpect(t, cli, "session/prompt")
+	outside := filepath.Join(filepath.Dir(opts.Cwd), "secret.txt")
+	if r := askPermission(t, cli, "p3", "read_file", "read", outside); r.str("result.outcome.optionId") != "deny" {
+		t.Errorf("permission reply %v, want deny", r)
+	}
+	acpReply(t, cli, req, `{"stopReason":"cancelled"}`)
+	want := "turn ended in Antigravity after Tutortop refused read_file (only files inside the learner's workspace are available). Send your message again"
+	if err := wait(t, done); err == nil || err.Error() != want {
+		t.Errorf("turn agy cancelled after a refusal: %v, want %q", err, want)
+	}
+	done = prompt(t, sess, "again")
+	acpReply(t, cli, acpExpect(t, cli, "session/prompt"), `{"stopReason":"cancelled"}`)
+	if err := wait(t, done); err == nil || strings.Contains(err.Error(), "read_file") {
+		t.Errorf("turn agy cancelled without a refusal: %v, want an error without the last turn's refusal", err)
+	}
 }
 
 func TestAntigravityPromptContext(t *testing.T) {
 	sess, cli, _ := startFakeAntigravity(t, antigravityOptions(t))
 	ctx, cancel := context.WithCancel(t.Context())
-	done := async(func() error { return sess.Prompt(ctx, "hi") })
+	done := async(func() error { return sess.Prompt(ctx, "hi", nil) })
 	acpExpect(t, cli, "session/prompt")
 	cancel()
 	if err := wait(t, done); !errors.Is(err, context.Canceled) {
@@ -326,6 +372,10 @@ func TestAntigravityPermissions(t *testing.T) {
 		{"another server's tool, said to read", map[string]any{"toolCallId": "c1", "name": "mcp_other_fetch", "kind": "read"}},
 		{"our server, no tool", map[string]any{"toolCallId": "c2", "name": "mcp_tutortop_", "kind": "other"}},
 		{"edit at an empty path", map[string]any{"toolCallId": "c3", "name": "write_file", "kind": "edit", "locations": []any{map[string]any{"path": ""}}}},
+		// Only reading the session's own saved output is allowed (TestAntigravityTurn).
+		{"edit saved output", map[string]any{"toolCallId": "c4", "name": "write_file", "kind": "edit", "locations": []any{map[string]any{"path": filepath.Join(antigravitySteps("s1"), "2", "output.txt")}}}},
+		{"read another session's saved output", map[string]any{"toolCallId": "c5", "name": "read_file", "kind": "read", "locations": []any{map[string]any{"path": filepath.Join(antigravitySteps("s0"), "2", "output.txt")}}}},
+		{"read the rest of the session's folder", map[string]any{"toolCallId": "c6", "name": "read_file", "kind": "read", "locations": []any{map[string]any{"path": filepath.Join(antigravitySteps("s1"), "..", "..", "task.md")}}}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			r := ask(t, "session/request_permission", map[string]any{"sessionId": "s1", "toolCall": c.call, "options": []any{
@@ -387,6 +437,12 @@ func startFakeAntigravity(t *testing.T, opts Options) (Session, *fakeCLI, *event
 // it opens a session. *sess is set once started is done.
 func beginAntigravity(t *testing.T, opts Options) (cli *fakeCLI, started <-chan error, sess *Session, log *eventLog) {
 	t.Helper()
+	return beginAntigravityWith(t, opts, antigravityInitialize)
+}
+
+// beginAntigravityWith is beginAntigravity with agy's initialize reply.
+func beginAntigravityWith(t *testing.T, opts Options, initialize string) (cli *fakeCLI, started <-chan error, sess *Session, log *eventLog) {
+	t.Helper()
 	clis := fakeBinary(t, "agy")
 	var s Session
 	log, sess = &eventLog{}, &s
@@ -404,8 +460,32 @@ func beginAntigravity(t *testing.T, opts Options) (cli *fakeCLI, started <-chan 
 			t.Errorf("initialize offers %s, want no file or terminal access", c)
 		}
 	}
-	acpReply(t, cli, req, antigravityInitialize)
+	acpReply(t, cli, req, initialize)
 	return cli, started, sess, log
+}
+
+// antigravitySteps is where agy saves a session's long tool output.
+func antigravitySteps(session string) string {
+	return filepath.Join(antigravityProfile(), "antigravity-cli", "brain", session, ".system_generated", "steps")
+}
+
+// askPermission sends agy's request to run a tool on path, and returns our
+// reply.
+func askPermission(t *testing.T, cli *fakeCLI, id, name, kind, path string) message {
+	t.Helper()
+	cli.send(t, map[string]any{"jsonrpc": "2.0", "id": id, "method": "session/request_permission", "params": map[string]any{
+		"sessionId": "s1",
+		"toolCall":  map[string]any{"toolCallId": "call_" + id, "name": name, "kind": kind, "locations": []any{map[string]any{"path": path}}},
+		"options": []any{
+			map[string]any{"optionId": "allow", "name": "Allow", "kind": "allow_once"},
+			map[string]any{"optionId": "deny", "name": "Deny", "kind": "reject_once"},
+		},
+	}})
+	r := cli.recv(t)
+	if r.get("id") != id {
+		t.Fatalf("reply %v doesn't answer request %s", r, id)
+	}
+	return r
 }
 
 // acpExpect returns the adapter's next message, which must be a request for

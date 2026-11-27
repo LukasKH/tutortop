@@ -30,7 +30,7 @@ func (t *threadTools) createLesson(ctx context.Context, _ *mcpsdk.CallToolReques
 	if err := t.links.check(ctx, createLessonTool, links); err != nil {
 		return nil, nil, err
 	}
-	info, err := t.w.SaveLesson(spec)
+	info, err := t.w.SaveLessonForGen(spec, t.writerGen)
 	if err != nil {
 		return nil, nil, err
 	}

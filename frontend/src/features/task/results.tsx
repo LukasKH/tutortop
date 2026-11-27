@@ -18,6 +18,8 @@ export type ResultsProps = {
   solved: boolean;
   /** Shown once solved, after Submit. */
   next: ReactNode;
+  /** Shown once solved, beside Next: "Submit feedback" (HowWasThis). */
+  feedback?: ReactNode;
   open: boolean;
   /** Fixed height in px when the learner has sized the results; otherwise it fits its content. */
   height?: number;
@@ -40,44 +42,48 @@ export function Results(p: ResultsProps) {
 
   return (
     // Under the y splitter the splitter is the top edge, so no border of its own.
-    <div className={cn("flex min-h-0 flex-none flex-col bg-card", !p.height && "border-t")} style={p.height ? { height: p.height } : undefined}>
-      <div className="flex min-h-12 flex-none items-center gap-3 py-2 pr-2 pl-3.5 text-sm">
-        {running ? (
-          <span className="flex-none whitespace-nowrap text-muted-foreground">{running === "submit" ? "Running all tests…" : "Running visible tests…"}</span>
-        ) : state ? (
-          <>
-            <b className={cn("flex-none font-semibold whitespace-nowrap", state.tone)}>{state.label}</b>
-            <span className="min-w-0 truncate font-mono text-xs text-muted-foreground tabular-nums">
-              {tests.length > 0 && `${passedCount}/${tests.length} tests · `}
-              {(r!.durationMs / 1000).toFixed(1)}s{notRun > 0 && ` · ${notRun} not run`}
+    <div className={cn("flex min-h-0 min-w-0 flex-none flex-col bg-card", !p.height && "border-t")} style={p.height ? { height: p.height } : undefined}>
+      <div className="flex min-h-12 flex-none flex-wrap items-center justify-between gap-x-3 gap-y-2 py-2 pr-2 pl-3.5 text-sm">
+        <div className="flex min-w-0 items-center gap-2">
+          {running ? (
+            <span className="flex-none whitespace-nowrap text-muted-foreground">{running === "submit" ? "Running all tests…" : "Running visible tests…"}</span>
+          ) : state ? (
+            <>
+              <b className={cn("flex-none font-semibold whitespace-nowrap", state.tone)}>{state.label}</b>
+              <span className="min-w-0 truncate font-mono text-xs text-muted-foreground tabular-nums">
+                {tests.length > 0 && `${passedCount}/${tests.length} tests · `}
+                {(r!.durationMs / 1000).toFixed(1)}s{notRun > 0 && ` · ${notRun} not run`}
+              </span>
+            </>
+          ) : (
+            <span className="min-w-0 truncate text-muted-foreground" title="Run checks the visible tests. Submit runs all of them, including hidden ones.">
+              {hiddenCount > 0 ? `Submit adds ${plural(hiddenCount, "hidden test")}` : ""}
             </span>
-          </>
-        ) : (
-          <span className="min-w-0 truncate text-muted-foreground" title="Run checks the visible tests. Submit runs all of them, including hidden ones.">
-            {hiddenCount > 0 ? `Submit adds ${plural(hiddenCount, "hidden test")}` : ""}
-          </span>
-        )}
-        <span className="flex-1" />
-        <Button
-          variant="ghost"
-          className={cn("-mx-1.5", resetArmed && "text-fail")}
-          onClick={() => (resetArmed ? p.onReset() : armReset())}
-          disabled={!!running}
-          title="Replace your code with the starter code"
-        >
-          {resetArmed ? "Discard your code?" : "Reset"}
-        </Button>
-        <Button variant="outline" onClick={() => p.onCheck(false)} disabled={!!running} title="Run the visible tests">
-          {running === "run" ? "Running…" : "Run"} <kbd>{KEY_RUN}</kbd>
-        </Button>
-        {/* Once passed, Next is the main action and Submit steps back. */}
-        <Button variant={solved ? "outline" : "default"} onClick={() => p.onCheck(true)} disabled={!!running} title="Run all tests, including hidden ones">
-          {running === "submit" ? "Submitting…" : "Submit"} <kbd>{KEY_SUBMIT}</kbd>
-        </Button>
-        {solved && p.next}
-        <IconButton label={p.open ? "Hide results" : "Show results"} onClick={p.onToggle} aria-expanded={p.open}>
-          <ChevronDownIcon size={16} className={cn("transition-transform", !p.open && "rotate-180")} />
-        </IconButton>
+          )}
+        </div>
+        <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
+          <Button
+            variant="ghost"
+            className={cn("-mx-1.5", resetArmed && "text-fail")}
+            onClick={() => (resetArmed ? p.onReset() : armReset())}
+            disabled={!!running}
+            title="Replace your code with the starter code"
+          >
+            {resetArmed ? "Discard your code?" : "Reset"}
+          </Button>
+          <Button variant="outline" onClick={() => p.onCheck(false)} disabled={!!running} title="Run the visible tests">
+            {running === "run" ? "Running…" : "Run"} <kbd>{KEY_RUN}</kbd>
+          </Button>
+          {/* Once passed, Next is the main action and Submit steps back. */}
+          <Button variant={solved ? "outline" : "default"} onClick={() => p.onCheck(true)} disabled={!!running} title="Run all tests, including hidden ones">
+            {running === "submit" ? "Submitting…" : "Submit"} <kbd>{KEY_SUBMIT}</kbd>
+          </Button>
+          {solved && p.feedback}
+          {solved && p.next}
+          <IconButton label={p.open ? "Hide results" : "Show results"} onClick={p.onToggle} aria-expanded={p.open}>
+            <ChevronDownIcon size={16} className={cn("transition-transform", !p.open && "rotate-180")} />
+          </IconButton>
+        </div>
       </div>
 
       {p.open && <ErrorText error={error} className="px-3.5 pb-2.5" />}

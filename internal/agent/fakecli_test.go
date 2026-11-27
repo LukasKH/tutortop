@@ -299,6 +299,19 @@ func untitled(evs []Event) []Event {
 	return evs
 }
 
+// testImage is an attached PNG, holding testImageData. The adapters pass
+// images on without decoding them.
+func testImage(t *testing.T) Image {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "screenshot.png")
+	if err := os.WriteFile(path, testImageData, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return Image{Path: path, MIMEType: "image/png"}
+}
+
+var testImageData = []byte("\x89PNG\r\n\x1a\nnot really a picture")
+
 // async runs f, which blocks, while the test plays the CLI.
 func async(f func() error) <-chan error {
 	done := make(chan error, 1)
