@@ -46,7 +46,7 @@ func (t *threadTools) createTask(ctx context.Context, req *mcpsdk.CallToolReques
 		// gate report, so the agent sees which check failed.
 		return &mcpsdk.CallToolResult{IsError: true}, out, nil
 	}
-	info, err := t.w.SaveTask(spec, tc.Language, rep.Names)
+	info, err := t.w.SaveTaskForGen(spec, tc.Language, rep.Names, t.writerGen)
 	if err != nil {
 		return nil, out, err
 	}

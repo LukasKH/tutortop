@@ -2,8 +2,11 @@ package workspace_test
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -241,6 +244,130 @@ func objectiveIDs(objs []workspace.Objective) []string {
 		ids[i] = o.ID
 	}
 	return ids
+}
+
+// Rewriting the highest-numbered lesson or task with the same title must get a
+// new ID so it never inherits old quiz answers, hints or saved chat sessions.
+func TestClearUnsolvedNeverReusesDeletedIDs(t *testing.T) {
+	w := newWorkspace(t)
+	approve(t, w, "a")
+	l1 := addLesson(t, w, "a")
+	t1 := addTask(t, w, "a")
+	if _, err := w.AnswerQuiz(l1.ID, 0, 0); err != nil {
+		t.Fatal(err)
+	}
+	record(t, w, workspace.Attempt{TaskID: t1.ID, Kind: workspace.AttemptHint, HintLevel: 2})
+	if err := w.SetResumeID("claude", workspace.LessonThread(l1.ID).String(), "old-lesson-sess"); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.SetResumeID("claude", workspace.TaskThread(t1.ID).String(), "old-task-sess"); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := w.ClearUnsolved(""); err != nil {
+		t.Fatal(err)
+	}
+	l2 := addLesson(t, w, "a")
+	t2 := addTask(t, w, "a")
+	if l2.ID == l1.ID || !strings.HasPrefix(l2.ID, "0002-") {
+		t.Fatalf("rewritten lesson id %q, want a new 0002- id (old was %q)", l2.ID, l1.ID)
+	}
+	if t2.ID == t1.ID || !strings.HasPrefix(t2.ID, "0002-") {
+		t.Fatalf("rewritten task id %q, want a new 0002- id (old was %q)", t2.ID, t1.ID)
+	}
+	detail, err := w.Lesson(l2.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if detail.Answered != 0 || len(detail.Results) != 0 {
+		t.Errorf("new lesson inherited old quiz answers: answered=%d results=%+v", detail.Answered, detail.Results)
+	}
+	if h := w.Hints(t2.ID); h.Count != 0 {
+		t.Errorf("new task inherited old hints: %+v", h)
+	}
+}
+
+// Saves from a writer started before ClearUnsolved are rejected under the
+// workspace lock while a fresh writer's generation succeeds.
+func TestClearUnsolvedRejectsStaleWriter(t *testing.T) {
+	w := newWorkspace(t)
+	approve(t, w, "a")
+	oldGen := w.WriterGen()
+	if _, err := w.ClearUnsolved(""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.SaveLessonForGen(lessonSpec("a"), oldGen); !errors.Is(err, workspace.ErrStaleWriter) {
+		t.Errorf("stale lesson save got %v, want ErrStaleWriter", err)
+	}
+	if _, err := w.SaveTaskForGen(taskSpec("a"), "go", sandbox.TestNames{}, oldGen); !errors.Is(err, workspace.ErrStaleWriter) {
+		t.Errorf("stale task save got %v, want ErrStaleWriter", err)
+	}
+	newGen := w.WriterGen()
+	if _, err := w.SaveLessonForGen(lessonSpec("a"), newGen); err != nil {
+		t.Errorf("fresh lesson save failed: %v", err)
+	}
+	if _, err := w.SaveTaskForGen(taskSpec("a"), "go", sandbox.TestNames{}, newGen); err != nil {
+		t.Errorf("fresh task save failed: %v", err)
+	}
+}
+
+// Uncommitted learner edits in an unsolved task's work/ folder are committed to
+// git history before ClearUnsolved deletes the task folder.
+func TestClearUnsolvedPreservesWorkInGit(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("needs git")
+	}
+	w := newWorkspace(t)
+	approve(t, w, "a")
+	ta := addTask(t, w, "a")
+	edited := "package task\n\nfunc Sum(a, b int) int { return a + b + 42 }\n"
+	if err := w.SaveWork(ta.ID, sandbox.Files{"sum.go": edited}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.ClearUnsolved(""); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command("git", "show", "HEAD~1:tasks/"+ta.ID+"/work/sum.go")
+	cmd.Dir = w.Dir
+	cmd.Env = slices.DeleteFunc(os.Environ(), func(kv string) bool { return strings.HasPrefix(kv, "GIT_") })
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("learner work not preserved in git history: %v", err)
+	}
+	if string(out) != edited {
+		t.Errorf("saved work in HEAD~1:\n%s\nwant:\n%s", out, edited)
+	}
+}
+
+// If staging a later removal fails, earlier staged folders are restored so no
+// lesson or task vanishes on error.
+func TestClearUnsolvedRollsBackOnMoveFailure(t *testing.T) {
+	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+		t.Skip("chmod 0555 does not block renames for root or on Windows")
+	}
+	w := newWorkspace(t)
+	approve(t, w, "a")
+	la := addLesson(t, w, "a")
+	privDir := filepath.Join(w.PrivateDir, "lessons")
+	if err := os.Chmod(privDir, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(privDir, 0o755) })
+
+	cleared, err := w.ClearUnsolved("")
+	if err == nil {
+		t.Fatal("expected ClearUnsolved to fail when private lessons dir is read-only")
+	}
+	if len(cleared) != 0 {
+		t.Errorf("cleared %v on rolled-back failure, want empty", cleared)
+	}
+	lessons, err := w.Lessons()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(lessons) != 1 || lessons[0].ID != la.ID {
+		t.Errorf("lessons after rollback = %+v, want %s intact", lessons, la.ID)
+	}
 }
 
 // A task counts once, on its first pass; a lesson once every question has

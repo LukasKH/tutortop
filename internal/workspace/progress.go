@@ -1,7 +1,10 @@
 package workspace
 
 import (
+	"crypto/rand"
+	"errors"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 )
@@ -102,11 +105,15 @@ func (w *Workspace) NeedsWriting(ahead int) []Objective {
 
 // ClearUnsolved removes already-written lessons (except keepLessonID) and tasks
 // belonging to unpassed objectives, so writers can rewrite them after feedback.
-// Passed objectives and keepLessonID are untouched. It returns the objectives
-// that had content removed, in plan order.
+// Passed objectives and keepLessonID are untouched. Before deleting anything it
+// advances the writer generation (so stopped writers cannot save stale work),
+// records monotonic ID counters, and commits any uncommitted learner code to
+// git history. Removals are staged via rename so a failure rolls back cleanly.
 func (w *Workspace) ClearUnsolved(keepLessonID string) ([]Objective, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
+	w.state.gen++
+
 	cur, err := w.Curriculum()
 	if err != nil || cur == nil {
 		return nil, err
@@ -120,48 +127,127 @@ func (w *Workspace) ClearUnsolved(keepLessonID string) ([]Objective, error) {
 		return nil, err
 	}
 	unpassed := unpassedObjectives(cur, progress(cur, tasks, w.history().passed))
-	affected := map[string]bool{}
-	for _, l := range lessons {
-		if !unpassed[l.Objective] || l.ID == keepLessonID {
-			continue
-		}
-		if err := w.removeLesson(l.ID); err != nil {
-			return nil, err
-		}
-		affected[l.Objective] = true
+	removeLessons, removeTasks, affected := selectUnsolved(lessons, tasks, unpassed, keepLessonID)
+	if len(affected) == 0 {
+		return nil, nil
 	}
-	for _, t := range tasks {
-		if !unpassed[t.Objective] {
-			continue
-		}
-		if err := w.removeTask(t.ID); err != nil {
-			return nil, err
-		}
-		affected[t.Objective] = true
+
+	// Preserve uncommitted learner code in git history before replacing tasks.
+	w.commit("Save work before regenerating unsolved exercises")
+
+	staged, err := w.stageRemovals(removeLessons, removeTasks)
+	if err != nil {
+		rollbackMoves(staged)
+		return nil, err
+	}
+	// Advance persistent ID counters and forget removed threads' resume IDs so
+	// rewritten items never inherit old quiz answers, hints or chat sessions.
+	if err := w.bumpCountersAndForgetThreads(lessons, tasks, removeLessons, removeTasks); err != nil {
+		rollbackMoves(staged)
+		return nil, err
 	}
 	cleared := objectivesInOrder(cur, affected)
-	if len(cleared) > 0 {
-		w.commit("Regenerate unsolved lessons and exercises")
-	}
-	return cleared, nil
+	cleanErr := cleanupStaged(staged)
+	w.commit("Regenerate unsolved lessons and exercises")
+	return cleared, cleanErr
 }
 
-func (w *Workspace) removeLesson(id string) error {
-	if err := removeAll(w.path("lessons", id), w.private("lessons", id)); err != nil {
-		return err
+type stagedMove struct{ orig, staged string }
+
+func selectUnsolved(lessons []LessonInfo, tasks []TaskInfo, unpassed map[string]bool, keepLessonID string) ([]LessonInfo, []TaskInfo, map[string]bool) {
+	var rmLessons []LessonInfo
+	var rmTasks []TaskInfo
+	affected := map[string]bool{}
+	for _, l := range lessons {
+		if unpassed[l.Objective] && l.ID != keepLessonID {
+			rmLessons = append(rmLessons, l)
+			affected[l.Objective] = true
+		}
 	}
-	name := LessonThread(id).String()
-	_ = removeAll(w.path(".tutortop", "chat", name+".jsonl"), w.path(".tutortop", "chat", name))
-	return nil
+	for _, t := range tasks {
+		if unpassed[t.Objective] {
+			rmTasks = append(rmTasks, t)
+			affected[t.Objective] = true
+		}
+	}
+	return rmLessons, rmTasks, affected
 }
 
-func (w *Workspace) removeTask(id string) error {
-	if err := removeAll(w.path("tasks", id), w.private("tasks", id)); err != nil {
-		return err
+// stageRemovals moves every folder to be deleted into gitignored/private temp
+// folders on the same filesystem so an error midway can roll back atomically.
+func (w *Workspace) stageRemovals(lessons []LessonInfo, tasks []TaskInfo) ([]stagedMove, error) {
+	tag := rand.Text()
+	// Public trash lives under .tutortop/chat/ (already in .gitignore) so a
+	// partial cleanup error never gets committed into the workspace repo.
+	pubTrash := w.path(".tutortop", "chat", ".regen-"+tag)
+	privTrash := w.private(".regen-" + tag)
+	var moves []stagedMove
+	stage := func(orig, trashDir, name string) error {
+		if _, err := os.Stat(orig); errors.Is(err, os.ErrNotExist) {
+			return nil
+		} else if err != nil {
+			return err
+		}
+		if err := os.MkdirAll(trashDir, 0o755); err != nil {
+			return err
+		}
+		dst := filepath.Join(trashDir, name)
+		if err := os.Rename(orig, dst); err != nil {
+			return err
+		}
+		moves = append(moves, stagedMove{orig: orig, staged: dst})
+		return nil
 	}
-	name := TaskThread(id).String()
-	_ = removeAll(w.path(".tutortop", "chat", name+".jsonl"), w.path(".tutortop", "chat", name))
-	return nil
+	for _, l := range lessons {
+		if err := stage(w.path("lessons", l.ID), pubTrash, "lesson-pub-"+l.ID); err != nil {
+			return moves, err
+		}
+		if err := stage(w.private("lessons", l.ID), privTrash, "lesson-priv-"+l.ID); err != nil {
+			return moves, err
+		}
+	}
+	for _, t := range tasks {
+		if err := stage(w.path("tasks", t.ID), pubTrash, "task-pub-"+t.ID); err != nil {
+			return moves, err
+		}
+		if err := stage(w.private("tasks", t.ID), privTrash, "task-priv-"+t.ID); err != nil {
+			return moves, err
+		}
+	}
+	// Best-effort removal of deleted items' chat transcripts once moves succeed.
+	for _, l := range lessons {
+		name := LessonThread(l.ID).String()
+		_ = removeAll(w.path(".tutortop", "chat", name+".jsonl"), w.path(".tutortop", "chat", name))
+	}
+	for _, t := range tasks {
+		name := TaskThread(t.ID).String()
+		_ = removeAll(w.path(".tutortop", "chat", name+".jsonl"), w.path(".tutortop", "chat", name))
+	}
+	return moves, nil
+}
+
+func rollbackMoves(moves []stagedMove) {
+	for i := len(moves) - 1; i >= 0; i-- {
+		_ = os.Rename(moves[i].staged, moves[i].orig)
+	}
+	for _, m := range moves {
+		_ = os.Remove(filepath.Dir(m.staged))
+	}
+}
+
+func cleanupStaged(moves []stagedMove) error {
+	var firstErr error
+	dirs := map[string]bool{}
+	for _, m := range moves {
+		dirs[filepath.Dir(m.staged)] = true
+		if err := os.RemoveAll(m.staged); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	for d := range dirs {
+		_ = os.Remove(d)
+	}
+	return firstErr
 }
 
 func removeAll(paths ...string) error {
@@ -171,6 +257,87 @@ func removeAll(paths ...string) error {
 		}
 	}
 	return nil
+}
+
+// claimLessonNumber returns a never-reused lesson number and persists the
+// updated counter in workspace.json. Caller holds w.mu.
+func (w *Workspace) claimLessonNumber(lessons []LessonInfo) (int, error) {
+	meta, err := readJSON[Meta](w.path(".tutortop", "workspace.json"))
+	if err != nil {
+		return 0, err
+	}
+	n := max(meta.NextLesson, w.minNextLesson(lessons, meta))
+	meta.NextLesson = n + 1
+	w.Meta = meta
+	return n, w.saveMeta()
+}
+
+// claimTaskNumber returns a never-reused task number and persists the updated
+// counter in workspace.json. Caller holds w.mu.
+func (w *Workspace) claimTaskNumber(tasks []TaskInfo) (int, error) {
+	meta, err := readJSON[Meta](w.path(".tutortop", "workspace.json"))
+	if err != nil {
+		return 0, err
+	}
+	n := max(meta.NextTask, w.minNextTask(tasks, meta))
+	meta.NextTask = n + 1
+	w.Meta = meta
+	return n, w.saveMeta()
+}
+
+func (w *Workspace) bumpCountersAndForgetThreads(allLessons []LessonInfo, allTasks []TaskInfo, rmLessons []LessonInfo, rmTasks []TaskInfo) error {
+	meta, err := readJSON[Meta](w.path(".tutortop", "workspace.json"))
+	if err != nil {
+		return err
+	}
+	meta.NextLesson = max(meta.NextLesson, w.minNextLesson(allLessons, meta))
+	meta.NextTask = max(meta.NextTask, w.minNextTask(allTasks, meta))
+	for _, l := range rmLessons {
+		delete(meta.ResumeIDs, LessonThread(l.ID).String())
+	}
+	for _, t := range rmTasks {
+		delete(meta.ResumeIDs, TaskThread(t.ID).String())
+	}
+	w.Meta = meta
+	return w.saveMeta()
+}
+
+func (w *Workspace) minNextLesson(lessons []LessonInfo, meta Meta) int {
+	ids := make([]string, 0, len(lessons))
+	for _, l := range lessons {
+		ids = append(ids, l.ID)
+	}
+	attempts, _ := w.Attempts()
+	for _, a := range attempts {
+		if a.LessonID != "" {
+			ids = append(ids, a.LessonID)
+		}
+	}
+	for thread := range meta.ResumeIDs {
+		if id, ok := strings.CutPrefix(thread, "lesson-"); ok {
+			ids = append(ids, id)
+		}
+	}
+	return nextNumber(ids)
+}
+
+func (w *Workspace) minNextTask(tasks []TaskInfo, meta Meta) int {
+	ids := make([]string, 0, len(tasks))
+	for _, t := range tasks {
+		ids = append(ids, t.ID)
+	}
+	attempts, _ := w.Attempts()
+	for _, a := range attempts {
+		if a.TaskID != "" {
+			ids = append(ids, a.TaskID)
+		}
+	}
+	for thread := range meta.ResumeIDs {
+		if t, err := ParseThread(thread); err == nil && t.Kind == TaskKind {
+			ids = append(ids, t.ID)
+		}
+	}
+	return nextNumber(ids)
 }
 
 func unpassedObjectives(cur *Curriculum, p Progress) map[string]bool {

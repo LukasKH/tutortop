@@ -42,7 +42,12 @@ type Store struct {
 	Root        string // public workspaces, ~/Tutortop
 	PrivateRoot string // ~/.local/share/tutortop/private
 
-	locks sync.Map // workspace id -> *sync.Mutex, shared by every Open of that id
+	locks sync.Map // workspace id -> *wsState, shared by every Open of that id
+}
+
+type wsState struct {
+	mu  sync.Mutex
+	gen uint64 // writer generation; incremented on ClearUnsolved to reject saves from stopped writers
 }
 
 // NewStore keeps workspaces in root and their private files under the
@@ -135,8 +140,9 @@ func (s *Store) Delete(id string) error {
 }
 
 func (s *Store) workspace(id string) *Workspace {
-	mu, _ := s.locks.LoadOrStore(id, &sync.Mutex{})
-	return &Workspace{ID: id, Dir: filepath.Join(s.Root, id), PrivateDir: filepath.Join(s.PrivateRoot, id), mu: mu.(*sync.Mutex)}
+	v, _ := s.locks.LoadOrStore(id, &wsState{gen: 1})
+	st := v.(*wsState)
+	return &Workspace{ID: id, Dir: filepath.Join(s.Root, id), PrivateDir: filepath.Join(s.PrivateRoot, id), mu: &st.mu, state: st}
 }
 
 type Summary struct {
@@ -157,7 +163,12 @@ type Meta struct {
 	// ResumeIDs maps a chat thread to its conversation's id in the agent
 	// (agent.Session.ID), so each thread resumes its own conversation.
 	ResumeIDs map[string]string `json:"sessions,omitempty"`
-	CreatedAt time.Time         `json:"createdAt"`
+	// NextLesson and NextTask are monotonic counters so deleted lessons or
+	// tasks never have their IDs reused (avoiding stale quiz answers, hints
+	// and chat history).
+	NextLesson int       `json:"nextLesson,omitempty"`
+	NextTask   int       `json:"nextTask,omitempty"`
+	CreatedAt  time.Time `json:"createdAt"`
 }
 
 type Workspace struct {
@@ -169,7 +180,21 @@ type Workspace struct {
 	// mu serialises changes that read-then-write (task numbering, plan
 	// revisions) and git commits. It's shared by every Workspace value with
 	// the same id, since Store.Open returns a fresh value each time.
-	mu *sync.Mutex
+	mu    *sync.Mutex
+	state *wsState
+}
+
+// ErrStaleWriter is returned when a writer stopped during regeneration tries
+// to publish a lesson or task from before the learner's updated feedback.
+var ErrStaleWriter = errors.New("this writer was replaced after feedback; stop without saving")
+
+// WriterGen returns the workspace's current writer generation. Writers capture
+// it when started and pass it to SaveLessonForGen / SaveTaskForGen so saves
+// from stopped writers are rejected under the workspace lock.
+func (w *Workspace) WriterGen() uint64 {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.state.gen
 }
 
 // UseProvider switches the workspace to another agent. Resume ids belong to

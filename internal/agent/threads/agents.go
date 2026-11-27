@@ -194,16 +194,21 @@ func (ag *Agents) EndWorkspace(wsID string) {
 	ag.mcp.Forget(wsID)
 }
 
-// endWriters stops every running writer for wsID so stale writers don't
-// publish over freshly regenerated objectives.
-func (ag *Agents) endWriters(wsID string) {
+// endWriters stops every running writer for wsID, drops their MCP endpoints,
+// and returns the objective IDs that were being written so Rewrite can restart
+// requested writes (such as "Write it now") alongside cleared ones.
+func (ag *Agents) endWriters(wsID string) []string {
 	ag.mu.Lock()
-	defer ag.mu.Unlock()
+	var stopped []string
 	for key, ta := range ag.agents {
 		if key.ws == wsID && ta.thread.Kind == workspace.WriterKind {
+			stopped = append(stopped, ta.thread.ID)
 			ag.end(ta)
 		}
 	}
+	ag.mu.Unlock()
+	ag.mcp.ForgetWriters(wsID)
+	return stopped
 }
 
 // queue queues a message for a thread's agent, starting the agent if it
@@ -345,12 +350,14 @@ func (ag *Agents) loop(ctx context.Context, w *workspace.Workspace, ta *threadAg
 				// After endTurn, so the notice follows the cut-off reply.
 				Post(w, workspace.ChatItem{Thread: ta.key.name, Role: workspace.RoleNotice, Text: "Stopped. Send a message to continue."})
 			}
+			// Run After before marking the turn idle so replacement writers
+			// are queued before the UI (or tests) sees the plan thread idle.
+			if err == nil && !stopped && ctx.Err() == nil && msg.after != nil {
+				msg.after()
+			}
 			ended := ag.answered(ta, errors.Is(err, agent.ErrExited))
 			if err != nil && ctx.Err() == nil {
 				postFailure(w, ta.key.name, err.Error())
-			}
-			if err == nil && !stopped && ctx.Err() == nil && msg.after != nil {
-				msg.after()
 			}
 			if ended {
 				return

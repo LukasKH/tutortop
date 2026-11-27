@@ -132,7 +132,8 @@ export function HowWasThis({ item, keepLessonId, compact, send, className }: Pro
                 <span className="flex flex-col gap-0.5">
                   <span className="font-medium text-foreground">Regenerate unsolved lessons and exercises</span>
                   <span className="text-xs text-muted-foreground">
-                    Redo {plural(regenCount, "already-generated objective")} using your updated preferences.
+                    Redo {plural(regenCount, "already-generated objective")} using your updated preferences. Any unfinished code in those unsolved exercises
+                    will be replaced (saved in git history).
                   </span>
                 </span>
               </label>

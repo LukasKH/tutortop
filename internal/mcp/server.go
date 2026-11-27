@@ -110,9 +110,28 @@ func (s *Server) Forget(wsID string) {
 	}
 }
 
+// ForgetWriters drops the MCP servers of a workspace's writers, so stopped
+// writers can no longer reach MCP tools and replacement writers get fresh
+// servers stamped with the new writer generation.
+func (s *Server) ForgetWriters(wsID string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for key, token := range s.tokens {
+		t, err := workspace.ParseThread(key.name)
+		if key.ws == wsID && err == nil && t.Kind == workspace.WriterKind {
+			delete(s.tokens, key)
+			delete(s.servers, token)
+		}
+	}
+}
+
 // newServer builds one thread's server with the tools of its kind.
 func (s *Server) newServer(w *workspace.Workspace, thread workspace.Thread, checks Checks) *mcpsdk.Server {
-	t := &threadTools{w: w, thread: thread, checks: checks, runner: s.runner, links: s.links}
+	var gen uint64
+	if thread.Kind == workspace.WriterKind {
+		gen = w.WriterGen()
+	}
+	t := &threadTools{w: w, thread: thread, writerGen: gen, checks: checks, runner: s.runner, links: s.links}
 	srv := mcpsdk.NewServer(&mcpsdk.Implementation{Name: Name, Version: "0.2.8"}, nil) // x-release-please-version
 	for _, tool := range toolsFor(thread.Kind) {
 		tool.add(srv, t)
@@ -129,11 +148,12 @@ type threadKey struct{ ws, name string }
 // error's text back as an error result, which the agent reads and acts on. So
 // errors here are written for the agent, and say what to do next.
 type threadTools struct {
-	w      *workspace.Workspace
-	thread workspace.Thread
-	checks Checks // show the thread's sandbox checks
-	runner *sandbox.Runner
-	links  *LinkChecker
+	w         *workspace.Workspace
+	thread    workspace.Thread
+	writerGen uint64 // captured when a writer's MCP server is created; 0 for chats
+	checks    Checks // show the thread's sandbox checks
+	runner    *sandbox.Runner
+	links     *LinkChecker
 }
 
 // ownObjective refuses a writer's work on another objective, which has its

@@ -3,6 +3,7 @@ package app
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/LukasKH/tutortop/internal/sandbox"
 	"github.com/LukasKH/tutortop/internal/workspace"
@@ -179,6 +180,7 @@ func TestFeedbackRegeneratesUnsolvedAfterNotesUpdate(t *testing.T) {
 		t.Fatalf("lessons cleared before planner finished: got %d, want 3", len(lessons))
 	}
 	planTurn.reply("Updated NOTES.md.")
+	waitPlanIdle(t, a, w.ID)
 
 	// Once the planner finishes, go.two and go.three are cleared and rewritten.
 	w2, w3 := workspace.WriterThread("go.two"), workspace.WriterThread("go.three")
@@ -195,6 +197,79 @@ func TestFeedbackRegeneratesUnsolvedAfterNotesUpdate(t *testing.T) {
 	}
 	idle(t, a, w.ID)
 	tutor.noMoreTurns(t)
+}
+
+// A "Write it now" writer on a later objective that hasn't published yet is
+// restarted after regeneration, and the stopped writer cannot publish stale
+// content through its old MCP endpoint.
+func TestFeedbackRegenerateRestartsWriteNowAndBlocksStaleWriter(t *testing.T) {
+	a, w, tutor := startPlanned(t)
+	plan := workspace.Curriculum{Language: "go", Modules: []workspace.Module{{
+		ID:         "basics",
+		Title:      "Basics",
+		References: []workspace.Source{{Title: "Go docs", URL: "https://go.dev/doc/"}},
+		Objectives: []workspace.Objective{
+			{ID: "go.one", Name: "One", Title: "First objective"},
+			{ID: "go.two", Name: "Two", Title: "Second objective"},
+			{ID: "go.three", Name: "Three", Title: "Third objective"},
+			{ID: "go.four", Name: "Four", Title: "Fourth objective"},
+		},
+	}}}
+	if err := w.Propose(plan); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.ApproveProposal(); err != nil {
+		t.Fatal(err)
+	}
+	t1, _ := saveSampleObjective(t, w, "go.one", "One")
+	if err := w.RecordAttempt(workspace.Attempt{TaskID: t1, Kind: workspace.AttemptSubmit, Status: sandbox.StatusPassed}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Learner explicitly asked to write objective 4 (beyond the 2-ahead lookahead).
+	if err := a.Workspaces.WriteObjectiveNow(w.ID, "go.four"); err != nil {
+		t.Fatal(err)
+	}
+	w4 := workspace.WriterThread("go.four")
+	staleTurn := tutor.next(t, a, w, w4)
+	staleMCPURL := staleTurn.opts.MCPURL
+
+	if err := a.Tasks.SendFeedback(w.ID, t1, Feedback{
+		Chips:      []FeedbackChip{FeedbackTooTechnical},
+		Regenerate: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	tutor.next(t, a, w, workspace.PlanThread).reply("Updated NOTES.md.")
+	waitPlanIdle(t, a, w.ID)
+
+	// Rewrite stops stale go.four and restarts go.two, go.three (KeepReady) AND go.four!
+	w2, w3 := workspace.WriterThread("go.two"), workspace.WriterThread("go.three")
+	restarted := tutor.nextEach(t, a, w, w2, w3, w4)
+	if restarted[w4].opts.MCPURL == staleMCPURL {
+		t.Error("replacement writer reused the stopped writer's MCP endpoint")
+	}
+	for _, tn := range restarted {
+		tn.reply("Done.")
+	}
+	idle(t, a, w.ID)
+	tutor.noMoreTurns(t)
+}
+
+func waitPlanIdle(t *testing.T, a *testApp, wsID string) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		st, err := a.Workspaces.Workspace(wsID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !st.Busy[workspace.PlanThread.String()] {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("plan thread never went idle")
 }
 
 // saveSampleObjective saves a lesson and task for one objective in w.

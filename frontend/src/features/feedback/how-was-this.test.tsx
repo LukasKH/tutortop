@@ -78,6 +78,7 @@ describe("HowWasThis", () => {
     });
     fireEvent.click(btn("Submit feedback"));
     expect(screen.getByText(/Redo 2 already-generated objectives/)).toBeTruthy();
+    expect(screen.getByText(/unfinished code in those unsolved exercises will be replaced/i)).toBeTruthy();
     fireEvent.click(btn("Too technical"));
     fireEvent.click(screen.getByRole("checkbox"));
     fireEvent.click(btn("Send feedback"));

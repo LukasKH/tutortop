@@ -42,27 +42,37 @@ func (wr *Writers) KeepReady(w *workspace.Workspace, why string) {
 
 // Rewrite stops any running writers for w, clears already-written lessons
 // (except keepLessonID) and tasks of unpassed objectives, and starts fresh
-// writers for them (plus KeepReady for any missing ones ahead).
+// writers for cleared objectives, any in-flight objectives that were stopped
+// (such as "Write it now" requests), and KeepReady for missing ones ahead.
 func (wr *Writers) Rewrite(w *workspace.Workspace, keepLessonID, why string) error {
-	wr.agents.endWriters(w.ID)
+	stoppedIDs := wr.agents.endWriters(w.ID)
 	cleared, err := w.ClearUnsolved(keepLessonID)
-	if err != nil {
-		return err
-	}
 	if len(cleared) > 0 {
 		events.Emit(events.WorkspaceChanged, events.Workspace{Workspace: w.ID})
 	}
 	started := map[string]bool{}
-	for _, o := range cleared {
+	start := func(o workspace.Objective) {
+		if started[o.ID] {
+			return
+		}
 		started[o.ID] = true
 		wr.Write(w, o, why)
 	}
+	for _, o := range cleared {
+		start(o)
+	}
 	for _, o := range w.NeedsWriting(readyAhead) {
-		if !started[o.ID] {
-			wr.Write(w, o, why)
+		start(o)
+	}
+	if cur, curErr := w.Curriculum(); curErr == nil && cur != nil {
+		p := w.Progress()
+		for _, id := range stoppedIDs {
+			if o, _, ok := cur.Objective(id); ok && p.Objectives[id].Status != workspace.ObjectivePassed {
+				start(o)
+			}
 		}
 	}
-	return nil
+	return err
 }
 
 // Write starts a writer for one objective, unless one is already at work on
