@@ -42,7 +42,11 @@ export function Results(p: ResultsProps) {
 
   return (
     // Under the y splitter the splitter is the top edge, so no border of its own.
-    <div className={cn("flex min-h-0 min-w-0 flex-none flex-col bg-card", !p.height && "border-t")} style={p.height ? { height: p.height } : undefined}>
+    // Cap height dynamically so the editor keeps >= 140px (+ ~36px file tabs) in short/stacked viewports.
+    <div
+      className={cn("flex min-h-0 min-w-0 flex-none flex-col bg-card", !p.height && "border-t")}
+      style={p.height ? { height: p.height, maxHeight: "max(96px, calc(100% - 176px))" } : undefined}
+    >
       <div className="flex min-h-12 flex-none flex-wrap items-center justify-between gap-x-3 gap-y-2 py-2 pr-2 pl-3.5 text-sm">
         <div className="flex min-w-0 items-center gap-2">
           {running ? (

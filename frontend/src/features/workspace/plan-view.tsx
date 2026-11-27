@@ -39,14 +39,12 @@ export function PlanView({ ws, onClose, onAskTutor }: Props) {
   return (
     <ReadingPage>
       <PlanBar>
-        {onClose ? (
+        {onClose && (
           <Button variant="ghost" className="-ml-2" onClick={onClose}>
             ← Back
           </Button>
-        ) : (
-          <span />
         )}
-        <div className="flex flex-none flex-wrap items-center gap-2">
+        <div className="ml-auto flex flex-wrap items-center gap-2">
           <Button variant="outline" onClick={() => setEditing("mission")}>
             <PencilIcon className="size-3.5" /> Edit mission
           </Button>
@@ -149,8 +147,8 @@ function DocEditor({ doc, text: initial, onDone }: { doc: Doc; text: string; onD
   return (
     <ReadingPage>
       <PlanBar>
-        <span className="text-sm text-muted-foreground">{hint}</span>
-        <div className="flex flex-none flex-wrap items-center gap-2">
+        <span className="min-w-0 flex-1 text-sm text-muted-foreground">{hint}</span>
+        <div className="ml-auto flex flex-wrap items-center gap-2">
           <Button variant="ghost" onClick={onDone} disabled={saving}>
             Cancel
           </Button>
@@ -176,5 +174,5 @@ function DocEditor({ doc, text: initial, onDone }: { doc: Doc; text: string; onD
 
 /** The page's top line: something on the left, its buttons on the right. */
 function PlanBar({ children }: { children: ReactNode }) {
-  return <div className="mb-4 flex items-center justify-between gap-4">{children}</div>;
+  return <div className="mb-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">{children}</div>;
 }

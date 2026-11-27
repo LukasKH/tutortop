@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/LukasKH/tutortop/internal/events"
+	"github.com/sourcegraph/jsonrpc2"
 )
 
 // installed puts a fake language server, which can't start, in a new folder.
@@ -106,5 +107,64 @@ func TestNewerOffersOnlyNewerReleases(t *testing.T) {
 		if got := s.newer(t.Context(), c.installed); got != c.want {
 			t.Errorf("newer with %q installed and %q latest = %q, want %q", c.installed, c.latest, got, c.want)
 		}
+	}
+}
+
+// Cancelled inline completion requests (from rapid typing or LSP RequestCancelled)
+// return an empty completion instead of an error, avoiding 422s and unhandled
+// CancellablePromise rejections in the frontend.
+func TestCompleteReturnsEmptyOnCancel(t *testing.T) {
+	req := CompletionRequest{URI: "file:///t1/work/main.go", LanguageID: "go", Text: "package main\n"}
+
+	// Already cancelled before calling Complete.
+	s := NewService(t.TempDir(), nil)
+	preCtx, preCancel := context.WithCancel(t.Context())
+	preCancel()
+	got, err := s.Complete(preCtx, req)
+	if err != nil || got.Suggestions == nil || len(got.Suggestions) != 0 {
+		t.Fatalf("pre-cancelled Complete = (%+v, %v), want empty slice and nil error", got, err)
+	}
+
+	// Cancelled while waiting on textDocument/inlineCompletion.
+	received := make(chan struct{}, 1)
+	s.server = fakeServer(t, func(_ context.Context, _ *jsonrpc2.Conn, r *jsonrpc2.Request) {
+		if r.Method == "textDocument/inlineCompletion" {
+			received <- struct{}{}
+		}
+	})
+	midCtx, midCancel := context.WithCancel(t.Context())
+	type result struct {
+		c   Completion
+		err error
+	}
+	done := make(chan result, 1)
+	go func() {
+		c, err := s.Complete(midCtx, req)
+		done <- result{c, err}
+	}()
+	select {
+	case <-received:
+	case <-time.After(2 * time.Second):
+		t.Fatal("server never received inlineCompletion")
+	}
+	midCancel()
+	select {
+	case r := <-done:
+		if r.err != nil || r.c.Suggestions == nil || len(r.c.Suggestions) != 0 {
+			t.Fatalf("mid-flight cancelled Complete = (%+v, %v), want empty slice and nil error", r.c, r.err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("Complete did not return after cancel")
+	}
+
+	// Server answers LSP RequestCancelled (-32800).
+	s.server = fakeServer(t, func(ctx context.Context, conn *jsonrpc2.Conn, r *jsonrpc2.Request) {
+		if r.Method == "textDocument/inlineCompletion" {
+			_ = conn.ReplyWithError(ctx, r.ID, &jsonrpc2.Error{Code: codeRequestCancelled, Message: "cancelled"})
+		}
+	})
+	got, err = s.Complete(t.Context(), req)
+	if err != nil || got.Suggestions == nil || len(got.Suggestions) != 0 {
+		t.Fatalf("LSP RequestCancelled Complete = (%+v, %v), want empty slice and nil error", got, err)
 	}
 }

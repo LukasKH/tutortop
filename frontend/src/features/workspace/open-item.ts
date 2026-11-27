@@ -129,13 +129,23 @@ export function parseItemKey(key: string | null): OpenItem | null {
 export const sameItem = (a: OpenItem | null, b: OpenItem | null) => (a && b ? itemKey(a) === itemKey(b) : a === b);
 
 /**
- * What to open by default: the first unsolved task, or its objective's lesson
- * if the learner hasn't finished that yet; else the first lesson without an
- * exercise; else the last task.
+ * What to open by default: the first unpassed objective in plan order that has
+ * something written (its unfinished lesson, else its newest unsolved task,
+ * else its lesson); falling back to any unsolved task, any lesson without an
+ * exercise, or the last task.
  */
 function defaultItem(ws: WorkspaceSnapshot): OpenItem | null {
   const tasks = ws.tasks ?? [];
   const lessons = ws.lessons ?? [];
+  const passed = (id: string) => ws.progress.objectives?.[id]?.status === ObjectiveStatus.ObjectivePassed || tasks.some((t) => t.objective === id && t.passed);
+  for (const o of (ws.curriculum?.modules ?? []).flatMap((m) => m.objectives ?? [])) {
+    if (passed(o.id)) continue;
+    const lesson = lessons.find((l) => l.objective === o.id);
+    const task = tasks.findLast((t) => t.objective === o.id && !t.passed);
+    if (lesson && !lessonDone(lesson)) return { kind: "lesson", id: lesson.id };
+    if (task) return { kind: "task", id: task.id };
+    if (lesson) return { kind: "lesson", id: lesson.id };
+  }
   const next = tasks.find((t) => !t.passed);
   if (next) return viaLesson(ws, next.id);
   const lesson = lessons.find((l) => !tasks.some((t) => t.objective === l.objective));

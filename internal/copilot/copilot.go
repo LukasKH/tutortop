@@ -157,6 +157,9 @@ func (s *Service) SignOut(ctx context.Context) error {
 // the rest of the cursor's line (oneLine), so it helps with syntax rather
 // than writing the solution.
 func (s *Service) Complete(ctx context.Context, req CompletionRequest) (Completion, error) {
+	if isCancelled(ctx, nil) {
+		return Completion{Suggestions: []Suggestion{}}, nil
+	}
 	if err := ctx.Err(); err != nil {
 		return Completion{}, err
 	}
@@ -166,6 +169,9 @@ func (s *Service) Complete(ctx context.Context, req CompletionRequest) (Completi
 	}
 	version, err := srv.sync(ctx, req.URI, req.LanguageID, req.Text)
 	if err != nil {
+		if isCancelled(ctx, err) {
+			return Completion{Suggestions: []Suggestion{}}, nil
+		}
 		return Completion{}, err
 	}
 	list, err := call[completionList](ctx, srv, "textDocument/inlineCompletion", inlineCompletionParams{
@@ -177,6 +183,9 @@ func (s *Service) Complete(ctx context.Context, req CompletionRequest) (Completi
 			InsertSpaces: req.InsertSpaces,
 		},
 	})
+	if isCancelled(ctx, err) {
+		return Completion{Suggestions: []Suggestion{}}, nil
+	}
 	if rpcErr, ok := errors.AsType[*jsonrpc2.Error](err); ok && rpcErr.Code == codeNotSignedIn {
 		return Completion{Suggestions: []Suggestion{}, Notice: "Not signed in to GitHub. Sign in under Settings."}, nil
 	}
@@ -474,6 +483,16 @@ type Range struct {
 type Position struct {
 	Line      int `json:"line"`
 	Character int `json:"character"`
+}
+
+// isCancelled reports whether a completion request was cancelled because the
+// learner typed again or closed the file, which is normal and not an error.
+func isCancelled(ctx context.Context, err error) bool {
+	if errors.Is(err, context.Canceled) || errors.Is(ctx.Err(), context.Canceled) {
+		return true
+	}
+	rpcErr, ok := errors.AsType[*jsonrpc2.Error](err)
+	return ok && rpcErr.Code == codeRequestCancelled
 }
 
 // isNewer reports whether version a comes after b, comparing their

@@ -88,9 +88,12 @@ export function TaskPanel({ taskId, passed, moduleTitle, next }: Props) {
     const w = bodyRef.current!.getBoundingClientRect().width;
     setSplit(clamp(fraction, 260 / w, 1 - 340 / w));
   }
+  function maxResultsHeight() {
+    // Keep ~36px for the file tabs plus at least 140px for the editor.
+    return Math.max(96, workRef.current!.getBoundingClientRect().height - 176);
+  }
   function sizeResults(height: number) {
-    const h = workRef.current!.getBoundingClientRect().height;
-    setResultsHeight(Math.round(clamp(height, 96, h - 140)));
+    setResultsHeight(Math.round(clamp(height, 96, maxResultsHeight())));
   }
 
   if (!detail) return <Placeholder error={error} loading="Loading exercise…" />;
@@ -180,7 +183,7 @@ export function TaskPanel({ taskId, passed, moduleTitle, next }: Props) {
               axis="y"
               label="Resize editor and results"
               onDrag={(y) => sizeResults(workRef.current!.getBoundingClientRect().bottom - y)}
-              onStep={(d) => sizeResults(resultsHeight - d * 24)}
+              onStep={(d) => sizeResults(Math.min(resultsHeight, maxResultsHeight()) - d * 24)}
             />
           )}
           <Results

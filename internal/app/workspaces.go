@@ -157,6 +157,7 @@ func (s *WorkspaceService) ApproveProposal(wsID string) error {
 	}
 	events.Emit(events.WorkspaceChanged, events.Workspace{Workspace: wsID})
 	s.prepareImage(w, c.Language)
+	s.agents.SupersedeTurn(wsID, workspace.PlanThread)
 	threads.Post(w, workspace.ChatItem{
 		Thread: workspace.PlanThread.String(),
 		Role:   workspace.RoleNotice,
@@ -220,6 +221,7 @@ func (s *WorkspaceService) RejectProposal(wsID, feedback string) error {
 	}
 	events.Emit(events.WorkspaceChanged, events.Workspace{Workspace: wsID})
 	text := "I'd like changes to the proposed curriculum: " + feedback
+	s.agents.SupersedeTurn(wsID, workspace.PlanThread)
 	s.agents.Send(w, workspace.PlanThread, threads.Message{Role: workspace.RoleUser, Shown: text, Agent: text})
 	return nil
 }

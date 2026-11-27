@@ -1,6 +1,7 @@
 package workspace
 
 import (
+	"cmp"
 	"crypto/rand"
 	"errors"
 	"os"
@@ -427,12 +428,34 @@ func progress(cur *Curriculum, tasks []TaskInfo, passedTask map[string]bool) Pro
 	return p
 }
 
-// nextTask is the title of the first task the learner hasn't passed.
+// nextTask is what's next for the learner in plan order: the first unpassed
+// objective's newest unsolved task title, else its lesson title, else its
+// objective name or title. Returns "" when there is no plan or every objective
+// is passed.
 func (w *Workspace) nextTask() string {
+	cur, err := w.Curriculum()
+	if err != nil || cur == nil {
+		return ""
+	}
 	tasks, _ := w.TaskStatuses()
-	for _, t := range tasks {
-		if !t.Passed {
-			return t.Title
+	lessons, _ := w.Lessons()
+	p := w.Progress()
+	for _, m := range cur.Modules {
+		for _, o := range m.Objectives {
+			if p.Objectives[o.ID].Status == ObjectivePassed {
+				continue
+			}
+			for i := len(tasks) - 1; i >= 0; i-- {
+				if tasks[i].Objective == o.ID && !tasks[i].Passed {
+					return tasks[i].Title
+				}
+			}
+			for _, l := range lessons {
+				if l.Objective == o.ID {
+					return l.Title
+				}
+			}
+			return cmp.Or(o.Name, o.Title)
 		}
 	}
 	return ""

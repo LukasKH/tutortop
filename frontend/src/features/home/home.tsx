@@ -180,7 +180,7 @@ const CARD_BODY = "flex flex-1 flex-col gap-2 min-h-[150px] px-5 pt-[18px] pb-4 
 
 const CARD_HEAD = "flex items-start justify-between gap-4";
 
-const CARD_NAME = "text-[18px] leading-[1.3] font-[650] [overflow-wrap:anywhere]";
+const CARD_NAME = "min-w-0 line-clamp-2 text-[18px] leading-[1.3] font-[650] [overflow-wrap:anywhere]";
 
 const NUM = "font-mono text-xs text-muted-foreground tabular-nums";
 
@@ -192,7 +192,9 @@ function WorkspaceCard({ ws, focused, onOpen, onDelete }: { ws: Summary; focused
     <div className={card(focused)}>
       <button className={CARD_BODY} onClick={onOpen}>
         <span className={CARD_HEAD}>
-          <span className={CARD_NAME}>{ws.title}</span>
+          <span className={CARD_NAME} title={ws.title}>
+            {ws.title}
+          </span>
           <TopicIcon name={ws.icon} size={30} />
         </span>
         <span className="truncate text-sm text-muted-foreground">
