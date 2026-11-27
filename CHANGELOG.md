@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.2.9](https://github.com/LukasKH/tutortop/compare/v0.2.8...v0.2.9) (2026-11-27)
+
+
+### Features
+
+* chat screenshots, learner feedback, LaTeX math, diagram zoom, and Antigravity refusal fix ([#38](https://github.com/LukasKH/tutortop/issues/38)) ([c94b326](https://github.com/LukasKH/tutortop/commit/c94b326cc3c535bb6169f70a728fecdd2a7985c0))
+
+
+### Bug Fixes
+
+* resolve QA layout, copilot cancel, stop, transcript, writer, and ordering bugs ([#40](https://github.com/LukasKH/tutortop/issues/40)) ([8c3c5e9](https://github.com/LukasKH/tutortop/commit/8c3c5e9a145ec8f9ca198b42198b6a5dc0369b9c))
+
 ## [0.2.8](https://github.com/LukasKH/tutortop/compare/v0.2.7...v0.2.8) (2026-11-26)
 
 
