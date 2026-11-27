@@ -12,7 +12,7 @@ import (
 
 var createLessonTool = &mcpsdk.Tool{
 	Name: "create_lesson",
-	Description: "Publish the lesson for a curriculum objective: the theory the learner reads before that objective's task, ending in a short quiz the app checks. " +
+	Description: "Publish the lesson for a curriculum objective: the practical guide and worked examples the learner reads before that objective's task, ending in a short quiz the app checks. " +
 		"Write it before the objective's first task. One lesson per objective. If the lesson is rejected, fix the problems and call create_lesson again.",
 }
 

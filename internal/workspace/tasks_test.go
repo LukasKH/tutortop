@@ -27,7 +27,9 @@ func TestValidateSpec(t *testing.T) {
 		{"every problem at once", func(s *workspace.TaskSpec) {
 			s.Title = ""
 			s.Statement.Context = ""
-		}, []string{"title is required", "statement.context is required"}},
+			s.Statement.Steps = nil
+			s.Statement.Examples = []workspace.Example{{Code: ""}}
+		}, []string{"title is required", "statement.context is required", "statement.steps needs at least one", "statement.examples needs at least 2", "statement.examples[0] needs a code snippet"}},
 	}
 	w := newWorkspace(t)
 	c := plan("a", "b")
@@ -132,5 +134,46 @@ func TestSaveWork(t *testing.T) {
 	}
 	if work, _ := w.Work(task.ID); work["sum.go"] != taskSpec("a").Starter["sum.go"] {
 		t.Errorf("reset work %v, want the starter", work)
+	}
+}
+
+func TestStatementMarkdown(t *testing.T) {
+	md := workspace.Statement{
+		Context: "A worker tracks jobs in `job.go`.",
+		Task:    "Complete the `TODO` functions in `job.go`.",
+		Steps: []string{
+			"Complete `NewJob`.",
+			"Complete `CanRetry`:\n- Return `true` only when failed with retries left.",
+		},
+		Examples: []workspace.Example{
+			{Title: "New job", Code: `job := NewJob("job-42", "send-email", 3)`, Explanation: "Starts pending."},
+			{Code: `job.CanRetry() // false`},
+		},
+		Notes:      []string{"A zero-value `Job{}` must not panic."},
+		Background: "```go\n// Refresher\n```",
+	}.Markdown("Background Jobs", "go")
+
+	wantOrder := []string{
+		"# Background Jobs",
+		"A worker tracks jobs in `job.go`.",
+		"## Assignment",
+		"Complete the `TODO` functions in `job.go`.",
+		"1. Complete `NewJob`.",
+		"2. Complete `CanRetry`:\n   - Return `true` only when failed with retries left.",
+		"## Examples",
+		"**New job**",
+		"```go\njob := NewJob(\"job-42\", \"send-email\", 3)\n```",
+		"Starts pending.",
+		"## Notes",
+		"- A zero-value `Job{}` must not panic.",
+		"## Background",
+	}
+	pos := 0
+	for _, want := range wantOrder {
+		i := strings.Index(md[pos:], want)
+		if i < 0 {
+			t.Fatalf("missing %q after offset %d in:\n%s", want, pos, md)
+		}
+		pos += i + len(want)
 	}
 }
