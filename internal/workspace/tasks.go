@@ -19,8 +19,8 @@ type TaskSpec struct {
 	ObjectiveID string        `json:"objectiveId" jsonschema:"id of the curriculum objective this task proves"`
 	Title       string        `json:"title"`
 	Size        TaskSize      `json:"size,omitempty" jsonschema:"small, medium or large; defaults to the curriculum's task_defaults.size"`
-	Statement   Statement     `json:"statement" jsonschema:"the problem statement, in parts; the app renders it. It stands on its own: no feedback on earlier tasks or chat remarks."`
-	Starter     sandbox.Files `json:"starter" jsonschema:"filename -> content. The files the learner edits. Must compile and fail some tests (e.g. return zero values)."`
+	Statement   Statement     `json:"statement" jsonschema:"the exercise statement, in parts; the app renders it as a guided assignment (context, Assignment, Examples, Notes, Background). Write in plain words directly to the learner. It stands on its own: no feedback on earlier tasks or chat remarks."`
+	Starter     sandbox.Files `json:"starter" jsonschema:"filename -> content. The files the learner edits. Must compile and fail some tests (e.g. return zero values). Put a clear TODO comment inside each stub the learner needs to complete."`
 	Reference   sandbox.Files `json:"reference" jsonschema:"filename -> content. A correct solution with the same filenames as starter. Never shown to the learner."`
 	Tests       sandbox.Files `json:"tests" jsonschema:"filename -> content. Visible test files the learner can read (Go: *_test.go, Python: test_*.py, other languages: the toolchain's test_files glob). Every test, visible or hidden, needs its own name."`
 	HiddenTests sandbox.Files `json:"hiddenTests" jsonschema:"filename -> content. Hidden test files with edge cases. Learner sees only names and failure messages."`

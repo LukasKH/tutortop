@@ -247,7 +247,7 @@ type Objective struct {
 	ID string `yaml:"id" json:"id" jsonschema:"dotted id, e.g. go.errors.wrap"`
 	// Name is the objective in the curriculum menu; Title is the full goal.
 	Name     string `yaml:"name,omitempty" json:"name,omitempty" jsonschema:"2-4 words shown in the curriculum menu, like a chapter heading: 'Wrapping errors'"`
-	Title    string `yaml:"title" json:"title" jsonschema:"the full goal tests can prove: 'Return wrapped errors that callers can inspect with errors.Is'"`
+	Title    string `yaml:"title" json:"title" jsonschema:"the full goal tests can prove, in plain practical words: 'Return wrapped errors that callers can inspect with errors.Is'"`
 	Verify   string `yaml:"verify,omitempty" json:"verify,omitempty" jsonschema:"how tasks for this objective are checked; only 'tests' is supported for now"`
 	Language string `yaml:"language,omitempty" json:"language,omitempty" jsonschema:"overrides the curriculum language"`
 }

@@ -14,8 +14,8 @@ import (
 
 var createTaskTool = &mcpsdk.Tool{
 	Name: "create_task",
-	Description: "Submit a task for a curriculum objective. The app runs a quality gate in a sandbox: the reference must pass every test, " +
-		"and the visible tests on their own, and the starter must compile and fail. Only then is the task shown to the learner. The statement must stand on its own: no feedback on earlier tasks or chat remarks. " +
+	Description: "Submit a practical coding exercise for a curriculum objective. The app runs a quality gate in a sandbox: the reference must pass every test, " +
+		"and the visible tests on their own, and the starter must compile and fail. Only then is the task shown to the learner. Write the statement like a guided assignment in plain words with realistic usage examples and TODO comments in the starter code; it must stand on its own, with no feedback on earlier tasks or chat remarks. " +
 		"If the gate fails, fix the task using the report and call create_task again.",
 }
 

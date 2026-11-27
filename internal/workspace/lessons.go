@@ -24,10 +24,10 @@ type LessonSpec struct {
 	ObjectiveID   string         `json:"objectiveId" jsonschema:"id of the curriculum objective this lesson teaches"`
 	Title         string         `json:"title"`
 	Summary       string         `json:"summary" jsonschema:"one sentence: what the learner will be able to do after this lesson"`
-	Body          string         `json:"body" jsonschema:"markdown: the theory, short enough to read in 5-10 minutes. Explain only the knowledge the objective's task needs, tied to the learner's mission, building from what they already know. Use small headings, worked examples in code blocks, a small picture for each idea (call tree, structure tree, diff or mermaid diagram), and cite sources with links for claims. Start at the first section: the app shows the title and summary above the body, and primarySource and sources in the lesson's Sources tab, so don't repeat them. Don't solve the task."`
+	Body          string         `json:"body" jsonschema:"markdown: the lesson, short enough to read in 5-10 minutes. Explain only the knowledge the objective's task needs, tied to the learner's mission, building from what they already know. Open each idea with a practical example on realistic data, then name the concept; explain in plain words first and define each technical term when it first appears. Use small headings, worked examples in code blocks, a small picture for each idea (call tree, structure tree, diff or mermaid diagram), and cite sources with links for claims. Start at the first section: the app shows the title and summary above the body, and primarySource and sources in the lesson's Sources tab, so don't repeat them. Don't solve the task."`
 	PrimarySource Source         `json:"primarySource" jsonschema:"the single best high-trust resource to read or watch next on this topic"`
 	Sources       []Source       `json:"sources" jsonschema:"1-8 pages you read and based this lesson and its quiz on, most of them from the sources the app gave you; the learner sees them in the lesson's Sources tab. Title them so the learner knows what they'll find"`
-	Quiz          []QuizQuestion `json:"quiz" jsonschema:"3-5 questions that make the learner recall and apply the lesson (retrieval practice), not recognise wording"`
+	Quiz          []QuizQuestion `json:"quiz" jsonschema:"3-5 questions that make the learner recall and apply the lesson in realistic code or situations (retrieval practice), not recite definitions or recognise wording"`
 }
 
 // markdown is the lesson as a readable file in the workspace, quiz without answers.
