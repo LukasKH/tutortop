@@ -18,7 +18,7 @@
         PackageDisplayName="My Product"
         PublisherName="CN=My Company"
         PublisherDisplayName="My Company"
-        Version="0.2.8.0"
+        Version="0.2.9.0"
         PackageDescription="A desktop application">
     <!-- x-release-please-end -->
         <Capabilities>
