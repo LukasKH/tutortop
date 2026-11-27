@@ -123,6 +123,7 @@ func (s *ChatService) AnswerQuestions(wsID string, answers map[string]string) er
 	if err := w.SetQuestions(nil); err != nil {
 		return err
 	}
+	s.agents.SupersedeTurn(wsID, t)
 	s.agents.Send(w, t, Message{Role: workspace.RoleUser, Shown: b.String(), Agent: b.String()})
 	return nil
 }

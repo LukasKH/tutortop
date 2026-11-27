@@ -231,3 +231,60 @@ func TestPriorKnowledge(t *testing.T) {
 		})
 	}
 }
+
+// Summary.Next follows plan order and falls back to the next unpassed
+// objective's lesson or name when no unsolved task is written yet.
+func TestListSummaryNextFollowsPlanOrder(t *testing.T) {
+	w := newWorkspace(t)
+	s := &workspace.Store{Root: filepath.Dir(w.Dir), PrivateRoot: filepath.Dir(w.PrivateDir)}
+	next := func() string {
+		t.Helper()
+		list, err := s.List()
+		if err != nil || len(list) != 1 {
+			t.Fatalf("List() = %+v, %v", list, err)
+		}
+		return list[0].Next
+	}
+
+	if got := next(); got != "" {
+		t.Fatalf("Next before plan = %q, want empty", got)
+	}
+	if err := w.Propose(workspace.Curriculum{
+		Language: "go",
+		Modules: []workspace.Module{{
+			ID:         "m1",
+			Title:      "Basics",
+			References: []workspace.Source{{Title: "Go", URL: "https://go.dev/"}},
+			Objectives: []workspace.Objective{
+				{ID: "a", Name: "Variables", Title: "Declare variables"},
+				{ID: "b", Name: "Borrowing", Title: "Borrow values"},
+			},
+		}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.ApproveProposal(); err != nil {
+		t.Fatal(err)
+	}
+	if got := next(); got != "Variables" {
+		t.Errorf("Next with nothing written = %q, want Variables", got)
+	}
+
+	// Pass objective b while objective a only has a lesson (no task yet).
+	la := addLesson(t, w, "a")
+	tb := addTask(t, w, "b")
+	record(t, w, workspace.Attempt{TaskID: tb.ID, Kind: workspace.AttemptSubmit, Status: sandbox.StatusPassed})
+	if got := next(); got != la.Title {
+		t.Errorf("Next with only lesson on unpassed first objective = %q, want %q", got, la.Title)
+	}
+
+	// Once objective a gets a task, Next shows the task's title; once passed, "".
+	ta := addTask(t, w, "a")
+	if got := next(); got != ta.Title {
+		t.Errorf("Next with task on first objective = %q, want %q", got, ta.Title)
+	}
+	record(t, w, workspace.Attempt{TaskID: ta.ID, Kind: workspace.AttemptSubmit, Status: sandbox.StatusPassed})
+	if got := next(); got != "" {
+		t.Errorf("Next with all objectives passed = %q, want empty", got)
+	}
+}

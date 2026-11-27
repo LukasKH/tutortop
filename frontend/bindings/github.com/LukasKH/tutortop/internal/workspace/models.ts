@@ -312,7 +312,7 @@ export interface Summary {
     "progress": Progress;
 
     /**
-     * title of the first unsolved task, "" if none
+     * what's next in plan order (task, lesson or objective title), "" if none
      */
     "next": string;
 }

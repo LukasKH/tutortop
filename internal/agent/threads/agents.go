@@ -194,6 +194,18 @@ func (ag *Agents) EndWorkspace(wsID string) {
 	ag.mcp.Forget(wsID)
 }
 
+// SupersedeTurn flushes any already-streamed output from an in-flight turn in t
+// and drops the rest of that turn's output so closing prose after ask_user or
+// propose_curriculum cannot appear after the learner's response or approval.
+func (ag *Agents) SupersedeTurn(wsID string, t workspace.Thread) {
+	ag.mu.Lock()
+	ta := ag.agents[threadKey{wsID, t.String()}]
+	ag.mu.Unlock()
+	if ta != nil {
+		ta.tr.supersedeTurn()
+	}
+}
+
 // endWriters stops every running writer for wsID, drops their MCP endpoints,
 // and returns the objective IDs that were being written so Rewrite can restart
 // requested writes (such as "Write it now") alongside cleared ones.
@@ -245,19 +257,34 @@ func (ag *Agents) queue(w *workspace.Workspace, t workspace.Thread, msg prompt) 
 }
 
 // stop interrupts the current turn in a thread. Its agent posts a notice
-// once the cut-off reply is saved, and takes the next message as usual.
+// once the cut-off reply is saved, and takes the next message as usual. If a
+// chat thread's CLI is still opening, stop ends the startup immediately and
+// posts the notice so the queued prompt doesn't run once it opens.
 // A writer has only the one turn, so stop ends it instead, even while its
 // CLI is still opening or doesn't answer an interrupt.
 func (ag *Agents) stop(wsID, thread string) {
 	ag.mu.Lock()
 	ta := ag.agents[threadKey{wsID, thread}]
-	if ta != nil && ta.thread.Kind == workspace.WriterKind {
-		ag.end(ta)
-	}
-	ag.mu.Unlock()
-	if ta == nil || ta.thread.Kind == workspace.WriterKind || !ta.opened() {
+	if ta == nil {
+		ag.mu.Unlock()
 		return
 	}
+	if ta.thread.Kind == workspace.WriterKind {
+		ag.end(ta)
+		ag.mu.Unlock()
+		return
+	}
+	if ta.pending == 0 {
+		ag.mu.Unlock()
+		return
+	}
+	if !ta.opened() {
+		Post(ta.tr.ws, workspace.ChatItem{Thread: ta.key.name, Role: workspace.RoleNotice, Text: "Stopped. Send a message to continue."})
+		ag.end(ta)
+		ag.mu.Unlock()
+		return
+	}
+	ag.mu.Unlock()
 	ta.stopped.Store(true)
 	ta.cli.Cancel()
 }
@@ -343,27 +370,40 @@ func (ag *Agents) loop(ctx context.Context, w *workspace.Workspace, ta *threadAg
 		case <-ctx.Done():
 			return
 		case msg := <-ta.queue:
-			err := ta.cli.Prompt(ctx, msg.text, msg.images)
-			ta.tr.endTurn()
-			stopped := ta.stopped.Swap(false)
-			if stopped {
-				// After endTurn, so the notice follows the cut-off reply.
-				Post(w, workspace.ChatItem{Thread: ta.key.name, Role: workspace.RoleNotice, Text: "Stopped. Send a message to continue."})
-			}
-			// Run After before marking the turn idle so replacement writers
-			// are queued before the UI (or tests) sees the plan thread idle.
-			if err == nil && !stopped && ctx.Err() == nil && msg.after != nil {
-				msg.after()
-			}
-			ended := ag.answered(ta, errors.Is(err, agent.ErrExited))
-			if err != nil && ctx.Err() == nil {
-				postFailure(w, ta.key.name, err.Error())
-			}
-			if ended {
+			if ag.runTurn(ctx, w, ta, msg) {
 				return
 			}
 		}
 	}
+}
+
+// runTurn answers one queued message and reports whether the agent ended.
+func (ag *Agents) runTurn(ctx context.Context, w *workspace.Workspace, ta *threadAgent, msg prompt) bool {
+	if ta.stopped.Swap(false) {
+		Post(w, workspace.ChatItem{Thread: ta.key.name, Role: workspace.RoleNotice, Text: "Stopped. Send a message to continue."})
+		return ag.answered(ta, false)
+	}
+	ta.tr.startTurn()
+	err := ta.cli.Prompt(ctx, msg.text, msg.images)
+	ta.tr.endTurn()
+	stopped := ta.stopped.Swap(false)
+	if stopped {
+		// After endTurn, so the notice follows the cut-off reply.
+		Post(w, workspace.ChatItem{Thread: ta.key.name, Role: workspace.RoleNotice, Text: "Stopped. Send a message to continue."})
+	}
+	if err == nil && !stopped && ctx.Err() == nil && ta.thread.Kind == workspace.WriterKind {
+		err = ag.finishWriterTurn(ctx, w, ta)
+	}
+	// Run After before marking the turn idle so replacement writers
+	// are queued before the UI (or tests) sees the plan thread idle.
+	if err == nil && !stopped && ctx.Err() == nil && msg.after != nil {
+		msg.after()
+	}
+	ended := ag.answered(ta, errors.Is(err, agent.ErrExited))
+	if err != nil && ctx.Err() == nil {
+		postFailure(w, ta.key.name, err.Error())
+	}
+	return ended
 }
 
 // open opens the CLI session for a thread's agent.
@@ -478,6 +518,35 @@ func (ag *Agents) stalled(w *workspace.Workspace, ta *threadAgent) bool {
 	postFailure(w, ta.key.name, "The writer stopped making progress, so it was stopped.")
 	ag.end(ta)
 	return true
+}
+
+// finishWriterTurn verifies that a writer published both parts of its
+// objective. If it published only one part (e.g. the lesson without the
+// exercise), it nudges the same session once to publish the missing part; if
+// anything is still missing afterwards, it posts a failure notice so the UI
+// prompts the learner to retry instead of silently leaving it unwritten.
+func (ag *Agents) finishWriterTurn(ctx context.Context, w *workspace.Workspace, ta *threadAgent) error {
+	missingLesson, missingTask := writerMissing(w, ta.thread.ID)
+	if !missingLesson && !missingTask {
+		return nil
+	}
+	if missingLesson != missingTask {
+		nudge := "[app] You published the lesson, but not the exercise yet. Call create_task now."
+		if missingLesson {
+			nudge = "[app] You published the exercise, but not the lesson yet. Call create_lesson now."
+		}
+		ta.tr.startTurn()
+		err := ta.cli.Prompt(ctx, nudge, nil)
+		ta.tr.endTurn()
+		if err != nil || ctx.Err() != nil {
+			return err
+		}
+		missingLesson, missingTask = writerMissing(w, ta.thread.ID)
+	}
+	if missingLesson || missingTask {
+		postFailure(w, ta.key.name, missingWriterMessage(missingLesson, missingTask))
+	}
+	return nil
 }
 
 // end removes a thread's agent, closes its CLI and shows its thread idle,
@@ -607,6 +676,43 @@ func configOf(s settings.Prefs) agentConfig {
 // outlives one in server mode.
 func firstSeq() uint64 {
 	return uint64(time.Now().UnixMicro())
+}
+
+// writerMissing reports whether an unpassed objective in w's curriculum is
+// missing a lesson or an exercise.
+func writerMissing(w *workspace.Workspace, objectiveID string) (missingLesson, missingTask bool) {
+	cur, err := w.Curriculum()
+	if err != nil || cur == nil {
+		return false, false
+	}
+	if _, _, ok := cur.Objective(objectiveID); !ok {
+		return false, false
+	}
+	p := w.Progress()
+	op := p.Objectives[objectiveID]
+	if op.Status == workspace.ObjectivePassed {
+		return false, false
+	}
+	lessons, _ := w.Lessons()
+	hasLesson := false
+	for _, l := range lessons {
+		if l.Objective == objectiveID {
+			hasLesson = true
+			break
+		}
+	}
+	return !hasLesson, len(op.Tasks) == 0
+}
+
+func missingWriterMessage(missingLesson, missingTask bool) string {
+	switch {
+	case missingLesson && missingTask:
+		return "The writer finished without publishing the lesson or exercise."
+	case missingLesson:
+		return "The writer finished without publishing the lesson."
+	default:
+		return "The writer finished without publishing the exercise."
+	}
 }
 
 // usesSubagents reports whether a kind of thread may hand research to

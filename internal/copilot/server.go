@@ -459,6 +459,9 @@ const triggerAutomatic = 2
 // codeNotSignedIn is the error code of a request that needs a GitHub sign-in.
 const codeNotSignedIn = 1000
 
+// codeRequestCancelled is LSP's error code for a request cancelled by $/cancelRequest.
+const codeRequestCancelled = -32800
+
 type formattingOptions struct {
 	TabSize      int  `json:"tabSize"`
 	InsertSpaces bool `json:"insertSpaces"`

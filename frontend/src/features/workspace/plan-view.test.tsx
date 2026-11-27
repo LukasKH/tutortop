@@ -44,4 +44,16 @@ describe("How you like to learn", () => {
     show("");
     expect(screen.getByText(/Tell it after a lesson or exercise, or write it yourself/)).toBeTruthy();
   });
+
+  test("wraps the top toolbar so action buttons do not clip on narrow viewports", () => {
+    const live = { id: "ws", live: {}, nav: {}, threads: {}, lang: "go" } as unknown as LiveWorkspace;
+    render(
+      <LiveWorkspaceContext value={live}>
+        <PlanView ws={workspace()} onClose={() => {}} onAskTutor={() => {}} />
+      </LiveWorkspaceContext>,
+    );
+    const back = screen.getByRole("button", { name: "← Back" });
+    expect(back.parentElement?.className).toContain("flex-wrap");
+    expect(screen.getByRole("button", { name: "Change with the tutor" })).toBeTruthy();
+  });
 });

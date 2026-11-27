@@ -344,6 +344,168 @@ func TestStopPostsNoticeAfterReply(t *testing.T) {
 	}
 }
 
+// Stopping a chat thread while its CLI is still opening cancels startup
+// immediately, posts the stopped notice, and prevents the cancelled prompt from
+// running once the CLI opens.
+func TestStopWhileOpeningCancelsChatTurn(t *testing.T) {
+	ag, fake, w := newHeldAgents(t)
+	thread := workspace.LessonThread("0001-intro")
+	idle := func() bool { b, _, _ := ag.State(w.ID); return !b[thread.String()] }
+
+	fake.holdStart = make(chan struct{})
+	queue(t, ag, w, thread, "first prompt")
+	ag.stop(w.ID, thread.String())
+	if !idle() {
+		t.Fatal("chat thread still busy after Stop during CLI startup")
+	}
+	chat, _ := w.Chat(thread.String())
+	if len(chat) != 1 || chat[0].Role != workspace.RoleNotice || !strings.Contains(chat[0].Text, "Stopped") {
+		t.Fatalf("chat after early stop = %+v, want Stopped notice", chat)
+	}
+	close(fake.holdStart)
+
+	queue(t, ag, w, thread, "second prompt")
+	turn := fake.next(t)
+	if turn.text != "second prompt" {
+		t.Fatalf("started turn = %q, want only second prompt", turn.text)
+	}
+	turn.end(nil)
+	eventually(t, "idle after second prompt", idle)
+}
+
+// SupersedeTurn flushes already-streamed prose ahead of a learner answer or plan
+// approval mark and drops late closing prose from that turn so nothing stale
+// lands after the mark, while the next turn streams normally.
+func TestSupersedeTurnDropsTrailingProse(t *testing.T) {
+	ag, fake, w := newHeldAgents(t)
+	queue(t, ag, w, workspace.PlanThread, "propose")
+	first := fake.next(t)
+	first.s.onEvent(agent.Event{Kind: agent.EventText, Text: "Here is your plan."})
+
+	ag.SupersedeTurn(w.ID, workspace.PlanThread)
+	Post(w, workspace.ChatItem{
+		Thread: workspace.PlanThread.String(),
+		Role:   workspace.RoleNotice,
+		Mark:   workspace.MarkPlanApproved,
+		Text:   "You approved the plan (revision 1).",
+	})
+	first.s.onEvent(agent.Event{Kind: agent.EventText, Text: "Go ahead and approve whenever you're ready!"})
+	first.end(nil)
+
+	queue(t, ag, w, workspace.PlanThread, "next change")
+	second := fake.next(t)
+	second.s.onEvent(agent.Event{Kind: agent.EventText, Text: "Updated plan."})
+	second.end(nil)
+	eventually(t, "plan idle", func() bool { b, _, _ := ag.State(w.ID); return !b["plan"] })
+
+	chat, _ := w.Chat("plan")
+	if len(chat) != 3 {
+		t.Fatalf("chat = %+v, want 3 items (pre-approval prose, mark, post-approval reply)", chat)
+	}
+	if chat[0].Text != "Here is your plan." || chat[1].Mark != workspace.MarkPlanApproved || chat[2].Text != "Updated plan." {
+		t.Fatalf("unexpected chat order/contents: %+v", chat)
+	}
+}
+
+// A writer that publishes only one part of an objective (e.g. lesson without
+// exercise) is nudged once in the same session. If it publishes the missing
+// part on the nudge it finishes cleanly; if anything is still missing it posts
+// a failure notice so the UI offers retry.
+func TestWriterNudgesIncompleteTurnAndReportsMissing(t *testing.T) {
+	ag, fake, w := newHeldAgents(t)
+	plan := workspace.Curriculum{
+		Language: "go",
+		Modules: []workspace.Module{{
+			ID:         "m1",
+			Title:      "Basics",
+			References: []workspace.Source{{Title: "Go docs", URL: "https://go.dev/doc/"}},
+			Objectives: []workspace.Objective{
+				{ID: "go.one", Name: "One", Title: "Objective one"},
+				{ID: "go.two", Name: "Two", Title: "Objective two"},
+				{ID: "go.three", Name: "Three", Title: "Objective three"},
+			},
+		}},
+	}
+	if err := w.Propose(plan); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.ApproveProposal(); err != nil {
+		t.Fatal(err)
+	}
+	saveLesson := func(obj string) {
+		t.Helper()
+		_, err := w.SaveLesson(workspace.LessonSpec{
+			ObjectiveID:   obj,
+			Title:         "Lesson " + obj,
+			Summary:       "Summary.",
+			Body:          "Body.\n\n```go\nvar x = 1\n```",
+			PrimarySource: workspace.Source{Title: "Go", URL: "https://go.dev/"},
+			Quiz: []workspace.QuizQuestion{
+				{Question: "A?", Options: []string{"a", "b"}, Answer: 0, Explanation: "A."},
+				{Question: "B?", Options: []string{"a", "b"}, Answer: 1, Explanation: "B."},
+			},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	saveTask := func(obj string) {
+		t.Helper()
+		_, err := w.SaveTask(workspace.TaskSpec{
+			ObjectiveID: obj,
+			Title:       "Task " + obj,
+			Statement:   workspace.Statement{Task: "Do it."},
+			Starter:     sandbox.Files{"main.go": "package main\n"},
+			Reference:   sandbox.Files{"main.go": "package main\n"},
+			Tests:       sandbox.Files{"main_test.go": "package main\n"},
+			HiddenTests: sandbox.Files{"hidden_test.go": "package main\n"},
+		}, "go", sandbox.TestNames{Visible: []string{"TestA"}, Hidden: []string{"TestB"}})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// go.one: publishes lesson on turn 1 -> receives nudge -> publishes task on turn 2 -> 0 failures.
+	w1 := workspace.WriterThread("go.one")
+	queue(t, ag, w, w1, "write one")
+	t1 := fake.next(t)
+	saveLesson("go.one")
+	t1.end(nil)
+	nudge1 := fake.next(t)
+	if nudge1.s != t1.s || !strings.Contains(nudge1.text, "create_task") {
+		t.Fatalf("nudge1 = %q on same session %v, want create_task nudge on same session", nudge1.text, nudge1.s == t1.s)
+	}
+	saveTask("go.one")
+	nudge1.end(nil)
+	eventually(t, "w1 idle", func() bool { b, _, _ := ag.State(w.ID); return !b[w1.String()] })
+	if n := failures(w, w1.String()); n != 0 {
+		t.Fatalf("w1 failures = %d, want 0", n)
+	}
+
+	// go.two: publishes lesson on turn 1 -> still omits task on nudge -> posts failure notice.
+	w2 := workspace.WriterThread("go.two")
+	queue(t, ag, w, w2, "write two")
+	t2 := fake.next(t)
+	saveLesson("go.two")
+	t2.end(nil)
+	nudge2 := fake.next(t)
+	nudge2.end(nil)
+	eventually(t, "w2 idle with failure", func() bool {
+		b, _, _ := ag.State(w.ID)
+		return !b[w2.String()] && failures(w, w2.String()) == 1
+	})
+
+	// go.three: publishes nothing on turn 1 -> posts failure immediately without hanging on a nudge.
+	w3 := workspace.WriterThread("go.three")
+	queue(t, ag, w, w3, "write three")
+	t3 := fake.next(t)
+	t3.end(nil)
+	eventually(t, "w3 idle with failure", func() bool {
+		b, _, _ := ag.State(w.ID)
+		return !b[w3.String()] && failures(w, w3.String()) == 1
+	})
+}
+
 // When the agent can't start or its process exits, the thread shows the
 // error once in the chat and goes idle, and the next message starts a new
 // agent.

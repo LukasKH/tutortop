@@ -37,6 +37,8 @@ type transcript struct {
 
 	mu      sync.Mutex
 	closed  bool                           // agent ended: ignore late events from a dying CLI
+	inTurn  bool                           // true while Prompt is running (between startTurn and endTurn)
+	muted   bool                           // current turn was superseded by an answer/approval: drop trailing output until endTurn
 	current *workspace.ChatItem            // assistant message being streamed
 	tools   map[string]*workspace.ChatItem // running tool calls by id; nil if hidden
 	working events.Working                 // shown until the next message or tool call
@@ -54,7 +56,7 @@ func newTranscript(w *workspace.Workspace, thread string) *transcript {
 func (t *transcript) handle(ev agent.Event) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	if t.closed {
+	if t.closed || t.muted {
 		return
 	}
 	w := t.ws
@@ -144,12 +146,21 @@ func (t *transcript) endText() {
 	}
 }
 
-// endTurn saves what's still open once a turn ends, and has the UI reload
-// the workspace the agent may have changed.
-func (t *transcript) endTurn() {
+// startTurn marks the start of a new agent turn so its events stream normally.
+func (t *transcript) startTurn() {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	if t.closed {
+	t.inTurn = true
+	t.muted = false
+}
+
+// supersedeTurn flushes any already-streamed output from an in-flight turn and
+// mutes the rest of that turn until endTurn. Used when the learner answers
+// ask_user or approves/rejects a proposal before the tutor's closing prose ends.
+func (t *transcript) supersedeTurn() {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.closed || !t.inTurn {
 		return
 	}
 	t.endText()
@@ -158,9 +169,35 @@ func (t *transcript) endTurn() {
 		if item != nil {
 			item.Status = workspace.ChatDone
 			_ = t.ws.AppendChat(*item)
+			events.Emit(events.ChatMessage, events.Chat{Workspace: t.ws.ID, Item: *item})
 		}
 	}
 	clear(t.tools)
+	t.muted = true
+}
+
+// endTurn saves what's still open once a turn ends, and has the UI reload
+// the workspace the agent may have changed.
+func (t *transcript) endTurn() {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.inTurn = false
+	muted := t.muted
+	t.muted = false
+	if t.closed {
+		return
+	}
+	if !muted {
+		t.endText()
+		t.showWorking("", "")
+		for _, item := range t.tools {
+			if item != nil {
+				item.Status = workspace.ChatDone
+				_ = t.ws.AppendChat(*item)
+			}
+		}
+		clear(t.tools)
+	}
 	events.Emit(events.WorkspaceChanged, events.Workspace{Workspace: t.ws.ID})
 }
 

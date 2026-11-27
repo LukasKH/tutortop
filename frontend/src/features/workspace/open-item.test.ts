@@ -36,6 +36,16 @@ describe("resolveOpen", () => {
     expect(resolveOpen(workspace({ tasks: [task("t1", "a", true), task("t2", "b", true)] }), null)).toEqual({ kind: "task", id: "t2" });
     expect(resolveOpen(workspace(), null)).toBeNull();
   });
+
+  test("default item follows curriculum order even when a later objective finishes first", () => {
+    // Objective a has a lesson (no task yet), objective b already has a task.
+    const lessonFirst = workspace({ tasks: [task("t1", "b")], lessons: [lesson("l1", "a")] });
+    expect(resolveOpen(lessonFirst, null)).toEqual({ kind: "lesson", id: "l1" });
+
+    // Objective b's task was created before objective a's task.
+    const outOfOrder = workspace({ tasks: [task("t1", "b"), task("t2", "a")] });
+    expect(resolveOpen(outOfOrder, null)).toEqual({ kind: "task", id: "t2" });
+  });
 });
 
 describe("entryOf: clicking an objective", () => {

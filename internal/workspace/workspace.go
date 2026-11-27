@@ -150,7 +150,7 @@ type Summary struct {
 	Title    string   `json:"title"`
 	Icon     string   `json:"icon"`
 	Progress Progress `json:"progress"`
-	Next     string   `json:"next"` // title of the first unsolved task, "" if none
+	Next     string   `json:"next"` // what's next in plan order (task, lesson or objective title), "" if none
 }
 
 type Meta struct {

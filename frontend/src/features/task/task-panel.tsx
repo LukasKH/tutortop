@@ -90,7 +90,8 @@ export function TaskPanel({ taskId, passed, moduleTitle, next }: Props) {
   }
   function sizeResults(height: number) {
     const h = workRef.current!.getBoundingClientRect().height;
-    setResultsHeight(Math.round(clamp(height, 96, h - 140)));
+    // Keep ~36px for the file tabs plus at least 140px for the editor.
+    setResultsHeight(Math.round(clamp(height, 96, Math.max(96, h - 176))));
   }
 
   if (!detail) return <Placeholder error={error} loading="Loading exercise…" />;
