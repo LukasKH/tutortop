@@ -368,6 +368,9 @@ func (ag *Agents) loop(ctx context.Context, w *workspace.Workspace, ta *threadAg
 
 // open opens the CLI session for a thread's agent.
 func (ag *Agents) open(ctx context.Context, w *workspace.Workspace, ta *threadAgent, onEvent func(agent.Event)) (agent.Session, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	// This also switches the workspace to the agent in the settings, which
 	// forgets the other agent's saved conversations.
 	saved, err := w.UseProvider(ta.cfg.Provider)

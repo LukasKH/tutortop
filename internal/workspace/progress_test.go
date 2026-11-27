@@ -370,6 +370,41 @@ func TestClearUnsolvedRollsBackOnMoveFailure(t *testing.T) {
 	}
 }
 
+// If saving workspace.json fails after staging moves, rollback restores the
+// lesson and its chat transcript remains intact.
+func TestClearUnsolvedPreservesChatsOnMetadataFailure(t *testing.T) {
+	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+		t.Skip("chmod 0555 does not block file creation for root or on Windows")
+	}
+	w := newWorkspace(t)
+	approve(t, w, "a")
+	la := addLesson(t, w, "a")
+	thread := workspace.LessonThread(la.ID).String()
+	if err := w.AppendChat(workspace.ChatItem{Thread: thread, Role: workspace.RoleUser, Text: "keep me"}); err != nil {
+		t.Fatal(err)
+	}
+	metaDir := filepath.Join(w.Dir, ".tutortop")
+	if err := os.Chmod(metaDir, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(metaDir, 0o755) })
+
+	if _, err := w.ClearUnsolved(""); err == nil {
+		t.Fatal("expected ClearUnsolved to fail when .tutortop is read-only")
+	}
+	_ = os.Chmod(metaDir, 0o755)
+	if lessons, err := w.Lessons(); err != nil || len(lessons) != 1 || lessons[0].ID != la.ID {
+		t.Errorf("lessons after rollback = %+v, err=%v; want %s intact", lessons, err, la.ID)
+	}
+	chat, err := w.Chat(thread)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(chat) != 1 || chat[0].Text != "keep me" {
+		t.Errorf("chat after rollback = %+v, want preserved message", chat)
+	}
+}
+
 // A task counts once, on its first pass; a lesson once every question has
 // its first answer.
 func TestCompletions(t *testing.T) {

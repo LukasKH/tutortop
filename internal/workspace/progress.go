@@ -146,6 +146,9 @@ func (w *Workspace) ClearUnsolved(keepLessonID string) ([]Objective, error) {
 		rollbackMoves(staged)
 		return nil, err
 	}
+	// Delete chats only after metadata is saved, so a rolled-back failure never
+	// erases chats belonging to restored lessons or exercises.
+	w.removeChats(removeLessons, removeTasks)
 	cleared := objectivesInOrder(cur, affected)
 	cleanErr := cleanupStaged(staged)
 	w.commit("Regenerate unsolved lessons and exercises")
@@ -214,7 +217,10 @@ func (w *Workspace) stageRemovals(lessons []LessonInfo, tasks []TaskInfo) ([]sta
 			return moves, err
 		}
 	}
-	// Best-effort removal of deleted items' chat transcripts once moves succeed.
+	return moves, nil
+}
+
+func (w *Workspace) removeChats(lessons []LessonInfo, tasks []TaskInfo) {
 	for _, l := range lessons {
 		name := LessonThread(l.ID).String()
 		_ = removeAll(w.path(".tutortop", "chat", name+".jsonl"), w.path(".tutortop", "chat", name))
@@ -223,7 +229,6 @@ func (w *Workspace) stageRemovals(lessons []LessonInfo, tasks []TaskInfo) ([]sta
 		name := TaskThread(t.ID).String()
 		_ = removeAll(w.path(".tutortop", "chat", name+".jsonl"), w.path(".tutortop", "chat", name))
 	}
-	return moves, nil
 }
 
 func rollbackMoves(moves []stagedMove) {
