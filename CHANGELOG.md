@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.2.10](https://github.com/LukasKH/tutortop/compare/v0.2.9...v0.2.10) (2026-11-27)
+
+
+### Features
+
+* **prompts:** focus lessons and exercises on practical examples ([#43](https://github.com/LukasKH/tutortop/issues/43)) ([9491242](https://github.com/LukasKH/tutortop/commit/949124203eab3c315aca12ba66403c5e33e3e5d8))
+
+
+### Bug Fixes
+
+* **workspace:** hide stale new item after regeneration ([#41](https://github.com/LukasKH/tutortop/issues/41)) ([5fd020d](https://github.com/LukasKH/tutortop/commit/5fd020df8a4a5fe66f083f7274a40ae3c6090041))
+
 ## [0.2.9](https://github.com/LukasKH/tutortop/compare/v0.2.8...v0.2.9) (2026-11-27)
 
 
