@@ -381,7 +381,7 @@ func (ag *Agents) loop(ctx context.Context, w *workspace.Workspace, ta *threadAg
 func (ag *Agents) runTurn(ctx context.Context, w *workspace.Workspace, ta *threadAgent, msg prompt) bool {
 	if ta.stopped.Swap(false) {
 		Post(w, workspace.ChatItem{Thread: ta.key.name, Role: workspace.RoleNotice, Text: "Stopped. Send a message to continue."})
-		return ag.answered(ta, false)
+		return ag.finishTurn(ta, cliRunning)
 	}
 	ta.tr.startTurn()
 	err := ta.cli.Prompt(ctx, msg.text, msg.images)
@@ -399,7 +399,11 @@ func (ag *Agents) runTurn(ctx context.Context, w *workspace.Workspace, ta *threa
 	if err == nil && !stopped && ctx.Err() == nil && msg.after != nil {
 		msg.after()
 	}
-	ended := ag.answered(ta, errors.Is(err, agent.ErrExited))
+	state := cliRunning
+	if errors.Is(err, agent.ErrExited) {
+		state = cliExited
+	}
+	ended := ag.finishTurn(ta, state)
 	if err != nil && ctx.Err() == nil {
 		postFailure(w, ta.key.name, err.Error())
 	}
@@ -441,19 +445,26 @@ func (ag *Agents) open(ctx context.Context, w *workspace.Workspace, ta *threadAg
 	return cli, err
 }
 
-// answered counts one of an agent's messages as answered, or given up on.
+type cliState bool
+
+const (
+	cliRunning cliState = false
+	cliExited  cliState = true
+)
+
+// finishTurn counts one of an agent's messages as answered, or given up on.
 // The agent ends if its CLI exited, which loses any queued messages, and a
 // writer's ends once it's idle. An ending agent leaves the agents before its
 // thread shows idle, so the next message starts a new one instead of
 // queueing on this one. It reports whether the agent ended.
-func (ag *Agents) answered(ta *threadAgent, exited bool) bool {
+func (ag *Agents) finishTurn(ta *threadAgent, state cliState) bool {
 	ag.mu.Lock()
 	defer ag.mu.Unlock()
 	if ag.agents[ta.key] != ta {
 		return true // already ended, and shown idle
 	}
 	n := ta.pending - 1
-	ended := exited || n == 0 && ta.thread.Kind == workspace.WriterKind
+	ended := state == cliExited || n == 0 && ta.thread.Kind == workspace.WriterKind
 	if ended {
 		n = 0
 		if ag.agents[ta.key] == ta {
